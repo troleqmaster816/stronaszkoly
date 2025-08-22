@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -12,6 +14,8 @@ const projectRoot = dirname(__dirname);
 const publicDir = join(projectRoot, 'public');
 
 const app = express();
+app.disable('x-powered-by');
+app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
@@ -98,6 +102,12 @@ app.post('/api/logout', (req, res) => {
   res.clearCookie('auth');
   res.json({ ok: true });
 });
+
+const loginLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+
+app.use('/api/login', loginLimiter);
+app.use('/api/refresh', refreshLimiter);
 
 app.post('/api/refresh', requireAuth, async (_req, res) => {
   if (isRunning) {

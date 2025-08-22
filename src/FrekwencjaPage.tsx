@@ -25,15 +25,11 @@ import {
 /* ----------------------------- UTILSY & TYPY ----------------------------- */
 
 // Dni tygodnia (PL) i ich kolejność
-const DAY_ORDER: Record<string, number> = {
-  "Poniedziałek": 1,
-  "Wtorek": 2,
-  "Środa": 3,
-  "Czwartek": 4,
-  "Piątek": 5,
-  "Sobota": 6,
-  "Niedziela": 7,
-};
+import { DAY_ORDER, extractHalfMark as extractGroupMarker } from '@/lib/schedule';
+import { OverlayCard } from '@/features/attendance/components/OverlayCard';
+import { Section } from '@/features/attendance/components/Section';
+import { Pill } from '@/features/attendance/components/Pill';
+import { DateBadge as DateBadgeComp } from '@/features/attendance/components/DateBadge';
 const WEEKDAY_PL = ["Niedziela","Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota"];
 
 function getPolishDayName(d: Date) {
@@ -78,10 +74,7 @@ function normalizeSubjectKey(s: string) {
   if (base === "r_matematyka") return "matematyka";
   return base;
 }
-function extractGroupMarker(subject: string): string | null {
-  const m = (subject || "").match(/(?:^|\b|-)(\d+\/\d+)(?=$|\b)/i);
-  return m ? m[1] : null;
-}
+// extractGroupMarker provided by shared lib (alias of extractHalfMark)
 function normalizeTimeRange(time: string) {
   // "8:00- 8:45" -> "8:00-8:45"
   return (time||"").replace(/\-\s+/, "-").trim();
@@ -104,23 +97,9 @@ function canSkipAndKeep50(attended: number, total: number) {
 }
 
 /* ------------------------------ KONTRAKT JSON ---------------------------- */
-type Ref = { id: string; name: string };
-type Lesson = {
-  day: string;            // "Poniedziałek", ...
-  lesson_num: string;     // "1","2",...
-  time: string;           // "8:00- 8:45" (bywa spacja)
-  subject: string;        // np. "wf-1/2", "informatyka"
-  teacher: Ref | null;    // null gdy plan dotyczy nauczyciela (n*)
-  group: Ref | null;      // null gdy plan dotyczy klasy (o*)
-  room: Ref | null;       // null gdy plan dotyczy sali (s*)
-};
-type TimetableData = {
-  metadata?: { source?: string; scraped_on?: string; generation_date_from_page?: string };
-  teachers: Record<string,string>;
-  rooms: Record<string,string>;
-  classes: Record<string,string>;
-  timetables: Record<string, Lesson[]>;
-};
+import type { Lesson as ScheduleLesson, DataFile as ScheduleDataFile } from '@/types/schedule';
+type TimetableData = ScheduleDataFile;
+type Lesson = ScheduleLesson;
 
 // (zachowane kiedyś pomocnicze; usunięte jako nieużywane)
 
@@ -461,52 +440,6 @@ function SchoolImportDialog({ onPlanReady, onClose }: SchoolImportProps) {
 
 /* ------------------------------ KOMPONENTY UI ---------------------------- */
 
-function OverlayCard({ title, children, size }: {title:string; children: React.ReactNode; size?: 'default'|'wide'}) {
-  return (
-    <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
-        className={`${size === 'wide' ? 'w-full max-w-[min(96vw,1300px)]' : 'w-full max-w-2xl'} bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl p-4`}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold">{title}</h3>
-        </div>
-        {children}
-      </motion.div>
-    </div>
-  );
-}
-
-function Section({title, icon, children, right}: {title:string; icon: React.ReactNode; children: React.ReactNode; right?:React.ReactNode}) {
-  return (
-    <section className="bg-neutral-950 border border-neutral-800 rounded-xl">
-      <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
-        <div className="flex items-center gap-2">{icon}<h2 className="font-semibold">{title}</h2></div>
-        {right}
-      </div>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
-function Pill({children}: {children: React.ReactNode}) {
-  return <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-neutral-800 border border-neutral-700 text-xs">{children}</span>;
-}
-
-function DateBadge({ dateISO }: { dateISO: string }) {
-  const d = parseISODateLocal(dateISO);
-  const name = getPolishDayName(d);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return (
-    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-sm font-medium">
-      <CalendarIcon className="w-4 h-4"/>
-      <span>{name}</span>
-      <span className="opacity-70">{dd}.{mm}.{yyyy}</span>
-    </span>
-  );
-}
-
 /* ------------------------- Menedżer przedmiotów -------------------------- */
 
 function SubjectsManager({ subjects, dispatch }:{subjects: State["subjects"]; dispatch: React.Dispatch<Action>}) {
@@ -764,7 +697,7 @@ function DayAttendance({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <DateBadge dateISO={dateISO} />
+        <DateBadgeComp dateISO={dateISO} label={getPolishDayName(parseISODateLocal(dateISO))} />
         <button onClick={addRow} className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition flex items-center gap-2">
           <Plus className="w-4 h-4"/>Dodaj lekcję
         </button>

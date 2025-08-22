@@ -1,0 +1,16 @@
+@media print {
+  html, body { background-color: white !important; color: black !important; }
+  header, .print\:hidden, footer:not(print\:block) { display: none !important; }
+  main { padding: 0 !important; margin: 0 !important; }
+  .rounded-xl, .rounded-2xl, .rounded-lg { border-radius: 0 !important; }
+  .shadow-sm { box-shadow: none !important; }
+  table { page-break-inside: avoid; width: 100% !important; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  td, th { break-inside: avoid; }
+  .bg-zinc-900, .bg-zinc-950, .bg-zinc-800, .bg-zinc-800\/70 { background: white !important; }
+  .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-500, .text-zinc-600 { color: black !important; }
+  .border-zinc-800, .border-zinc-700 { border-color: #ccc !important; }
+  .border-dashed { border-style: solid !important; }
+}
+
+

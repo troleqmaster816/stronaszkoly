@@ -1,68 +1,56 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { Suspense, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import Hub from './Hub'
-import TimetableViewer from './TimetableViewer'
-import Harmonogram from './harmonogram'
-import StatutSzkolnyViewer from './statut'
-import FrekwencjaPage from './FrekwencjaPage'
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import './index.css'
+import './styles/print.css'
 import HomeFab from './HomeFab'
 
-type Route = '/' | '/plan' | '/harmonogram' | '/statut' | '/frekwencja'
+const Hub = React.lazy(() => import('./Hub'))
+const TimetableViewer = React.lazy(() => import('./TimetableViewer'))
+const Harmonogram = React.lazy(() => import('./harmonogram'))
+const StatutSzkolnyViewer = React.lazy(() => import('./statut'))
+const FrekwencjaPage = React.lazy(() => import('./FrekwencjaPage'))
 
-function useHashlessRouter() {
-  const getPath = () => (window.location.pathname as Route) as Route
-  const [path, setPath] = useState<Route>(getPath())
-  useEffect(() => {
-    const onPop = () => setPath(getPath())
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [])
-  const navigate = (to: Route) => {
-    if (to !== window.location.pathname) {
-      window.history.pushState({}, '', to)
-      setPath(to)
-    }
-  }
-  return { path, navigate }
+function HubRoute() {
+  const navigate = useNavigate()
+  return <Hub navigate={(to: string) => navigate(to)} />
 }
 
-function RouterApp() {
-  const { path, navigate } = useHashlessRouter()
+function TimetableRoute({ setOverlayActive }: { setOverlayActive: (v: boolean) => void }) {
+  const navigate = useNavigate()
+  return <>
+    <TimetableViewer onOverlayActiveChange={setOverlayActive} />
+    <HomeFab onClick={() => navigate('/')} />
+  </>
+}
+
+function PageWithFab({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate()
+  return <>
+    {children}
+    <HomeFab onClick={() => navigate('/')} />
+  </>
+}
+
+function AppRouter() {
   const [overlayActive, setOverlayActive] = useState(false)
-  const view = useMemo(() => {
-    switch (path) {
-      case '/':
-        return <Hub navigate={navigate} />
-      case '/plan':
-        return <>
-          <TimetableViewer onOverlayActiveChange={setOverlayActive} />
-          {!overlayActive && <HomeFab onClick={() => navigate('/')} />}
-        </>
-      case '/harmonogram':
-        return <>
-          <Harmonogram />
-          {!overlayActive && <HomeFab onClick={() => navigate('/')} />}
-        </>
-      case '/statut':
-        return <>
-          <StatutSzkolnyViewer jsonSrc="/statut.json" />
-          {!overlayActive && <HomeFab onClick={() => navigate('/')} />}
-        </>
-      case '/frekwencja':
-        return <>
-          <FrekwencjaPage />
-          <HomeFab onClick={() => navigate('/')} />
-        </>
-      default:
-        return <Hub navigate={navigate} />
-    }
-  }, [path, overlayActive])
-  return view
+  return (
+    <BrowserRouter>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route path="/" element={<HubRoute />} />
+          <Route path="/plan" element={<TimetableRoute setOverlayActive={setOverlayActive} />} />
+          <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
+          <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
+          <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+  )
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RouterApp />
+    <AppRouter />
   </React.StrictMode>
 )

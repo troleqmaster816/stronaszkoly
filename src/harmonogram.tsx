@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useDeferredValue } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -361,6 +361,7 @@ function formatDateRange(start: string, end?: string): string {
 
 export default function SchedulePage() {
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [activeCats, setActiveCats] = useState<Category[]>(ALL_CATEGORIES);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const months = useMemo(() => {
@@ -378,13 +379,13 @@ export default function SchedulePage() {
     return order.filter((k) => keys.includes(k));
   }, []);
   const filteredEvents = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return EVENTS.filter((e) => {
       const inCat = activeCats.includes(e.category);
       const inQuery = !q || `${e.title} ${e.category}`.toLowerCase().includes(q);
       return inCat && inQuery;
     });
-  }, [activeCats, query]);
+  }, [activeCats, deferredQuery]);
 
   function toggleCat(cat: Category) {
     setActiveCats((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
