@@ -640,8 +640,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {/* PRINT-ONLY simplified view */}
         {data && activeId && (
           <section className="print-only">
-            <div className="print-container" style={{ marginBottom: 0 }}>
-              <div className="print-title" style={{ pageBreakAfter: 'avoid' }}>
+            <div className="print-page print-container" style={{ marginBottom: 0 }}>
+              <div className="print-title">
                 {prettyKind(activeKind)}: {activeName}
               </div>
               {/* Compact one-page matrix: Days as columns, lesson numbers as rows */}
@@ -789,8 +789,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           onClose={() => setAdminOpen(false)}
         />
       )}
-      {/* Stopka do druku – pokazuje źródło */}
-      <footer className={`${isMobile ? 'block' : 'hidden'} print:block mx-auto max-w-7xl px-4 py-8 text-xs text-zinc-500`}>
+      {/* Stopka – ukryta w trybie druku, żeby nie wymuszać drugiej strony */}
+      <footer className={`${isMobile ? 'block' : 'hidden'} print:hidden mx-auto max-w-7xl px-4 py-8 text-xs text-zinc-500`}>
         {isMobile && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {meta?.generation_date_from_page && (

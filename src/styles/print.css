@@ -1,12 +1,24 @@
+/* Hide print-only content in normal screen view */
+.print-only { display: none !important; }
+
 @page {
   size: A4 landscape;
-  margin: 8mm;
+  margin: 0;
 }
 
 @media print {
   /* Colors and backgrounds */
-  html, body { background: #ffffff !important; color: #000000 !important; }
-  body { margin: 0 !important; }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 297mm;
+    height: 210mm;
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: hidden !important;
+    -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+  }
   .bg-zinc-900, .bg-zinc-950, .bg-zinc-800, .bg-zinc-800\/70, .bg-gradient-to-b { background: #ffffff !important; }
   .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-500, .text-zinc-600 { color: #000000 !important; }
   a { color: #000000 !important; text-decoration: none !important; }
@@ -15,7 +27,6 @@
   header, .print\:hidden { display: none !important; }
   .print\:block { display: block !important; }
   .print-only { display: block !important; page-break-after: avoid; }
-  footer.print\:block { display: none !important; }
 
   /* Layout */
   main { padding: 0 !important; margin: 0 !important; }
@@ -40,11 +51,28 @@
   * { animation: none !important; transition: none !important; }
 
   /* Print-only layout styles */
+  :root {
+    --print-a4-w: 297mm;
+    --print-a4-h: 210mm;
+    --print-pad: 10mm;
+    --print-fudge: 0.2mm;
+  }
+  .print-page {
+    position: relative;
+    box-sizing: border-box;
+    width: calc(var(--print-a4-w) - var(--print-fudge));
+    height: calc(var(--print-a4-h) - var(--print-fudge));
+    padding: var(--print-pad);
+    margin: 0 !important;
+    overflow: clip;
+    background: #ffffff !important;
+  }
+  @supports not (overflow: clip) { .print-page { overflow: hidden; } }
   .print-container { display: block; }
   .print-title { font-size: 18px; font-weight: 700; margin: 0 0 4px 0; }
   .print-day { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8mm; }
   .print-day-title { font-size: 14px; font-weight: 700; margin: 0 0 4px 0; }
-  .print-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 0; }
+  .print-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .print-table th, .print-table td { border: 1px solid #cccccc; padding: 4px 6px; font-size: 10px; line-height: 1.2; text-align: left; vertical-align: top; }
   .print-table th { font-weight: 700; }
   .print-table.matrix th:nth-child(1) { width: 5%; }
