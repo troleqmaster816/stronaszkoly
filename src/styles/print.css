@@ -1,16 +1,59 @@
+@page {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
 @media print {
-  html, body { background-color: white !important; color: black !important; }
-  header, .print\:hidden, footer:not(print\:block) { display: none !important; }
+  /* Colors and backgrounds */
+  html, body { background: #ffffff !important; color: #000000 !important; }
+  body { margin: 0 !important; }
+  .bg-zinc-900, .bg-zinc-950, .bg-zinc-800, .bg-zinc-800\/70, .bg-gradient-to-b { background: #ffffff !important; }
+  .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-500, .text-zinc-600 { color: #000000 !important; }
+  a { color: #000000 !important; text-decoration: none !important; }
+
+  /* Show/hide utilities */
+  header, .print\:hidden { display: none !important; }
+  .print\:block { display: block !important; }
+  .print-only { display: block !important; page-break-after: avoid; }
+  footer.print\:block { display: none !important; }
+
+  /* Layout */
   main { padding: 0 !important; margin: 0 !important; }
+  .mx-auto, .max-w-7xl { max-width: none !important; margin-left: 0 !important; margin-right: 0 !important; }
+  .overflow-x-auto { overflow: visible !important; }
   .rounded-xl, .rounded-2xl, .rounded-lg { border-radius: 0 !important; }
-  .shadow-sm { box-shadow: none !important; }
-  table { page-break-inside: avoid; width: 100% !important; }
-  tr { page-break-inside: avoid; page-break-after: auto; }
-  td, th { break-inside: avoid; }
-  .bg-zinc-900, .bg-zinc-950, .bg-zinc-800, .bg-zinc-800\/70 { background: white !important; }
-  .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-500, .text-zinc-600 { color: black !important; }
-  .border-zinc-800, .border-zinc-700 { border-color: #ccc !important; }
+  .shadow-sm, .shadow, .drop-shadow { box-shadow: none !important; }
+  .backdrop-blur { backdrop-filter: none !important; }
+
+  /* Tables */
+  table { page-break-inside: avoid; width: 100% !important; border-collapse: collapse !important; }
+  thead tr { background: #ffffff !important; }
+  th, td { break-inside: avoid; border: 1px solid #cccccc !important; padding: 6px 8px !important; vertical-align: top; }
+  .border-zinc-800, .border-zinc-700 { border-color: #cccccc !important; }
   .border-dashed { border-style: solid !important; }
+
+  /* Avoid content cut between pages */
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  .card, .section, .react-pdf__Page { break-inside: avoid; }
+
+  /* Animations */
+  * { animation: none !important; transition: none !important; }
+
+  /* Print-only layout styles */
+  .print-container { display: block; }
+  .print-title { font-size: 18px; font-weight: 700; margin: 0 0 4px 0; }
+  .print-day { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8mm; }
+  .print-day-title { font-size: 14px; font-weight: 700; margin: 0 0 4px 0; }
+  .print-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 0; }
+  .print-table th, .print-table td { border: 1px solid #cccccc; padding: 4px 6px; font-size: 10px; line-height: 1.2; text-align: left; vertical-align: top; }
+  .print-table th { font-weight: 700; }
+  .print-table.matrix th:nth-child(1) { width: 5%; }
+  .print-table.matrix th:nth-child(2) { width: 12%; }
+  .print-table.matrix td { word-break: break-word; }
+
+  /* Hide elements that can cause extra page */
+  .pagination, .react-pdf__Document, .react-pdf__Page, .print-pager, .fab, .fixed { display: none !important; }
+  footer { display: none !important; margin: 0 !important; padding: 0 !important; }
 }
 
 

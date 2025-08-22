@@ -344,6 +344,21 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     );
   };
 
+  // Compact formatter for print cells
+  const formatPrintCell = (l: Lesson): string => {
+    const normalizedKey = normalizeSubjectKey(l.subject);
+    const subjectDisplay = overrides.subjectOverrides[normalizedKey] ?? l.subject;
+    const half = extractHalfMark(l.subject);
+    const extraParts: string[] = [];
+    const teacherName = l.teacher?.name ?? '';
+    const roomName = l.room?.name ?? '';
+    if (activeKind !== 'teacher' && teacherName) extraParts.push(teacherName);
+    if (activeKind !== 'room' && roomName) extraParts.push(roomName);
+    const groupText = activeKind === 'class' ? (l.group?.name ?? half ?? '') : (l.group?.name ?? '');
+    const subjectWithGroup = groupText ? `${subjectDisplay} ${groupText}` : subjectDisplay;
+    return extraParts.length > 0 ? `${subjectWithGroup} (${extraParts.join(', ')})` : subjectWithGroup;
+  };
+
   const handlePrint = () => window.print();
   const handleShare = async () => {
     try {
@@ -496,6 +511,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6">
+        <div className="print:hidden">
         {/* Pasek statusu/metadanych */}
         {!isMobile && (
         <section className="mb-4">
@@ -584,14 +600,6 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 )}
                 {/* Przeniesiono wybór dnia do top bar (mobile). Tutaj nic nie renderujemy. */}
               </div>
-                <div className={`print:hidden ${isMobile ? 'hidden' : ''}`}>
-                <button
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800"
-                >
-                  <Printer className="w-4 h-4" /> Drukuj ten plan
-                </button>
-              </div>
             </div>
 
             <AnimatePresence mode="popLayout">
@@ -626,6 +634,58 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-zinc-400">
             Wybierz nauczyciela, klasę lub salę, aby zobaczyć plan.
           </div>
+        )}
+        </div>
+
+        {/* PRINT-ONLY simplified view */}
+        {data && activeId && (
+          <section className="print-only">
+            <div className="print-container" style={{ marginBottom: 0 }}>
+              <div className="print-title" style={{ pageBreakAfter: 'avoid' }}>
+                {prettyKind(activeKind)}: {activeName}
+              </div>
+              {/* Compact one-page matrix: Days as columns, lesson numbers as rows */}
+              {(() => {
+                const colDays = [...daysInData].sort(cmpDay);
+                const lessonNumbers = Array.from(new Set(
+                  (data?.timetables?.[activeId] || []).map((l) => l.lesson_num || '-')
+                )).sort((a, b) => parseInt(a || '0', 10) - parseInt(b || '0', 10));
+
+                return (
+                  <table className="print-table matrix" style={{ marginBottom: 0 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '6%' }}>Nr</th>
+                        <th style={{ width: '14%' }}>Godziny</th>
+                        {colDays.map((d) => (
+                          <th key={d}>{d}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lessonNumbers.map((num) => {
+                        // gather all lessons for this lesson number to pick the time per day
+                        const perDay = colDays.map((d) => (data?.timetables?.[activeId] || []).filter((l) => l.day === d && (l.lesson_num || '-') === num));
+                        const any = perDay.flat();
+                        const time = any.find((l) => l.time)?.time || '—';
+                        return (
+                          <tr key={`row-${num}`}>
+                            <td>{num}</td>
+                            <td>{time}</td>
+                            {perDay.map((list, i) => (
+                              <td key={`${num}-c${i}`}>{
+                                list.length === 0 ? '—' : list.map(formatPrintCell).join(' | ')
+                              }</td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+          </section>
         )}
       </main>
 
