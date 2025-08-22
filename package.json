@@ -13,12 +13,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "express-rate-limit": "^7.4.0",
-    "helmet": "^7.2.0",
+    "@fontsource/space-grotesk": "^5.2.8",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.4.0",
     "framer-motion": "^12.23.12",
+    "helmet": "^7.2.0",
     "lucide-react": "^0.541.0",
     "pdfjs-dist": "5.3.31",
     "react": "^19.1.1",

@@ -1,5 +1,5 @@
 import React from "react";
-import { CalendarDays, FileText, ListChecks } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, GraduationCap } from "lucide-react";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -20,14 +20,31 @@ export default function Hub({ navigate }: HubProps) {
       {/* Content */}
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col items-center px-4 py-10 text-white">
         <header className="w-full">
-          <h1 className="mx-auto max-w-5xl text-center text-3xl font-extrabold leading-tight tracking-tight drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] sm:text-4xl md:text-5xl">
-            Zespół Szkół Elektronicznych im. Stanisława Staszica
-            <br className="hidden sm:block" />
-            w Zduńskiej Woli
-          </h1>
-          <p className="mx-auto mt-3 max-w-3xl text-center text-sm text-zinc-100/90 drop-shadow">
-            Nowy hub – szybki dostęp do planu lekcji, harmonogramu i statutu szkoły.
-          </p>
+          <div className="relative mx-auto max-w-5xl text-center">
+            {/* dekoracyjna poświata pod tytułem (elektroniczny klimat) */}
+            <div className="pointer-events-none absolute -inset-x-20 -top-8 -bottom-8 opacity-60 blur-2xl">
+              <div className="mx-auto h-full w-full max-w-4xl rounded-full bg-gradient-to-r from-cyan-400/25 via-emerald-300/20 to-violet-400/25" />
+            </div>
+
+            {/* proste "logo" kapsuła przed tytułem */}
+            <div className="relative mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm shadow-lg">
+              <GraduationCap className="h-8 w-8 text-white/95 drop-shadow" />
+            </div>
+
+            <h1 className="relative mx-auto max-w-5xl text-center text-3xl font-extrabold leading-tight tracking-tight font-space-grotesk neon-title sm:text-4xl md:text-5xl">
+              <span className="block uppercase tracking-tight sm:text-5xl md:text-6xl shimmer">
+                Zespół Szkół Elektronicznych
+              </span>
+              <span className="block mt-1 leading-tight">
+                <span className="opacity-90">im.</span>{' '}
+                <span className="uppercase shimmer">Stanisława Staszica</span>
+              </span>
+              <span className="neon-underline block mt-1 uppercase tracking-wider sm:text-4xl md:text-5xl">
+                W Zduńskiej Woli
+              </span>
+            </h1>
+            <div className="relative mx-auto mt-3 h-1 w-40 rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-violet-400 shadow-[0_0_24px_rgba(59,130,246,0.35)]" />
+          </div>
         </header>
 
         <main className="mt-10 w-full max-w-3xl">
