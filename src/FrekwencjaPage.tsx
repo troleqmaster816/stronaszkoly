@@ -21,7 +21,12 @@ import {
   XCircle,
   FilePlus2,
   ReplaceAll,
-  Settings
+  Settings,
+  CalendarX,
+  AlertTriangle,
+  ShieldCheck,
+  Eraser,
+  Shuffle
 } from "lucide-react";
 
 /* ----------------------------- UTILSY & TYPY ----------------------------- */
@@ -38,6 +43,193 @@ const WEEKDAY_PL = ["Niedziela","Poniedziałek","Wtorek","Środa","Czwartek","Pi
 
 function getPolishDayName(d: Date) {
   return WEEKDAY_PL[d.getDay()];
+}
+
+function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatch<Action> }){
+  const [targetPct, setTargetPct] = useState<number>(85);
+  const [mode, setMode] = useState<'day'|'months'|'range'>('day');
+  const todayISO = toISODate(new Date());
+  const [singleDate, setSingleDate] = useState<string>(todayISO);
+  const [rangeStart, setRangeStart] = useState<string>(`${new Date().getFullYear()}-01`);
+  const [rangeEnd, setRangeEnd] = useState<string>(`${new Date().getFullYear()}-12`);
+  const [rangeStartDate, setRangeStartDate] = useState<string>(todayISO);
+  const [rangeEndDate, setRangeEndDate] = useState<string>(todayISO);
+  const [planId, setPlanId] = useState<string>(state.plans[0]?.id || '');
+
+  useEffect(()=>{ if (!state.plans.some(p=>p.id===planId)) setPlanId(state.plans[0]?.id || ''); }, [state.plans, planId]);
+
+  function clearAllData(){
+    try { localStorage.removeItem('frekwencja/v1'); } catch {}
+    window.location.reload();
+  }
+
+  function randomize(){
+    const plan = state.plans.find(p=>p.id===planId);
+    if (!plan) return;
+
+    const entries: any[] = [];
+    if (mode === 'day') {
+      const d = parseISODateLocal(singleDate);
+      if (!Number.isFinite(d.getTime())) return;
+      if (isWeekend(d)) {
+        const shifted = startOfWeekMonday(d);
+        d.setTime(shifted.getTime());
+      }
+      const dayName = getPolishDayName(d);
+      const def = plan.days[dayName];
+      if (def && def.items.length>0) {
+        const dateISO = toISODate(d);
+        def.items.forEach((it, idx)=>{
+          const slot = `${dayName}#${it.slotHint || idx+1}`;
+          entries.push({ dateISO, dayName, slot, key: it.subjectKey, label: it.subjectLabel });
+        });
+      }
+    } else if (mode === 'months') {
+      const [startY, startM] = rangeStart.split('-').map(n=>parseInt(n,10));
+      const [endY, endM] = rangeEnd.split('-').map(n=>parseInt(n,10));
+      if (!Number.isFinite(startY)||!Number.isFinite(startM)||!Number.isFinite(endY)||!Number.isFinite(endM)) return;
+      const start = new Date(startY, startM-1, 1);
+      const end = new Date(endY, endM, 0);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+        if (isWeekend(d)) continue;
+        const dayName = getPolishDayName(d);
+        const def = plan.days[dayName];
+        if (!def || def.items.length===0) continue;
+        const dateISO = toISODate(d);
+        def.items.forEach((it, idx)=>{
+          const slot = `${dayName}#${it.slotHint || idx+1}`;
+          entries.push({ dateISO, dayName, slot, key: it.subjectKey, label: it.subjectLabel });
+        });
+      }
+    } else if (mode === 'range') {
+      const start = parseISODateLocal(rangeStartDate);
+      const end = parseISODateLocal(rangeEndDate);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return;
+      if (start > end) return;
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+        if (isWeekend(d)) continue;
+        const dayName = getPolishDayName(d);
+        const def = plan.days[dayName];
+        if (!def || def.items.length===0) continue;
+        const dateISO = toISODate(d);
+        def.items.forEach((it, idx)=>{
+          const slot = `${dayName}#${it.slotHint || idx+1}`;
+          entries.push({ dateISO, dayName, slot, key: it.subjectKey, label: it.subjectLabel });
+        });
+      }
+    }
+
+    const target = Math.max(0, Math.min(100, targetPct));
+    let presentSet = new Set<number>();
+    if (entries.length > 0) {
+      if (mode === 'day') {
+        entries.forEach((_, i)=>{ if (Math.random()*100 < target) presentSet.add(i); });
+      } else {
+        const total = entries.length;
+        const targetPresent = Math.round((target/100) * total);
+        const idxs = [...entries.keys()];
+        for (let i=idxs.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [idxs[i], idxs[j]] = [idxs[j], idxs[i]]; }
+        presentSet = new Set<number>(idxs.slice(0, targetPresent));
+      }
+    }
+
+    const byDate: Record<string, any[]> = {};
+    for (let i=0;i<entries.length;i++){
+      const e = entries[i];
+      const present = presentSet.has(i);
+      const id = `${e.dateISO}#${e.slot}`;
+      const entry = { id, date: e.dateISO, dayName: e.dayName, slot: e.slot, subjectKey: e.key, subjectLabel: e.label, present };
+      (byDate[e.dateISO] ||= []).push(entry);
+    }
+    for (const k of Object.keys(byDate)){
+      byDate[k] = byDate[k].sort((a,b)=>{
+        const an = parseInt(String(a.slot).split('#')[1]||'0',10);
+        const bn = parseInt(String(b.slot).split('#')[1]||'0',10);
+        if (an!==bn) return an-bn; return String(a.subjectLabel).localeCompare(String(b.subjectLabel),'pl');
+      });
+    }
+    dispatch({ type: 'LOAD_STATE', payload: { subjects: state.subjects, plans: state.plans, byDate } as any });
+  }
+
+  return (
+    <section className="bg-neutral-950 border border-neutral-800 rounded-xl">
+      <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+        <div className="flex items-center gap-2"><Shuffle className="w-5 h-5"/><h2 className="font-semibold">Narzędzia (testowe)</h2></div>
+      </div>
+      <div className="p-5 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <button onClick={clearAllData} className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 transition flex items-center gap-2"><Eraser className="w-4 h-4"/>Wyczyść dane</button>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="block text-xs uppercase tracking-wide opacity-70">Plan do symulacji</label>
+            <select className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none" value={planId} onChange={e=>setPlanId(e.target.value)}>
+              {state.plans.length===0 && <option value="">Brak planów</option>}
+              {state.plans.map(p=>(<option key={p.id} value={p.id}>{p.name}</option>))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-xs uppercase tracking-wide opacity-70">Docelowa frekwencja globalna (%)</label>
+            <input type="number" min={0} max={100} value={targetPct} onChange={e=>setTargetPct(parseInt(e.target.value||'0',10))}
+                   className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none"/>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-xs uppercase tracking-wide opacity-70">Tryb zakresu</label>
+            <select value={mode} onChange={e=>setMode(e.target.value as any)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none">
+              <option value="day">Pojedynczy dzień</option>
+              <option value="months">Zakres miesięcy</option>
+              <option value="range">Od daty do daty</option>
+            </select>
+          </div>
+          {mode === 'day' ? (
+            <div className="space-y-2">
+              <label className="block text-xs uppercase tracking-wide opacity-70">Data</label>
+              <input type="date" value={singleDate} onChange={e=>setSingleDate(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none"/>
+            </div>
+          ) : mode === 'months' ? (
+            <>
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-wide opacity-70">Zakres miesięcy: od</label>
+                <input type="month" value={rangeStart} onChange={e=>setRangeStart(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none"/>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-wide opacity-70">Zakres miesięcy: do</label>
+                <input type="month" value={rangeEnd} onChange={e=>setRangeEnd(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none"/>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-wide opacity-70">Zakres dat: od</label>
+                <input type="date" value={rangeStartDate} onChange={e=>setRangeStartDate(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none"/>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-wide opacity-70">Zakres dat: do</label>
+                <input type="date" value={rangeEndDate} onChange={e=>setRangeEndDate(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none"/>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          {/* Quick % presets and slider */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              {[50, 60, 70, 80, 90, 100].map(pct => (
+                <button key={pct} onClick={()=>setTargetPct(pct)}
+                        className={`px-2 py-1 rounded border text-xs ${targetPct===pct? 'bg-neutral-700 border-neutral-600' : 'bg-neutral-900 border-neutral-800 hover:bg-neutral-800'}`}>{pct}%</button>
+              ))}
+            </div>
+            <input type="range" min={0} max={100} value={targetPct} onChange={e=>setTargetPct(parseInt(e.target.value||'0',10))}
+                   className="w-44"/>
+          </div>
+
+          <button onClick={randomize} disabled={!planId} className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition flex items-center gap-2 disabled:opacity-50">
+            <Shuffle className="w-4 h-4"/>Randomizer
+          </button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function startOfWeekMonday(d: Date) {
@@ -689,18 +881,19 @@ function MonthOverview({
     }
   }
 
-  // Grupuj dni po tygodniach dla ładnej wizualizacji
-  const weeks: Date[][] = [];
-  let currentWeek: Date[] = [];
+  // Grupuj dni po tygodniach (pn-pt) z wypełnieniem brakujących dni nullami, 
+  // aby pierwszy dzień miesiąca nie przesuwał się na poniedziałek, jeśli nim nie jest
+  const weeks: (Date | null)[][] = [];
+  let currentWeekStartISO: string | null = null;
   weekdays.forEach((date) => {
-    const mondayOfWeek = startOfWeekMonday(date);
-    if (currentWeek.length === 0 || toISODate(startOfWeekMonday(currentWeek[0])) !== toISODate(mondayOfWeek)) {
-      if (currentWeek.length > 0) weeks.push(currentWeek);
-      currentWeek = [];
+    const mondayISO = toISODate(startOfWeekMonday(date));
+    if (!currentWeekStartISO || currentWeekStartISO !== mondayISO) {
+      weeks.push([null, null, null, null, null]);
+      currentWeekStartISO = mondayISO;
     }
-    currentWeek.push(date);
+    const col = Math.max(0, Math.min(4, date.getDay() - 1)); // pn=1 -> 0, ... pt=5 -> 4
+    weeks[weeks.length - 1][col] = new Date(date);
   });
-  if (currentWeek.length > 0) weeks.push(currentWeek);
 
   // Statystyki miesiąca
   const monthStats = useMemo(() => {
@@ -711,14 +904,16 @@ function MonthOverview({
     const presentCount = monthEntries.filter(e => e.present).length;
     const filledDays = weekdays.filter(date => (byDate[toISODate(date)] || []).length > 0).length;
     return { totalLessons, presentCount, filledDays, totalWorkdays: weekdays.length };
-  }, [weekdays, byDate]);
+  }, [weekdays, byDate, focusSubjectKey]);
 
   return (
     <>
       {/* Pasek kontekstu miesiąca */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium capitalize opacity-80">Miesiąc: {firstDayOfMonth.toLocaleString('pl-PL', { month: 'long', year: 'numeric' })}</div>
-        <div className="text-xs opacity-60">Widok obejmuje wyłącznie dni robocze (Pon–Pią)</div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 shadow-sm">
+          <CalendarIcon className="w-4 h-4"/>
+          <span className="text-sm font-medium capitalize">{firstDayOfMonth.toLocaleString('pl-PL', { month: 'long', year: 'numeric' })}</span>
+        </div>
       </div>
 
       {/* Statystyki miesiąca */}
@@ -755,7 +950,7 @@ function MonthOverview({
           <div key={weekIdx} className="grid grid-cols-5 gap-2 min-w-0">
             {[0, 1, 2, 3, 4].map(dayIdx => {
               const date = week[dayIdx];
-              if (!date) return <div key={dayIdx} className="h-14 sm:h-16" />;
+              if (!date) return <div key={dayIdx} className="h-14 sm:h-16 border border-transparent rounded-lg" />;
 
               const dateISO = toISODate(date);
               const entries = byDate[dateISO] || [];
@@ -784,15 +979,10 @@ function MonthOverview({
 
                   {hasEntries ? (
                     <div className="mt-1 space-y-1">
-                      <div className="flex justify-center items-center gap-1">
-                        {entries.slice(0, 4).map((entry, i) => (
-                          <div key={i} className={`w-1.5 h-1.5 rounded-full ${entry.present ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                        ))}
-                        {entries.length > 4 && (
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] border border-neutral-600 text-neutral-300">+{entries.length - 4}</span>
-                        )}
+                      <div className="text-[11px] opacity-75 leading-none">{presentCount}/{entries.length}</div>
+                      <div className="h-1.5 w-full bg-neutral-800 rounded overflow-hidden">
+                        <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, Math.round((presentCount/entries.length)*100)))}%` }} />
                       </div>
-                      <div className="text-xs opacity-70 leading-none">{entries.length}</div>
                     </div>
                   ) : (
                     <div className="mt-1 text-xs opacity-40 leading-none">-</div>
@@ -815,6 +1005,199 @@ function MonthOverview({
   );
 }
 
+/* --------------------------- Planer nieobecności -------------------------- */
+
+function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId?: string|null }) {
+  const plan = state.plans.find(p => p.id === selectedPlanId);
+
+  // Zakres: od dziś do piątku; jeśli weekend, pokaż pełny następny tydzień (pn–pt)
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const thisMonday = startOfWeekMonday(today);
+  let weekStart = thisMonday;
+  let iterStart = new Date(today);
+  let weekEndFriday = addDays(weekStart, 4);
+  const dow = today.getDay();
+  if (dow === 6 || dow === 0 || today > weekEndFriday) {
+    weekStart = addDays(thisMonday, 7);
+    weekEndFriday = addDays(weekStart, 4);
+    iterStart = new Date(weekStart);
+  }
+  const days: Date[] = [];
+  for (let d = new Date(iterStart); d <= weekEndFriday; d.setDate(d.getDate()+1)) {
+    if (!isWeekend(d)) days.push(new Date(d));
+  }
+
+  type Stat = { present: number; total: number };
+
+  // Bazowe statystyki z historii
+  const baseStats = useMemo(() => {
+    const perSubject: Record<string, Stat> = {};
+    let global: Stat = { present: 0, total: 0 };
+    for (const entries of Object.values(state.byDate)) {
+      for (const e of entries) {
+        const key = normalizeSubjectKey(e.subjectKey || e.subjectLabel);
+        if (!perSubject[key]) perSubject[key] = { present: 0, total: 0 };
+        perSubject[key].total += 1;
+        if (e.present) perSubject[key].present += 1;
+        global.total += 1;
+        if (e.present) global.present += 1;
+      }
+    }
+    return { perSubject, global };
+  }, [state.byDate]);
+
+  // Zaznaczenia „na pewno idę” – wpływają na analizę
+  const [commitAttend, setCommitAttend] = useState<Record<string, boolean>>({});
+
+  function toggleCommit(dateISO: string) {
+    setCommitAttend(s => ({ ...s, [dateISO]: !s[dateISO] }));
+  }
+
+  // Delta od zadeklarowanych obecności (pomijając podany dzień)
+  function getCommitDelta(excludeISO?: string) {
+    const perSubject: Record<string, Stat> = {};
+    let global: Stat = { present: 0, total: 0 };
+    if (!plan) return { perSubject, global };
+    for (const [iso, yes] of Object.entries(commitAttend)) {
+      if (!yes) continue;
+      if (excludeISO && iso === excludeISO) continue;
+      const d = parseISODateLocal(iso);
+      const dayName = getPolishDayName(d);
+      const def = plan.days[dayName];
+      if (!def) continue;
+      for (const it of def.items) {
+        const key = normalizeSubjectKey(it.subjectKey);
+        if (!perSubject[key]) perSubject[key] = { present: 0, total: 0 };
+        perSubject[key].present += 1;
+        perSubject[key].total += 1;
+        global.present += 1;
+        global.total += 1;
+      }
+    }
+    return { perSubject, global };
+  }
+
+  function statPlus(a: Stat|undefined, b: Stat|undefined): Stat {
+    const aa = a || { present: 0, total: 0 };
+    const bb = b || { present: 0, total: 0 };
+    return { present: aa.present + bb.present, total: aa.total + bb.total };
+  }
+
+  function evaluateSkipFor(date: Date) {
+    const dateISO = toISODate(date);
+    if (!plan) return { date, dateISO, lessons: 0, risk: 'Brak planu', tier: 'disabled' as const };
+    const dayName = getPolishDayName(date);
+    const def = plan.days[dayName];
+    const lessonsInDay = (def?.items?.length) || 0;
+    // Jeśli w przyszłości dzień został już wypełniony w dzienniku, pokaż komunikat
+    const todayISO = toISODate(new Date());
+    if (dateISO > todayISO && ((state.byDate[dateISO]?.length) || 0) > 0) {
+      return { date, dateISO, lessons: lessonsInDay, risk: 'Dzień już wypełniony w dzienniku', tier: 'filled' as const };
+    }
+    if (commitAttend[dateISO]) return { date, dateISO, lessons: lessonsInDay, risk: 'Zaplanowana obecność', tier: 'locked' as const };
+    if (!def || lessonsInDay === 0) return { date, dateISO, lessons: 0, risk: 'Brak lekcji', tier: 'safe' as const };
+
+    // Bazowe + deklaracje (bez rozpatrywanego dnia)
+    const commitDelta = getCommitDelta(dateISO);
+
+    // Globalne liczniki po ewentualnym opuszczeniu dnia
+    let globalAfter: Stat = statPlus(baseStats.global, commitDelta.global);
+    globalAfter = { present: globalAfter.present, total: globalAfter.total + def.items.length };
+
+    // Per-przedmiot po ewentualnym opuszczeniu
+    const perAfter: Record<string, Stat> = {};
+    const subjectsInDayCount: Record<string, number> = {};
+    for (const it of def.items) {
+      const key = normalizeSubjectKey(it.subjectKey);
+      subjectsInDayCount[key] = (subjectsInDayCount[key]||0) + 1;
+    }
+    const allKeys = new Set<string>([...Object.keys(baseStats.perSubject), ...Object.keys(subjectsInDayCount), ...Object.keys(commitDelta.perSubject)]);
+    for (const key of allKeys) {
+      const base = baseStats.perSubject[key];
+      const add = commitDelta.perSubject[key];
+      const dayMiss = subjectsInDayCount[key] || 0;
+      const cur = statPlus(base, add);
+      perAfter[key] = { present: cur.present, total: cur.total + dayMiss };
+    }
+
+    // Bufory
+    function buffer(s: Stat) { return (2*s.present - s.total); }
+    const globalBuf = buffer(globalAfter);
+    let worstKey: string|undefined; let worstBuf = Infinity;
+    for (const [k, st] of Object.entries(perAfter)) {
+      if (!subjectsInDayCount[k]) continue; // tylko przedmioty z tego dnia
+      const b = buffer(st);
+      if (b < worstBuf) { worstBuf = b; worstKey = k; }
+    }
+
+    const minBuf = Math.min(globalBuf, worstBuf);
+    let tier: 'critical'|'danger'|'warn'|'safe' = 'safe';
+    if (minBuf < 0) tier = 'critical';
+    else if (minBuf === 0) tier = 'danger';
+    else if (minBuf <= 2) tier = 'warn';
+
+    const worstLabel = worstKey ? (state.subjects.find(s=>normalizeSubjectKey(s.key)===worstKey)?.label || worstKey) : undefined;
+    const risk = tier === 'safe'
+      ? 'Bezpiecznie do opuszczenia'
+      : tier === 'warn'
+        ? `Uwaga: mały margines (ryzyko w: ${worstLabel})`
+        : tier === 'danger'
+          ? `Na limicie 50% (najgorszy: ${worstLabel})`
+          : `Krytycznie: spadniesz poniżej 50% (najgorszy: ${worstLabel})`;
+
+    return { date, dateISO, lessons: def.items.length, risk, tier, globalBuf, worstKey, worstBuf };
+  }
+
+  const rows = useMemo(() => days.map(d => evaluateSkipFor(d)), [days, plan, baseStats, commitAttend]);
+
+  return (
+    <div className="space-y-2">
+      {!plan && (
+        <div className="text-sm opacity-70 bg-neutral-900 border border-neutral-800 rounded p-3 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-yellow-400"/> Wybierz plan, aby zaplanować nieobecności.
+        </div>
+      )}
+      {plan && days.length === 0 && (
+        <div className="text-sm opacity-70 bg-neutral-900 border border-neutral-800 rounded p-3 flex items-center gap-2">
+          <CalendarX className="w-4 h-4"/> Bieżący tydzień szkolny już minął. Wróć w poniedziałek.
+        </div>
+      )}
+      {plan && days.length > 0 && (
+        <div className="space-y-2">
+          {rows.map(r => (
+            <div key={r.dateISO} className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded px-3 py-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <DateBadgeComp dateISO={r.dateISO} label={getPolishDayName(r.date)} />
+                <div className="text-xs opacity-70 whitespace-nowrap">{r.lessons} lekcji</div>
+                <div className="text-sm font-medium truncate">
+                  {r.tier === 'locked' ? (
+                    <span className="text-emerald-400 inline-flex items-center gap-1"><ShieldCheck className="w-4 h-4"/>Zaplanowana obecność</span>
+                  ) : r.tier === 'filled' ? (
+                    <span className="text-blue-400">Dzień już wypełniony w dzienniku</span>
+                  ) : r.tier === 'disabled' ? (
+                    <span className="opacity-70">Brak planu</span>
+                  ) : (
+                    <span className={
+                      r.tier === 'safe' ? 'text-emerald-400' : r.tier === 'warn' ? 'text-yellow-300' : r.tier === 'danger' ? 'text-orange-400' : 'text-red-400'
+                    }>{r.risk}</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={()=>toggleCommit(r.dateISO)}
+                        className={`px-2 py-1 rounded border text-sm ${commitAttend[r.dateISO] ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500' : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700'}`}>
+                  {commitAttend[r.dateISO] ? 'Na pewno idę' : 'Zaznacz: idę'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FrekwencjaPage() {
   const [state, dispatch] = useAttendanceState();
 
@@ -833,6 +1216,15 @@ export default function FrekwencjaPage() {
   // wybór przedmiotu dla per-przedmiotowego podsumowania
   const [focus, setFocus] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [plannerPlanId, setPlannerPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!plannerPlanId && state.plans.length > 0) {
+      setPlannerPlanId(state.plans[0].id);
+    } else if (plannerPlanId && !state.plans.some(p=>p.id===plannerPlanId)) {
+      setPlannerPlanId(state.plans[0]?.id ?? null);
+    }
+  }, [state.plans, plannerPlanId]);
 
   // state persistence handled by useAttendanceState hook
 
@@ -927,9 +1319,26 @@ export default function FrekwencjaPage() {
           </div>
         </Section>
 
+        <Section
+          title="Planer nieobecności"
+          icon={<CalendarX className="w-5 h-5"/>}
+          right={
+            <div className="flex items-center gap-2">
+              <select value={plannerPlanId || ''} onChange={e=>setPlannerPlanId(e.target.value || null)}
+                      className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm min-w-[12rem]">
+                {state.plans.length === 0 && <option value="">Brak planów</option>}
+                {state.plans.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          }
+        >
+          <div className="text-xs opacity-70 mb-2">Sugestie dotyczące bezpiecznych nieobecności do końca bieżącego tygodnia, z zachowaniem progu 50% per przedmiot i globalnie.</div>
+          <AbsencePlanner state={state} selectedPlanId={plannerPlanId}/>
+        </Section>
+
         <AnimatePresence>
           {manageOpen && (
-            <ManageDialog onClose={()=>setManageOpen(false)}>
+            <ManageDialog state={state} dispatch={dispatch} onClose={()=>setManageOpen(false)}>
               <div className="grid md:grid-cols-2 gap-6">
                 <section className="bg-neutral-950 border border-neutral-800 rounded-xl">
                   <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
@@ -1002,14 +1411,13 @@ function PlanFillMenu({
   );
 }
 
-function ManageDialog({ children, onClose }:{ children: React.ReactNode; onClose: ()=>void }){
+function ManageDialog({ children, onClose, state, dispatch }:{ children: React.ReactNode; onClose: ()=>void; state: State; dispatch: React.Dispatch<Action> }){
   return (
     <OverlayCard title="Zarządzanie" size="wide">
       <div className="max-h-[80dvh] overflow-auto space-y-4">
         {children}
-        <div className="flex justify-end">
-          <button onClick={onClose} className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition">Zamknij</button>
-        </div>
+        <ManageTools state={state} dispatch={dispatch} />
+        <div className="flex justify-end"><button onClick={onClose} className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition">Zamknij</button></div>
       </div>
     </OverlayCard>
   );
