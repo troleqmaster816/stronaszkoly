@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZSE Zduńska Wola – Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Hard dark fallback to avoid white flash before Tailwind/app CSS loads */
+      html, body { margin:0; background:#0a0a0a; color:#e5e5e5; }
+      #root { background: transparent; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

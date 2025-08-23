@@ -336,8 +336,21 @@ const EVENTS: EventItem[] = [
   },
 ];
 
+// Tworzy lokalny obiekt Date z ISO (YYYY-MM-DD lub YYYY-MM-DDTHH:mm),
+// bez wahań strefowych (nie używamy parsera UTC przeglądarki).
+function createLocalDate(dateIso: string): Date {
+  if (!dateIso) return new Date(NaN);
+  const [datePart, timePart] = dateIso.split("T");
+  const [y, m, d] = datePart.split("-").map((n) => Number(n));
+  if (timePart) {
+    const [hh = "0", mm = "0"] = timePart.split(":");
+    return new Date(y, (m || 1) - 1, d || 1, Number(hh), Number(mm));
+  }
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
 function monthKey(dateIso: string): string {
-  const d = new Date(dateIso);
+  const d = createLocalDate(dateIso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
@@ -345,8 +358,8 @@ function formatDateRange(start: string, end?: string): string {
   if (!start) return "";
   const fmtDate = new Intl.DateTimeFormat("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
   const fmtTime = new Intl.DateTimeFormat("pl-PL", { hour: "2-digit", minute: "2-digit" });
-  const sd = new Date(start);
-  const ed = end ? new Date(end) : undefined;
+  const sd = createLocalDate(start);
+  const ed = end ? createLocalDate(end) : undefined;
   const hasTimeS = start.includes("T");
   const hasTimeE = end?.includes("T");
   const d1 = fmtDate.format(sd);
@@ -365,7 +378,12 @@ export default function SchedulePage() {
   const [activeCats, setActiveCats] = useState<Category[]>(ALL_CATEGORIES);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const months = useMemo(() => {
-    const keys = Array.from(new Set(EVENTS.map((e) => monthKey(e.start)))).sort();
+    const keySet = new Set<string>();
+    for (const e of EVENTS) {
+      keySet.add(monthKey(e.start));
+      if (e.end) keySet.add(monthKey(e.end));
+    }
+    const keys = Array.from(keySet).sort();
     const order = [
       "2025-01",
       "2025-02",
@@ -525,7 +543,7 @@ export default function SchedulePage() {
               .filter(
                 (e) => monthKey(e.start) === m || (e.end && monthKey(e.end) === m)
               )
-              .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+              .sort((a, b) => createLocalDate(a.start).getTime() - createLocalDate(b.start).getTime());
 
             return (
               <Card key={m} className="rounded-2xl shadow-sm bg-zinc-900 border-zinc-800 text-zinc-100">
@@ -537,12 +555,10 @@ export default function SchedulePage() {
                     {visibleForMonth.length === 0 && (
                       <p className="pl-4 text-zinc-400">Brak pozycji dla aktualnych filtrów.</p>
                     )}
-                    {visibleForMonth.map((ev, idx) => (
+                    {visibleForMonth.map((ev) => (
                       <motion.li
                         key={ev.id}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.03 }}
+                        initial={false}
                         className="mb-6 ml-4"
                       >
                         <span className="absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full bg-zinc-700" />
