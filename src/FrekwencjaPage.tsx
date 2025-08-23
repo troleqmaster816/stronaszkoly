@@ -1049,6 +1049,10 @@ function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId
 
   // Zaznaczenia „na pewno idę” – wpływają na analizę
   const [commitAttend, setCommitAttend] = useState<Record<string, boolean>>({});
+  // Preferowane obecności (nie chcę opuszczać, jeśli te przedmioty są w dniu)
+  const [preferredSubjects, setPreferredSubjects] = useState<Record<string, boolean>>({});
+  // Tolerowane nieobecności (pomijaj próg 50% per przedmiot dla tych)
+  const [toleratedSubjects, setToleratedSubjects] = useState<Record<string, boolean>>({});
 
   function toggleCommit(dateISO: string) {
     setCommitAttend(s => ({ ...s, [dateISO]: !s[dateISO] }));
@@ -1098,6 +1102,19 @@ function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId
     if (commitAttend[dateISO]) return { date, dateISO, lessons: lessonsInDay, risk: 'Zaplanowana obecność', tier: 'locked' as const };
     if (!def || lessonsInDay === 0) return { date, dateISO, lessons: 0, risk: 'Brak lekcji', tier: 'safe' as const };
 
+    // Priorytet: jeśli dzień zawiera przedmioty oznaczone jako preferowane, nie rekomenduj opuszczania
+    const preferredInDayLabels: string[] = [];
+    for (const it of def.items) {
+      const key = normalizeSubjectKey(it.subjectKey);
+      if (preferredSubjects[key]) {
+        const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===key)?.label || it.subjectLabel || key;
+        if (!preferredInDayLabels.includes(label)) preferredInDayLabels.push(label);
+      }
+    }
+    if (preferredInDayLabels.length > 0) {
+      return { date, dateISO, lessons: lessonsInDay, risk: `Priorytetowe zajęcia: ${preferredInDayLabels.join(', ')}`, tier: 'priority' as const };
+    }
+
     // Bazowe + deklaracje (bez rozpatrywanego dnia)
     const commitDelta = getCommitDelta(dateISO);
 
@@ -1114,6 +1131,8 @@ function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId
     }
     const allKeys = new Set<string>([...Object.keys(baseStats.perSubject), ...Object.keys(subjectsInDayCount), ...Object.keys(commitDelta.perSubject)]);
     for (const key of allKeys) {
+      // Jeśli przedmiot jest tolerowany, wyłączamy go z oceny per-przedmiot (traktuj jakby brak)
+      if (toleratedSubjects[key]) { continue; }
       const base = baseStats.perSubject[key];
       const add = commitDelta.perSubject[key];
       const dayMiss = subjectsInDayCount[key] || 0;
@@ -1127,6 +1146,7 @@ function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId
     let worstKey: string|undefined; let worstBuf = Infinity;
     for (const [k, st] of Object.entries(perAfter)) {
       if (!subjectsInDayCount[k]) continue; // tylko przedmioty z tego dnia
+      if (toleratedSubjects[k]) continue; // pomijamy tolerowane w ocenie per-przedmiot
       const b = buffer(st);
       if (b < worstBuf) { worstBuf = b; worstKey = k; }
     }
@@ -1158,6 +1178,60 @@ function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId
           <AlertTriangle className="w-4 h-4 text-yellow-400"/> Wybierz plan, aby zaplanować nieobecności.
         </div>
       )}
+      {plan && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide opacity-70 mb-1">Preferuj obecność na</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {Object.keys(preferredSubjects).filter(k=>preferredSubjects[k]).map(k=>{
+                const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===k)?.label || k;
+                return (
+                  <span key={k} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-900/30 border border-blue-700 text-blue-200 text-xs">
+                    {label}
+                    <button aria-label="Usuń z preferowanych" onClick={()=>setPreferredSubjects(ps=>{ const c={...ps}; delete c[k]; return c; })} className="ml-1 opacity-80 hover:opacity-100">×</button>
+                  </span>
+                );
+              })}
+              <select value="" onChange={e=>{
+                const key = normalizeSubjectKey(e.target.value);
+                if (!key) return; setPreferredSubjects(ps=>({ ...ps, [key]: true })); e.currentTarget.value="";
+              }} className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-xs">
+                <option value="">Dodaj…</option>
+                {state.subjects
+                  .filter(s=>!preferredSubjects[normalizeSubjectKey(s.key)])
+                  .sort((a,b)=>a.label.localeCompare(b.label,'pl'))
+                  .map(s=> <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            <div className="text-[11px] opacity-60 mt-1">Dni z tymi zajęciami będą oznaczone jako „nie rekomenduję opuszczać”.</div>
+          </div>
+          <div>
+            <div className="text-xs uppercase tracking-wide opacity-70 mb-1">Toleruj nieobecność na</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {Object.keys(toleratedSubjects).filter(k=>toleratedSubjects[k]).map(k=>{
+                const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===k)?.label || k;
+                return (
+                  <span key={k} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-yellow-900/20 border border-yellow-700 text-yellow-200 text-xs">
+                    {label}
+                    <button aria-label="Usuń z tolerowanych" onClick={()=>setToleratedSubjects(ts=>{ const c={...ts}; delete c[k]; return c; })} className="ml-1 opacity-80 hover:opacity-100">×</button>
+                  </span>
+                );
+              })}
+              <select value="" onChange={e=>{
+                const key = normalizeSubjectKey(e.target.value);
+                if (!key) return; setToleratedSubjects(ts=>({ ...ts, [key]: true })); e.currentTarget.value="";
+              }} className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-xs">
+                <option value="">Dodaj…</option>
+                {state.subjects
+                  .filter(s=>!toleratedSubjects[normalizeSubjectKey(s.key)])
+                  .sort((a,b)=>a.label.localeCompare(b.label,'pl'))
+                  .map(s=> <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            <div className="text-[11px] opacity-60 mt-1">Te zajęcia nie będą brane pod uwagę w limicie 50% per przedmiot.</div>
+          </div>
+        </div>
+      )}
       {plan && days.length === 0 && (
         <div className="text-sm opacity-70 bg-neutral-900 border border-neutral-800 rounded p-3 flex items-center gap-2">
           <CalendarX className="w-4 h-4"/> Bieżący tydzień szkolny już minął. Wróć w poniedziałek.
@@ -1173,6 +1247,8 @@ function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId
                 <div className="text-sm font-medium truncate">
                   {r.tier === 'locked' ? (
                     <span className="text-emerald-400 inline-flex items-center gap-1"><ShieldCheck className="w-4 h-4"/>Zaplanowana obecność</span>
+                  ) : r.tier === 'priority' ? (
+                    <span className="text-blue-300">Priorytet dnia: {r.risk.replace('Priorytetowe zajęcia: ','')}</span>
                   ) : r.tier === 'filled' ? (
                     <span className="text-blue-400">Dzień już wypełniony w dzienniku</span>
                   ) : r.tier === 'disabled' ? (
