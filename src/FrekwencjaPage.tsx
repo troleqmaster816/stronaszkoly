@@ -1,10 +1,12 @@
 // src/pages/FrekwencjaPage.tsx
-import React, { useEffect, useMemo, useReducer, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Check,
   X,
   Plus,
@@ -30,6 +32,8 @@ import { OverlayCard } from '@/features/attendance/components/OverlayCard';
 import { Section } from '@/features/attendance/components/Section';
 import { Pill } from '@/features/attendance/components/Pill';
 import { DateBadge as DateBadgeComp } from '@/features/attendance/components/DateBadge';
+import { useAttendanceState } from '@/features/attendance/hooks/useAttendanceState';
+import type { State, Action, Plan, PlanDay, AttendanceEntry } from '@/features/attendance/state/attendanceReducer';
 const WEEKDAY_PL = ["Niedziela","Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota"];
 
 function getPolishDayName(d: Date) {
@@ -48,6 +52,10 @@ function addDays(base: Date, days: number) {
   const d = new Date(base);
   d.setDate(d.getDate() + days);
   return d;
+}
+function isWeekend(d: Date) {
+  const g = d.getDay();
+  return g === 0 || g === 6;
 }
 function toISODate(d: Date) {
   // Zwraca lokalną datę w formacie YYYY-MM-DD niezależnie od strefy czasowej
@@ -104,178 +112,13 @@ type Lesson = ScheduleLesson;
 // (zachowane kiedyś pomocnicze; usunięte jako nieużywane)
 
 /* ------------------------------- STAN APLIK. ----------------------------- */
-type AttendanceEntry = {
-  id: string;           // date#slotId
-  date: string;         // ISO YYYY-MM-DD
-  dayName: string;      // "Poniedziałek"
-  slot: string;         // np. "1#8:00-8:45" (zakodowane w id)
-  subjectKey: string;   // znormalizowany klucz
-  subjectLabel: string; // ładna etykieta (bez "1/2")
-  present: boolean;
-};
-
-type PlanDay = { // lista pozycji dnia (kolejność wg lesson_num / time)
-  items: { slotHint?: string; subjectKey: string; subjectLabel: string }[];
-};
-type Plan = {
-  id: string;
-  name: string;
-  days: Record<string, PlanDay>; // "Poniedziałek" | ... -> PlanDay
-  createdAt: number;
-  source?: { kind: "school"; classId: string; className: string; group?: string|null; meta?: TimetableData["metadata"] };
-};
-
-type State = {
-  subjects: { key: string; label: string }[];
-  plans: Plan[];
-  byDate: Record<string, AttendanceEntry[]>; // ISO -> wpisy
-};
-type Action =
-  | { type: "ADD_SUBJECT"; label: string }
-  | { type: "RENAME_SUBJECT"; key: string; newLabel: string }
-  | { type: "REMOVE_SUBJECT"; key: string }
-  | { type: "UPSERT_PLAN"; plan: Plan }
-  | { type: "DELETE_PLAN"; id: string }
-  | { type: "FILL_DAY_FROM_PLAN"; dateISO: string; planId: string }
-  | { type: "FILL_WEEK_FROM_PLAN"; weekMondayISO: string; planId: string }
-  | { type: "UPSERT_ENTRY"; entry: AttendanceEntry }
-  | { type: "TOGGLE_PRESENT"; dateISO: string; entryId: string }
-  | { type: "DELETE_ENTRY"; dateISO: string; entryId: string }
-  | { type: "LOAD_STATE"; payload: State };
-
-const LS_KEY = "frekwencja/v1";
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case "ADD_SUBJECT": {
-      const label = action.label.trim();
-      if (!label) return state;
-      const key = normalizeSubjectKey(label);
-      if (state.subjects.some(s => s.key === key)) return state;
-      const subjects = [...state.subjects, { key, label }];
-      return persist({ ...state, subjects });
-    }
-    case "RENAME_SUBJECT": {
-      const subjects = state.subjects.map(s => s.key === action.key ? { ...s, label: action.newLabel.trim() || s.label } : s);
-      // przepnij wpisy/plan? – klucz zostaje, zmienia się tylko label wyświetlany
-      return persist({ ...state, subjects });
-    }
-    case "REMOVE_SUBJECT": {
-      const subjects = state.subjects.filter(s => s.key !== action.key);
-      return persist({ ...state, subjects });
-    }
-    case "UPSERT_PLAN": {
-      const exists = state.plans.some(p => p.id === action.plan.id);
-      const plans = exists ? state.plans.map(p => p.id === action.plan.id ? action.plan : p) : [action.plan, ...state.plans];
-      // dodaj brakujące przedmioty z planu do listy
-      const incoming = Object.values(action.plan.days).flatMap(d => d.items.map(it => ({ key: it.subjectKey, label: it.subjectLabel })));
-      const toAdd = incoming.filter(n => !state.subjects.some(s => s.key === n.key));
-      const subjects = toAdd.length ? [...state.subjects, ...uniqueByKey(toAdd)] : state.subjects;
-      return persist({ ...state, plans, subjects });
-    }
-    case "DELETE_PLAN": {
-      const plans = state.plans.filter(p => p.id !== action.id);
-      return persist({ ...state, plans });
-    }
-    case "FILL_DAY_FROM_PLAN": {
-      const plan = state.plans.find(p => p.id === action.planId);
-      if (!plan) return state;
-      const dateISO = action.dateISO;
-      const dayName = getPolishDayName(parseISODateLocal(dateISO));
-      const def = plan.days[dayName];
-      if (!def) return state;
-      const curr = state.byDate[dateISO] || [];
-      const nextEntries: AttendanceEntry[] = [...curr];
-      def.items.forEach((it, idx) => {
-        const slot = `${dayName}#${it.slotHint || idx+1}`;
-        const id = `${dateISO}#${slot}`;
-        if (!nextEntries.some(e => e.id === id)) {
-          nextEntries.push({
-            id, date: dateISO, dayName,
-            slot,
-            subjectKey: it.subjectKey,
-            subjectLabel: it.subjectLabel,
-            present: true // domyślnie obecny, łatwo kliknąć na nieobecność
-          });
-        }
-      });
-      const byDate = { ...state.byDate, [dateISO]: sortDay(nextEntries) };
-      return persist({ ...state, byDate });
-    }
-    case "FILL_WEEK_FROM_PLAN": {
-      const monday = parseISODateLocal(action.weekMondayISO);
-      let s = state;
-      for (let i=0;i<5;i++) {
-        const dateISO = toISODate(addDays(monday, i));
-        s = reducer(s, { type: "FILL_DAY_FROM_PLAN", dateISO, planId: action.planId });
-      }
-      return s;
-    }
-    case "UPSERT_ENTRY": {
-      const list = [...(state.byDate[action.entry.date] || [])];
-      const idx = list.findIndex(e => e.id === action.entry.id);
-      if (idx >= 0) list[idx] = action.entry; else list.push(action.entry);
-      const byDate = { ...state.byDate, [action.entry.date]: sortDay(list) };
-      return persist({ ...state, byDate });
-    }
-    case "TOGGLE_PRESENT": {
-      const list = [...(state.byDate[action.dateISO] || [])];
-      const idx = list.findIndex(e => e.id === action.entryId);
-      if (idx < 0) return state;
-      list[idx] = { ...list[idx], present: !list[idx].present };
-      const byDate = { ...state.byDate, [action.dateISO]: list };
-      return persist({ ...state, byDate });
-    }
-    case "DELETE_ENTRY": {
-      const list = (state.byDate[action.dateISO] || []).filter(e => e.id !== action.entryId);
-      const byDate = { ...state.byDate, [action.dateISO]: list };
-      return persist({ ...state, byDate });
-    }
-    case "LOAD_STATE": {
-      return action.payload;
-    }
-    default:
-      return state;
-  }
-}
-function sortDay(arr: AttendanceEntry[]) {
-  return [...arr].sort((a,b) => {
-    const aNum = safeParseInt(a.slot.split("#")[1]);
-    const bNum = safeParseInt(b.slot.split("#")[1]);
-    if (aNum !== bNum) return aNum - bNum;
-    return a.subjectLabel.localeCompare(b.subjectLabel, "pl");
-  });
-}
-function uniqueByKey(arr: {key:string;label:string}[]) {
-  const seen = new Set<string>(); const out: {key:string;label:string}[] = [];
-  for (const it of arr) if (!seen.has(it.key)) { seen.add(it.key); out.push(it); }
-  return out;
-}
-function persist(next: State) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch {}
-  return next;
-}
-function loadInitial(): State {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {
-    subjects: [
-      { key: "matematyka", label: "Matematyka" },
-      { key: "j.polski", label: "Język polski" },
-      { key: "informatyka", label: "Informatyka" },
-    ],
-    plans: [],
-    byDate: {},
-  };
-}
 
 /* --------------------- IMPORT ZE SZKOŁY (timetable_data) ------------------ */
 
 async function fetchSchoolData(): Promise<TimetableData> {
   // plik w /public, Vite serwuje go z /timetable_data.json
-  const res = await fetch(`/timetable_data.json?t=${Date.now()}`);
+  const base = (import.meta as any)?.env?.BASE_URL ?? "/";
+  const res = await fetch(`${base}timetable_data.json?t=${Date.now()}`);
   if (!res.ok) throw new Error("Nie udało się pobrać planu szkoły");
   const data = await res.json();
   return data as TimetableData;
@@ -499,15 +342,15 @@ function SubjectRow({subj, onRename, onRemove}:{subj:{key:string;label:string}; 
         {edit ? (
           <>
             <input value={val} onChange={e=>setVal(e.target.value)} className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-sm"/>
-            <button onClick={()=>{ onRename(val); setEdit(false); }}
+            <button aria-label="Zapisz nazwę przedmiotu" onClick={()=>{ onRename(val); setEdit(false); }}
                     className="p-2 rounded bg-emerald-600 hover:bg-emerald-500 transition"><Save className="w-4 h-4"/></button>
-            <button onClick={()=>{ setEdit(false); setVal(subj.label); }}
+            <button aria-label="Anuluj edycję" onClick={()=>{ setEdit(false); setVal(subj.label); }}
                     className="p-2 rounded bg-neutral-800 hover:bg-neutral-700 transition"><XCircle className="w-4 h-4"/></button>
           </>
         ) : (
           <>
-            <button onClick={()=>setEdit(true)} className="p-2 rounded bg-neutral-800 hover:bg-neutral-700 transition"><Edit3 className="w-4 h-4"/></button>
-            <button onClick={onRemove} className="p-2 rounded bg-red-600 hover:bg-red-500 transition"><Trash2 className="w-4 h-4"/></button>
+            <button aria-label="Edytuj przedmiot" onClick={()=>setEdit(true)} className="p-2 rounded bg-neutral-800 hover:bg-neutral-700 transition"><Edit3 className="w-4 h-4"/></button>
+            <button aria-label="Usuń przedmiot" onClick={onRemove} className="p-2 rounded bg-red-600 hover:bg-red-500 transition"><Trash2 className="w-4 h-4"/></button>
           </>
         )}
       </div>
@@ -521,12 +364,18 @@ function PlansManager({ subjects, plans, dispatch }:{
   subjects: State["subjects"]; plans: State["plans"]; dispatch: React.Dispatch<Action>;
 }) {
   const [name, setName] = useState("");
-  const [editing, setEditing] = useState<{[day:string]: { items:{slotHint?:string; subjectKey:string; subjectLabel:string}[] }}>({
+  const [editing, setEditing] = useState<Record<string, PlanDay>>({
     "Poniedziałek": { items: [] },
     "Wtorek": { items: [] },
     "Środa": { items: [] },
     "Czwartek": { items: [] },
     "Piątek": { items: [] },
+  });
+
+  const [openDays, setOpenDays] = useState<Record<string, boolean>>(() => {
+    const out: Record<string, boolean> = {};
+    Object.keys(DAY_ORDER).slice(0,5).forEach((d, idx) => { out[d] = idx === 0; });
+    return out;
   });
 
   function addRow(day: string) {
@@ -542,7 +391,7 @@ function PlansManager({ subjects, plans, dispatch }:{
     const plan: Plan = {
       id,
       name: name.trim() || "Mój plan",
-      days: editing as any,
+      days: editing,
       createdAt: Date.now()
     };
     dispatch({ type: "UPSERT_PLAN", plan });
@@ -553,6 +402,23 @@ function PlansManager({ subjects, plans, dispatch }:{
       "Środa": { items: [] },
       "Czwartek": { items: [] },
       "Piątek": { items: [] },
+    });
+    setOpenDays(prev => ({ ...prev, "Poniedziałek": true }));
+  }
+
+  function clearDay(day: string) {
+    setEditing(ed => ({ ...ed, [day]: { items: [] } }));
+  }
+
+  function moveRow(day: string, index: number, delta: number) {
+    setEditing(ed => {
+      const items = [...ed[day].items];
+      const target = index + delta;
+      if (target < 0 || target >= items.length) return ed;
+      const tmp = items[index];
+      items[index] = items[target];
+      items[target] = tmp;
+      return { ...ed, [day]: { items } };
     });
   }
 
@@ -577,52 +443,70 @@ function PlansManager({ subjects, plans, dispatch }:{
         {Object.keys(DAY_ORDER).slice(0,5).map(day => (
           <div key={day} className="bg-neutral-900 border border-neutral-800 rounded">
             <div className="px-3 py-2 flex items-center justify-between border-b border-neutral-800">
-              <div className="font-semibold">{day}</div>
-              <button onClick={()=>addRow(day)} className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><Plus className="w-4 h-4"/></button>
-            </div>
-            <div className="p-3">
-              <div className="grid sm:grid-cols-2 gap-2">
-                {editing[day].items.map((it, idx) => (
-                  <div key={idx} className="flex items-center gap-2 min-h-[40px]">
-                    <input placeholder="nr lekcji / czas (opcjonalnie)" value={it.slotHint||""}
-                           onChange={e=>{
-                             const v = e.target.value;
-                             setEditing(ed=>{
-                               const copy = {...ed};
-                               copy[day].items = copy[day].items.map((x,i)=> i===idx ? {...x, slotHint:v} : x);
-                               return copy;
-                             });
-                           }}
-                            className="w-28 bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-sm"/>
-                    <select value={it.subjectKey}
-                            onChange={e=>{
-                              const key = e.target.value;
-                              const label = subjects.find(s=>s.key===key)?.label || key;
-                              setEditing(ed=>{
-                                const copy = {...ed};
-                                copy[day].items = copy[day].items.map((x,i)=> i===idx ? {...x, subjectKey:key, subjectLabel:label} : x);
-                                return copy;
-                              });
-                            }}
-                            className="flex-1 min-w-0 bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-sm whitespace-normal break-words">
-                      {subjects
-                        .slice()
-                        .sort((a,b)=>a.label.localeCompare(b.label, 'pl'))
-                        .map(s => (
-                          <option value={s.key} key={s.key}>{s.label}</option>
-                        ))}
-                    </select>
-                    <button onClick={()=>{
-                      setEditing(ed=>{
-                        const copy = {...ed};
-                        copy[day].items = copy[day].items.filter((_,i)=>i!==idx);
-                        return copy;
-                      });
-                    }} className="p-1.5 rounded bg-red-600 hover:bg-red-500"><Trash2 className="w-4 h-4"/></button>
-                  </div>
-                ))}
+              <div className="font-semibold flex items-center gap-2">
+                <button aria-label={openDays[day] ? "Zwiń" : "Rozwiń"} onClick={()=>setOpenDays(d=>({...d,[day]:!d[day]}))} className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700">
+                  {openDays[day] ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}
+                </button>
+                <span>{day}</span>
+                <span className="text-xs opacity-70">({editing[day].items.length})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button aria-label="Wyczyść dzień" onClick={()=>clearDay(day)} className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><Trash2 className="w-4 h-4"/></button>
+                <button aria-label="Dodaj pozycję" onClick={()=>{ if (!openDays[day]) setOpenDays(d=>({...d,[day]:true})); addRow(day); }} className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><Plus className="w-4 h-4"/></button>
               </div>
             </div>
+            {openDays[day] && (
+              <div className="p-3">
+                <div className="space-y-2">
+                  {editing[day].items.map((it, idx) => (
+                    <div key={idx} className="flex items-center gap-2 min-h-[40px]">
+                      <input placeholder="nr / czas (np. 1 lub 08:00-08:45)" value={it.slotHint||""}
+                             onChange={e=>{
+                               const v = e.target.value;
+                               setEditing(ed=>{
+                                 const copy = {...ed};
+                                 copy[day].items = copy[day].items.map((x,i)=> i===idx ? {...x, slotHint:v} : x);
+                                 return copy;
+                               });
+                             }}
+                              className="w-40 bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-sm"/>
+                      <select value={it.subjectKey}
+                              onChange={e=>{
+                                const key = e.target.value;
+                                const label = subjects.find(s=>s.key===key)?.label || key;
+                                setEditing(ed=>{
+                                  const copy = {...ed};
+                                  copy[day].items = copy[day].items.map((x,i)=> i===idx ? {...x, subjectKey:key, subjectLabel:label} : x);
+                                  return copy;
+                                });
+                              }}
+                              className="flex-1 min-w-0 bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-sm whitespace-normal break-words">
+                        {subjects
+                          .slice()
+                          .sort((a,b)=>a.label.localeCompare(b.label, 'pl'))
+                          .map(s => (
+                            <option value={s.key} key={s.key}>{s.label}</option>
+                          ))}
+                      </select>
+                      <div className="flex items-center gap-1">
+                        <button aria-label="Przenieś w górę" onClick={()=>moveRow(day, idx, -1)} className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><ChevronUp className="w-4 h-4"/></button>
+                        <button aria-label="Przenieś w dół" onClick={()=>moveRow(day, idx, 1)} className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><ChevronDown className="w-4 h-4"/></button>
+                        <button aria-label="Usuń pozycję" onClick={()=>{
+                          setEditing(ed=>{
+                            const copy = {...ed};
+                            copy[day].items = copy[day].items.filter((_,i)=>i!==idx);
+                            return copy;
+                          });
+                        }} className="p-1.5 rounded bg-red-600 hover:bg-red-500"><Trash2 className="w-4 h-4"/></button>
+                      </div>
+                    </div>
+                  ))}
+                  {editing[day].items.length === 0 && (
+                    <div className="text-sm opacity-70">Brak pozycji. Użyj „Dodaj pozycję”.</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -639,7 +523,7 @@ function PlansManager({ subjects, plans, dispatch }:{
                     {p.source?.kind === "school" ? <Pill>z planu szkolnego</Pill> : <Pill>własny</Pill>}
                   </div>
                 </div>
-                <button onClick={()=>dispatch({type:"DELETE_PLAN", id: p.id})}
+                <button aria-label="Usuń plan" onClick={()=>dispatch({type:"DELETE_PLAN", id: p.id})}
                         className="p-1.5 rounded bg-red-600 hover:bg-red-500"><Trash2 className="w-4 h-4"/></button>
               </div>
               {p.source?.meta && (
@@ -782,7 +666,7 @@ function StatCard({title, value, sub}:{title:string; value:React.ReactNode; sub?
 /* -------------------------------- STRONA --------------------------------- */
 
 export default function FrekwencjaPage() {
-  const [state, dispatch] = useReducer(reducer, undefined as any, loadInitial);
+  const [state, dispatch] = useAttendanceState();
 
   // Wybrany dzień – domyślnie dziś, ale jeśli to weekend, przesuń na najbliższy pon-pt
   const [selected, setSelected] = useState<Date>(() => {
@@ -800,8 +684,13 @@ export default function FrekwencjaPage() {
   const [focus, setFocus] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
 
+  // state persistence handled by useAttendanceState hook
+
   function stepDay(delta: number) {
-    const next = addDays(selected, delta);
+    let next = addDays(selected, delta);
+    while (isWeekend(next)) {
+      next = addDays(next, delta > 0 ? 1 : -1);
+    }
     setSelected(next);
   }
   function stepWeek(deltaWeeks: number) {
@@ -833,12 +722,12 @@ export default function FrekwencjaPage() {
           icon={<CalendarIcon className="w-5 h-5"/>}
           right={
             <div className="flex items-center gap-2">
-              <button onClick={()=>stepWeek(-1)} className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Poprzedni tydzień"><ChevronLeft className="w-4 h-4"/></button>
-              <button onClick={()=>stepDay(-1)} className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Poprzedni dzień"><ChevronLeft className="w-4 h-4"/></button>
+              <button onClick={()=>stepWeek(-1)} aria-label="Poprzedni tydzień" className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Poprzedni tydzień"><ChevronLeft className="w-4 h-4"/></button>
+              <button onClick={()=>stepDay(-1)} aria-label="Poprzedni dzień" className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Poprzedni dzień"><ChevronLeft className="w-4 h-4"/></button>
               <input type="date" value={dateISO} onChange={e=>setSelected(parseISODateLocal(e.target.value))}
                      className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm"/>
-              <button onClick={()=>stepDay(1)} className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Następny dzień"><ChevronRight className="w-4 h-4"/></button>
-              <button onClick={()=>stepWeek(1)} className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Następny tydzień"><ChevronRight className="w-4 h-4"/></button>
+              <button onClick={()=>stepDay(1)} aria-label="Następny dzień" className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Następny dzień"><ChevronRight className="w-4 h-4"/></button>
+              <button onClick={()=>stepWeek(1)} aria-label="Następny tydzień" className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800" title="Następny tydzień"><ChevronRight className="w-4 h-4"/></button>
 
               <PlanFillMenu
                 plans={state.plans}
