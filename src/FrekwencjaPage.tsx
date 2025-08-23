@@ -665,6 +665,156 @@ function StatCard({title, value, sub}:{title:string; value:React.ReactNode; sub?
 
 /* -------------------------------- STRONA --------------------------------- */
 
+// Komponent przeglądu miesiąca - elegancki kalendarz z wizualnymi wskaźnikami wypełnienia dni
+function MonthOverview({ 
+  selected, 
+  onDateSelect, 
+  byDate,
+  focusSubjectKey
+}: { 
+  selected: Date; 
+  onDateSelect: (date: Date) => void; 
+  byDate: Record<string, AttendanceEntry[]>;
+  focusSubjectKey?: string | null;
+}) {
+  const firstDayOfMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
+  const lastDayOfMonth = new Date(selected.getFullYear(), selected.getMonth() + 1, 0);
+
+  // Generuj dni miesiąca (tylko dni robocze)
+  const weekdays: Date[] = [];
+  for (let d = new Date(firstDayOfMonth); d <= lastDayOfMonth; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      weekdays.push(new Date(d));
+    }
+  }
+
+  // Grupuj dni po tygodniach dla ładnej wizualizacji
+  const weeks: Date[][] = [];
+  let currentWeek: Date[] = [];
+  weekdays.forEach((date) => {
+    const mondayOfWeek = startOfWeekMonday(date);
+    if (currentWeek.length === 0 || toISODate(startOfWeekMonday(currentWeek[0])) !== toISODate(mondayOfWeek)) {
+      if (currentWeek.length > 0) weeks.push(currentWeek);
+      currentWeek = [];
+    }
+    currentWeek.push(date);
+  });
+  if (currentWeek.length > 0) weeks.push(currentWeek);
+
+  // Statystyki miesiąca
+  const monthStats = useMemo(() => {
+    const monthEntries = weekdays.map(date => byDate[toISODate(date)] || [])
+      .map(list => focusSubjectKey ? list.filter(e => (e.subjectKey||'').toLowerCase() === focusSubjectKey.toLowerCase()) : list)
+      .flat();
+    const totalLessons = monthEntries.length;
+    const presentCount = monthEntries.filter(e => e.present).length;
+    const filledDays = weekdays.filter(date => (byDate[toISODate(date)] || []).length > 0).length;
+    return { totalLessons, presentCount, filledDays, totalWorkdays: weekdays.length };
+  }, [weekdays, byDate]);
+
+  return (
+    <>
+      {/* Pasek kontekstu miesiąca */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-medium capitalize opacity-80">Miesiąc: {firstDayOfMonth.toLocaleString('pl-PL', { month: 'long', year: 'numeric' })}</div>
+        <div className="text-xs opacity-60">Widok obejmuje wyłącznie dni robocze (Pon–Pią)</div>
+      </div>
+
+      {/* Statystyki miesiąca */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div className="bg-neutral-900 border border-neutral-800 rounded p-4 text-center select-none">
+          <div className="text-2xl font-bold text-emerald-400">{monthStats.filledDays}</div>
+          <div className="text-xs opacity-70">wypełnionych dni</div>
+          <div className="text-xs opacity-50">z {monthStats.totalWorkdays} roboczych</div>
+        </div>
+        <div className="bg-neutral-900 border border-neutral-800 rounded p-4 text-center select-none">
+          <div className="text-2xl font-bold text-blue-400">{monthStats.totalLessons}</div>
+          <div className="text-xs opacity-70">lekcji w sumie</div>
+        </div>
+        <div className="bg-neutral-900 border border-neutral-800 rounded p-4 text-center select-none">
+          <div className="text-2xl font-bold text-emerald-400">
+            {monthStats.totalLessons > 0 ? ((monthStats.presentCount / monthStats.totalLessons) * 100).toFixed(1) : 0}%
+          </div>
+          <div className="text-xs opacity-70">frekwencja miesiąca</div>
+        </div>
+      </div>
+
+      {/* Dni tygodnia header */}
+      <div className="grid grid-cols-5 gap-2 mb-2">
+        {['Pon', 'Wto', 'Śro', 'Czw', 'Pią'].map(day => (
+          <div key={day} className="text-center text-xs font-medium opacity-70 py-1">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {/* Kalendarz */}
+      <div className="space-y-2 overflow-hidden">
+        {weeks.map((week, weekIdx) => (
+          <div key={weekIdx} className="grid grid-cols-5 gap-2 min-w-0">
+            {[0, 1, 2, 3, 4].map(dayIdx => {
+              const date = week[dayIdx];
+              if (!date) return <div key={dayIdx} className="h-14 sm:h-16" />;
+
+              const dateISO = toISODate(date);
+              const entries = byDate[dateISO] || [];
+              const isSelected = toISODate(date) === toISODate(selected);
+              const isToday = toISODate(date) === toISODate(new Date());
+              const hasEntries = entries.length > 0;
+              const presentCount = entries.filter(e => e.present).length;
+              const absentCount = entries.length - presentCount;
+
+              return (
+                <button
+                  key={dayIdx}
+                  onClick={() => onDateSelect(date)}
+                  className={`relative h-14 sm:h-16 p-2 rounded-lg border transition-colors text-center group min-w-0 ${
+                    isSelected 
+                      ? 'border-emerald-500 bg-emerald-500/15' 
+                      : isToday
+                        ? 'border-blue-500 bg-blue-500/10'
+                        : hasEntries 
+                          ? 'border-neutral-700 bg-neutral-900 hover:border-emerald-400/50 hover:bg-neutral-800' 
+                          : 'border-neutral-800 bg-neutral-950 hover:border-neutral-700'
+                  }`}
+                  title={`${getPolishDayName(date)} ${date.getDate()}.${String(date.getMonth()+1).padStart(2,'0')} - ${entries.length} lekcji`}
+                >
+                  <div className="font-semibold text-sm leading-none">{date.getDate()}</div>
+
+                  {hasEntries ? (
+                    <div className="mt-1 space-y-1">
+                      <div className="flex justify-center items-center gap-1">
+                        {entries.slice(0, 4).map((entry, i) => (
+                          <div key={i} className={`w-1.5 h-1.5 rounded-full ${entry.present ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                        ))}
+                        {entries.length > 4 && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] border border-neutral-600 text-neutral-300">+{entries.length - 4}</span>
+                        )}
+                      </div>
+                      <div className="text-xs opacity-70 leading-none">{entries.length}</div>
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-xs opacity-40 leading-none">-</div>
+                  )}
+
+                  {hasEntries && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-neutral-950 border border-neutral-700 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                      {presentCount > 0 && <span className="text-emerald-400">{presentCount} obecnych</span>}
+                      {presentCount > 0 && absentCount > 0 && <span className="mx-1">·</span>}
+                      {absentCount > 0 && <span className="text-red-400">{absentCount} nieobecnych</span>}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default function FrekwencjaPage() {
   const [state, dispatch] = useAttendanceState();
 
@@ -744,16 +894,37 @@ export default function FrekwencjaPage() {
           title="Podsumowanie frekwencji"
           icon={<Layers className="w-5 h-5"/>}
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <select value={focus || ""} onChange={e=>setFocus(e.target.value || null)}
                       className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm">
                 <option value="">Wszystkie przedmioty</option>
                 {state.subjects.map(s => <option value={s.key} key={s.key}>{s.label}</option>)}
               </select>
+              {/* Nawigacja po miesiącu */}
+              <div className="flex items-center gap-2">
+                <button onClick={()=>setSelected(addDays(new Date(selected.getFullYear(), selected.getMonth(), 1), -1))} aria-label="Poprzedni miesiąc" className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800">
+                  <ChevronLeft className="w-4 h-4"/>
+                </button>
+                <input type="month" value={`${selected.getFullYear()}-${String(selected.getMonth()+1).padStart(2,'0')}`} onChange={e=>{
+                  const [y,m] = e.target.value.split('-').map(v=>parseInt(v,10));
+                  if(Number.isFinite(y)&&Number.isFinite(m)) setSelected(new Date(y,m-1,1));
+                }} className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm"/>
+                <button onClick={()=>setSelected(new Date(selected.getFullYear(), selected.getMonth()+1, 1))} aria-label="Następny miesiąc" className="p-2 rounded bg-neutral-900 border border-neutral-800 hover:bg-neutral-800">
+                  <ChevronRight className="w-4 h-4"/>
+                </button>
+              </div>
             </div>
           }
         >
           <Summary state={state} focusSubjectKey={focus}/>
+          <div className="mt-4">
+            <MonthOverview 
+              selected={selected} 
+              onDateSelect={setSelected} 
+              byDate={state.byDate}
+              focusSubjectKey={focus}
+            />
+          </div>
         </Section>
 
         <AnimatePresence>
