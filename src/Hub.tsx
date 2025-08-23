@@ -103,10 +103,10 @@ function HubTile({
     <motion.button
       onClick={onClick}
       initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.005 }}
       whileTap={{ scale: 0.995 }}
-      viewport={{ once: true, amount: 0.4 }}
+      transition={{ type: "spring", stiffness: 220, damping: 20, mass: 0.6 }}
       className="group relative flex h-[120px] flex-col justify-between overflow-hidden rounded-2xl bg-white/10 p-4 text-left text-white shadow-xl backdrop-blur-md ring-1 ring-white/15 hover:ring-white/25"
     >
       {/* gradient border glow */}
