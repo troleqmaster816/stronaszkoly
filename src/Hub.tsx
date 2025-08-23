@@ -1,5 +1,6 @@
 import React from "react";
 import { CalendarDays, FileText, ListChecks, GraduationCap } from "lucide-react";
+import { motion } from "framer-motion";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -16,6 +17,8 @@ export default function Hub({ navigate }: HubProps) {
       />
       {/* Overlay for readability */}
       <div className="absolute inset-0 bg-black/50" />
+      {/* Subtle grid overlay to reinforce tech theme */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
 
       {/* Content */}
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col items-center px-4 py-10 text-white">
@@ -48,7 +51,8 @@ export default function Hub({ navigate }: HubProps) {
         </header>
 
         <main className="mt-10 w-full max-w-3xl">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Symmetrical 2x2 grid on desktop, stacked on mobile */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <HubTile
               title="Plan lekcji"
               description="Przeglądaj interaktywny plan dla klas, nauczycieli i sal."
@@ -96,19 +100,32 @@ function HubTile({
   onClick: () => void;
 }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
-      className="group flex flex-col items-start gap-2 rounded-2xl border border-white/20 bg-white/25 p-4 text-left shadow-lg backdrop-blur-md hover:bg-white/35 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-white/50 sm:p-5"
+      initial={{ opacity: 0, y: 12 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2, scale: 1.005 }}
+      whileTap={{ scale: 0.995 }}
+      viewport={{ once: true, amount: 0.4 }}
+      className="group relative flex h-[120px] flex-col justify-between overflow-hidden rounded-2xl bg-white/10 p-4 text-left text-white shadow-xl backdrop-blur-md ring-1 ring-white/15 hover:ring-white/25"
     >
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25 text-white drop-shadow">
+      {/* gradient border glow */}
+      <span className="pointer-events-none absolute inset-px rounded-2xl bg-gradient-to-br from-cyan-300/10 via-emerald-300/10 to-violet-300/10 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100" />
+      {/* sheen */}
+      <span className="pointer-events-none absolute -inset-10 translate-y-10 rotate-12 bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100" />
+
+      <div className="relative flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-md ring-1 ring-white/25">
           {icon}
         </span>
-        <span className="text-lg font-semibold sm:text-xl drop-shadow">{title}</span>
+        <span className="text-lg font-semibold drop-shadow-sm">{title}</span>
       </div>
-      <p className="text-sm text-zinc-100/95">{description}</p>
-      <span className="mt-1 text-sm text-white/90 underline-offset-2 group-hover:underline">Przejdź</span>
-    </button>
+
+      <div className="relative">
+        <p className="text-xs text-zinc-100/95 leading-snug max-w-sm">{description}</p>
+        <span className="mt-1 inline-block text-xs text-white/90 underline-offset-2 group-hover:underline">Przejdź</span>
+      </div>
+    </motion.button>
   );
 }
 
