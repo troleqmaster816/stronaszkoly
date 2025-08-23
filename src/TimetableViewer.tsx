@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useDeferredValue } from "r
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarDays, Printer, Share2, Upload, Rows3, Columns3, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Overrides, Lesson, RefTables } from '@/types/schedule';
+import type { DataFile } from '@/lib/api';
 import { DAY_ORDER, cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey } from '@/lib/schedule';
 import { DataFileSchema, OverridesSchema, fetchJsonValidated } from '@/lib/api';
 import { useHashId } from '@/features/timetable/hooks/useHashId';
@@ -141,8 +142,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   // Filtry: dni + grupa (1/2, 2/2, wszystkie)
   const activeLessons: Lesson[] = useMemo(() => {
-    const arr = (activeId && data?.timetables?.[activeId]) || [];
-    return arr.filter((l) => {
+    const arr: Lesson[] = (activeId && data?.timetables?.[activeId]) || [];
+    return arr.filter((l: Lesson) => {
       if (!selectedDays.includes(l.day)) return false;
       if (groupHalf === "all") return true;
       const mark = extractHalfMark(l.subject);
@@ -153,7 +154,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const daysInData = useMemo(() => {
     const dset = new Set<string>();
-    (activeId && data?.timetables?.[activeId] ? data!.timetables[activeId] : []).forEach((l) => dset.add(l.day));
+    (activeId && data?.timetables?.[activeId] ? data!.timetables[activeId] : []).forEach((l: Lesson) => dset.add(l.day));
     const all = Array.from(dset);
     all.sort(cmpDay);
     return all;
@@ -162,7 +163,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   // Dostępne podgrupy (np. 1/2, 2/2, opcjonalnie 1/3, 2/3, 3/3) tylko dla aktywnego planu
   const availableGroupMarks = useMemo(() => {
     const marks = new Set<string>();
-    const lessons = (activeId && data?.timetables?.[activeId]) || [];
+    const lessons: Lesson[] = (activeId && data?.timetables?.[activeId]) || [];
     for (const l of lessons) {
       const m = extractHalfMark(l.subject);
       if (m) marks.add(m);
@@ -647,8 +648,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
               {/* Compact one-page matrix: Days as columns, lesson numbers as rows */}
               {(() => {
                 const colDays = [...daysInData].sort(cmpDay);
-                const lessonNumbers = Array.from(new Set(
-                  (data?.timetables?.[activeId] || []).map((l) => l.lesson_num || '-')
+                const lessonNumbers: string[] = Array.from(new Set<string>(
+                  ((data?.timetables?.[activeId] || []) as Lesson[]).map((l: Lesson) => l.lesson_num || '-')
                 )).sort((a, b) => parseInt(a || '0', 10) - parseInt(b || '0', 10));
 
                 return (
@@ -665,9 +666,9 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                     <tbody>
                       {lessonNumbers.map((num) => {
                         // gather all lessons for this lesson number to pick the time per day
-                        const perDay = colDays.map((d) => (data?.timetables?.[activeId] || []).filter((l) => l.day === d && (l.lesson_num || '-') === num));
-                        const any = perDay.flat();
-                        const time = any.find((l) => l.time)?.time || '—';
+                        const perDay: Lesson[][] = colDays.map((d) => ((data?.timetables?.[activeId] || []) as Lesson[]).filter((l: Lesson) => l.day === d && (l.lesson_num || '-') === num));
+                        const any: Lesson[] = perDay.flat();
+                        const time = any.find((l: Lesson) => l.time)?.time || '—';
                         return (
                           <tr key={`row-${num}`}>
                             <td>{num}</td>

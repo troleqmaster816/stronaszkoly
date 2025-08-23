@@ -18,7 +18,7 @@ export function AdminPanel({
   onClose,
 }: {
   isAuth: boolean
-  onLogin: (e: React.FormEvent) => void
+  onLogin: (e: React.FormEvent<HTMLFormElement>) => void | Promise<void>
   onLogout: () => void
   refreshing: boolean
   onRefresh: () => void
