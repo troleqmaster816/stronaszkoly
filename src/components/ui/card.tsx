@@ -3,14 +3,14 @@ import React from "react";
 export function Card({ className = "", ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={`rounded-xl border shadow ${className}`}
+      className={`rounded-2xl shadow ${className}`}
       {...props}
     />
   );
 }
 
 export function CardHeader({ className = "", ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={`p-4 border-b ${className}`} {...props} />;
+  return <div className={`p-4 ${className}`} {...props} />;
 }
 
 export function CardTitle({ className = "", ...props }: React.HTMLAttributes<HTMLHeadingElement>) {

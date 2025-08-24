@@ -1,6 +1,7 @@
 import React from "react";
-import { CalendarDays, FileText, ListChecks, GraduationCap } from "lucide-react";
+import { CalendarDays, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
+import NewsSection from "./features/news/NewsSection";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -29,10 +30,7 @@ export default function Hub({ navigate }: HubProps) {
               <div className="mx-auto h-full w-full max-w-4xl rounded-full bg-gradient-to-r from-cyan-400/25 via-emerald-300/20 to-violet-400/25" />
             </div>
 
-            {/* proste "logo" kapsuła przed tytułem */}
-            <div className="relative mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm shadow-lg">
-              <GraduationCap className="h-8 w-8 text-white/95 drop-shadow" />
-            </div>
+            {/* usunięto ikonę nad tytułem */}
 
             <h1 className="relative mx-auto max-w-5xl text-center text-3xl font-extrabold leading-tight tracking-tight font-space-grotesk neon-title sm:text-4xl md:text-5xl">
               <span className="block uppercase tracking-tight sm:text-5xl md:text-6xl shimmer">
@@ -50,9 +48,9 @@ export default function Hub({ navigate }: HubProps) {
           </div>
         </header>
 
-        <main className="mt-10 w-full max-w-3xl">
+        <main className="mt-10 w-full">
           {/* Symmetrical 2x2 grid on desktop, stacked on mobile */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="mx-auto max-w-3xl grid grid-cols-1 gap-4 sm:grid-cols-2">
             <HubTile
               title="Plan lekcji"
               description="Przeglądaj interaktywny plan dla klas, nauczycieli i sal."
@@ -77,6 +75,10 @@ export default function Hub({ navigate }: HubProps) {
               icon={<FileText className="h-6 w-6" />}
               onClick={() => navigate("/statut")}
             />
+          </div>
+
+          <div className="mt-16">
+            <NewsSection />
           </div>
         </main>
 
@@ -107,7 +109,7 @@ function HubTile({
       whileHover={{ y: -2, scale: 1.005 }}
       whileTap={{ scale: 0.995 }}
       transition={{ type: "spring", stiffness: 220, damping: 20, mass: 0.6 }}
-      className="group relative flex h-[120px] flex-col justify-between overflow-hidden rounded-2xl bg-white/10 p-4 text-left text-white shadow-xl backdrop-blur-md ring-1 ring-white/15 hover:ring-white/25"
+      className="group relative flex h-[120px] flex-col justify-between overflow-hidden rounded-2xl bg-white/10 p-4 text-left text-white shadow-xl backdrop-blur-md"
     >
       {/* gradient border glow */}
       <span className="pointer-events-none absolute inset-px rounded-2xl bg-gradient-to-br from-cyan-300/10 via-emerald-300/10 to-violet-300/10 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100" />
@@ -115,7 +117,7 @@ function HubTile({
       <span className="pointer-events-none absolute -inset-10 translate-y-10 rotate-12 bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100" />
 
       <div className="relative flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-md ring-1 ring-white/25">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-md">
           {icon}
         </span>
         <span className="text-lg font-semibold drop-shadow-sm">{title}</span>
