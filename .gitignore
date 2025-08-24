@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 \n# Archives / bundles
 print-bundle.zip
+
+# Exports
+exports/
