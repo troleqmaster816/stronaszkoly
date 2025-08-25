@@ -23,8 +23,6 @@ import {
   ReplaceAll,
   Settings,
   CalendarX,
-  AlertTriangle,
-  ShieldCheck,
   Eraser,
   Shuffle
 } from "lucide-react";
@@ -39,6 +37,7 @@ import { Pill } from '@/features/attendance/components/Pill';
 import { DateBadge as DateBadgeComp } from '@/features/attendance/components/DateBadge';
 import { useAttendanceState } from '@/features/attendance/hooks/useAttendanceState';
 import type { State, Action, Plan, PlanDay, AttendanceEntry } from '@/features/attendance/state/attendanceReducer';
+import AbsencePlanner from '@/features/attendance/components/AbsencePlanner';
 const WEEKDAY_PL = ["Niedziela","Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota"];
 
 function getPolishDayName(d: Date) {
@@ -296,6 +295,8 @@ function canSkipAndKeep50(attended: number, total: number) {
   return can;
 }
 
+
+
 /* ------------------------------ KONTRAKT JSON ---------------------------- */
 import type { Lesson as ScheduleLesson, DataFile as ScheduleDataFile } from '@/types/schedule';
 type TimetableData = ScheduleDataFile;
@@ -477,7 +478,10 @@ function SchoolImportDialog({ onPlanReady, onClose }: SchoolImportProps) {
 
 /* ------------------------- Menedżer przedmiotów -------------------------- */
 
-function SubjectsManager({ subjects, dispatch }:{subjects: State["subjects"]; dispatch: React.Dispatch<Action>}) {
+function SubjectsManager({ subjects, dispatch }:{
+  subjects: State["subjects"];
+  dispatch: React.Dispatch<Action>;
+}) {
   const [label, setLabel] = useState("");
   const [query, setQuery] = useState("");
   const visibleSubjects = useMemo(() => {
@@ -522,7 +526,11 @@ function SubjectsManager({ subjects, dispatch }:{subjects: State["subjects"]; di
     </div>
   );
 }
-function SubjectRow({subj, onRename, onRemove}:{subj:{key:string;label:string}; onRename:(l:string)=>void; onRemove:()=>void}) {
+function SubjectRow({subj, onRename, onRemove}:{
+  subj:{key:string;label:string};
+  onRename:(l:string)=>void;
+  onRemove:()=>void;
+}) {
   const [edit, setEdit] = useState(false);
   const [val, setVal] = useState(subj.label);
   return (
@@ -530,7 +538,7 @@ function SubjectRow({subj, onRename, onRemove}:{subj:{key:string;label:string}; 
       <div className="flex-1 min-w-0 pr-2">
         <div className="font-medium text-sm sm:text-base leading-snug whitespace-normal break-words" title={subj.label}>{subj.label}</div>
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {edit ? (
           <>
             <input value={val} onChange={e=>setVal(e.target.value)} className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-sm"/>
@@ -1007,272 +1015,7 @@ function MonthOverview({
 
 /* --------------------------- Planer nieobecności -------------------------- */
 
-function AbsencePlanner({ state, selectedPlanId }:{ state: State; selectedPlanId?: string|null }) {
-  const plan = state.plans.find(p => p.id === selectedPlanId);
-
-  // Zakres: od dziś do piątku; jeśli weekend, pokaż pełny następny tydzień (pn–pt)
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const thisMonday = startOfWeekMonday(today);
-  let weekStart = thisMonday;
-  let iterStart = new Date(today);
-  let weekEndFriday = addDays(weekStart, 4);
-  const dow = today.getDay();
-  if (dow === 6 || dow === 0 || today > weekEndFriday) {
-    weekStart = addDays(thisMonday, 7);
-    weekEndFriday = addDays(weekStart, 4);
-    iterStart = new Date(weekStart);
-  }
-  const days: Date[] = [];
-  for (let d = new Date(iterStart); d <= weekEndFriday; d.setDate(d.getDate()+1)) {
-    if (!isWeekend(d)) days.push(new Date(d));
-  }
-
-  type Stat = { present: number; total: number };
-
-  // Bazowe statystyki z historii
-  const baseStats = useMemo(() => {
-    const perSubject: Record<string, Stat> = {};
-    let global: Stat = { present: 0, total: 0 };
-    for (const entries of Object.values(state.byDate)) {
-      for (const e of entries) {
-        const key = normalizeSubjectKey(e.subjectKey || e.subjectLabel);
-        if (!perSubject[key]) perSubject[key] = { present: 0, total: 0 };
-        perSubject[key].total += 1;
-        if (e.present) perSubject[key].present += 1;
-        global.total += 1;
-        if (e.present) global.present += 1;
-      }
-    }
-    return { perSubject, global };
-  }, [state.byDate]);
-
-  // Zaznaczenia „na pewno idę” – wpływają na analizę
-  const [commitAttend, setCommitAttend] = useState<Record<string, boolean>>({});
-  // Preferowane obecności (nie chcę opuszczać, jeśli te przedmioty są w dniu)
-  const [preferredSubjects, setPreferredSubjects] = useState<Record<string, boolean>>({});
-  // Tolerowane nieobecności (pomijaj próg 50% per przedmiot dla tych)
-  const [toleratedSubjects, setToleratedSubjects] = useState<Record<string, boolean>>({});
-
-  function toggleCommit(dateISO: string) {
-    setCommitAttend(s => ({ ...s, [dateISO]: !s[dateISO] }));
-  }
-
-  // Delta od zadeklarowanych obecności (pomijając podany dzień)
-  function getCommitDelta(excludeISO?: string) {
-    const perSubject: Record<string, Stat> = {};
-    let global: Stat = { present: 0, total: 0 };
-    if (!plan) return { perSubject, global };
-    for (const [iso, yes] of Object.entries(commitAttend)) {
-      if (!yes) continue;
-      if (excludeISO && iso === excludeISO) continue;
-      const d = parseISODateLocal(iso);
-      const dayName = getPolishDayName(d);
-      const def = plan.days[dayName];
-      if (!def) continue;
-      for (const it of def.items) {
-        const key = normalizeSubjectKey(it.subjectKey);
-        if (!perSubject[key]) perSubject[key] = { present: 0, total: 0 };
-        perSubject[key].present += 1;
-        perSubject[key].total += 1;
-        global.present += 1;
-        global.total += 1;
-      }
-    }
-    return { perSubject, global };
-  }
-
-  function statPlus(a: Stat|undefined, b: Stat|undefined): Stat {
-    const aa = a || { present: 0, total: 0 };
-    const bb = b || { present: 0, total: 0 };
-    return { present: aa.present + bb.present, total: aa.total + bb.total };
-  }
-
-  function evaluateSkipFor(date: Date) {
-    const dateISO = toISODate(date);
-    if (!plan) return { date, dateISO, lessons: 0, risk: 'Brak planu', tier: 'disabled' as const };
-    const dayName = getPolishDayName(date);
-    const def = plan.days[dayName];
-    const lessonsInDay = (def?.items?.length) || 0;
-    // Jeśli w przyszłości dzień został już wypełniony w dzienniku, pokaż komunikat
-    const todayISO = toISODate(new Date());
-    if (dateISO > todayISO && ((state.byDate[dateISO]?.length) || 0) > 0) {
-      return { date, dateISO, lessons: lessonsInDay, risk: 'Dzień już wypełniony w dzienniku', tier: 'filled' as const };
-    }
-    if (commitAttend[dateISO]) return { date, dateISO, lessons: lessonsInDay, risk: 'Zaplanowana obecność', tier: 'locked' as const };
-    if (!def || lessonsInDay === 0) return { date, dateISO, lessons: 0, risk: 'Brak lekcji', tier: 'safe' as const };
-
-    // Priorytet: jeśli dzień zawiera przedmioty oznaczone jako preferowane, nie rekomenduj opuszczania
-    const preferredInDayLabels: string[] = [];
-    for (const it of def.items) {
-      const key = normalizeSubjectKey(it.subjectKey);
-      if (preferredSubjects[key]) {
-        const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===key)?.label || it.subjectLabel || key;
-        if (!preferredInDayLabels.includes(label)) preferredInDayLabels.push(label);
-      }
-    }
-    if (preferredInDayLabels.length > 0) {
-      return { date, dateISO, lessons: lessonsInDay, risk: `Priorytetowe zajęcia: ${preferredInDayLabels.join(', ')}`, tier: 'priority' as const };
-    }
-
-    // Bazowe + deklaracje (bez rozpatrywanego dnia)
-    const commitDelta = getCommitDelta(dateISO);
-
-    // Globalne liczniki po ewentualnym opuszczeniu dnia
-    let globalAfter: Stat = statPlus(baseStats.global, commitDelta.global);
-    globalAfter = { present: globalAfter.present, total: globalAfter.total + def.items.length };
-
-    // Per-przedmiot po ewentualnym opuszczeniu
-    const perAfter: Record<string, Stat> = {};
-    const subjectsInDayCount: Record<string, number> = {};
-    for (const it of def.items) {
-      const key = normalizeSubjectKey(it.subjectKey);
-      subjectsInDayCount[key] = (subjectsInDayCount[key]||0) + 1;
-    }
-    const allKeys = new Set<string>([...Object.keys(baseStats.perSubject), ...Object.keys(subjectsInDayCount), ...Object.keys(commitDelta.perSubject)]);
-    for (const key of allKeys) {
-      // Jeśli przedmiot jest tolerowany, wyłączamy go z oceny per-przedmiot (traktuj jakby brak)
-      if (toleratedSubjects[key]) { continue; }
-      const base = baseStats.perSubject[key];
-      const add = commitDelta.perSubject[key];
-      const dayMiss = subjectsInDayCount[key] || 0;
-      const cur = statPlus(base, add);
-      perAfter[key] = { present: cur.present, total: cur.total + dayMiss };
-    }
-
-    // Bufory
-    function buffer(s: Stat) { return (2*s.present - s.total); }
-    const globalBuf = buffer(globalAfter);
-    let worstKey: string|undefined; let worstBuf = Infinity;
-    for (const [k, st] of Object.entries(perAfter)) {
-      if (!subjectsInDayCount[k]) continue; // tylko przedmioty z tego dnia
-      if (toleratedSubjects[k]) continue; // pomijamy tolerowane w ocenie per-przedmiot
-      const b = buffer(st);
-      if (b < worstBuf) { worstBuf = b; worstKey = k; }
-    }
-
-    const minBuf = Math.min(globalBuf, worstBuf);
-    let tier: 'critical'|'danger'|'warn'|'safe' = 'safe';
-    if (minBuf < 0) tier = 'critical';
-    else if (minBuf === 0) tier = 'danger';
-    else if (minBuf <= 2) tier = 'warn';
-
-    const worstLabel = worstKey ? (state.subjects.find(s=>normalizeSubjectKey(s.key)===worstKey)?.label || worstKey) : undefined;
-    const risk = tier === 'safe'
-      ? 'Bezpiecznie do opuszczenia'
-      : tier === 'warn'
-        ? `Uwaga: mały margines (ryzyko w: ${worstLabel})`
-        : tier === 'danger'
-          ? `Na limicie 50% (najgorszy: ${worstLabel})`
-          : `Krytycznie: spadniesz poniżej 50% (najgorszy: ${worstLabel})`;
-
-    return { date, dateISO, lessons: def.items.length, risk, tier, globalBuf, worstKey, worstBuf };
-  }
-
-  const rows = useMemo(() => days.map(d => evaluateSkipFor(d)), [days, plan, baseStats, commitAttend]);
-
-  return (
-    <div className="space-y-2">
-      {!plan && (
-        <div className="text-sm opacity-70 bg-neutral-900 border border-neutral-800 rounded p-3 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-yellow-400"/> Wybierz plan, aby zaplanować nieobecności.
-        </div>
-      )}
-      {plan && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-3">
-          <div>
-            <div className="text-xs uppercase tracking-wide opacity-70 mb-1">Preferuj obecność na</div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {Object.keys(preferredSubjects).filter(k=>preferredSubjects[k]).map(k=>{
-                const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===k)?.label || k;
-                return (
-                  <span key={k} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-900/30 border border-blue-700 text-blue-200 text-xs">
-                    {label}
-                    <button aria-label="Usuń z preferowanych" onClick={()=>setPreferredSubjects(ps=>{ const c={...ps}; delete c[k]; return c; })} className="ml-1 opacity-80 hover:opacity-100">×</button>
-                  </span>
-                );
-              })}
-              <select value="" onChange={e=>{
-                const key = normalizeSubjectKey(e.target.value);
-                if (!key) return; setPreferredSubjects(ps=>({ ...ps, [key]: true })); e.currentTarget.value="";
-              }} className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-xs">
-                <option value="">Dodaj…</option>
-                {state.subjects
-                  .filter(s=>!preferredSubjects[normalizeSubjectKey(s.key)])
-                  .sort((a,b)=>a.label.localeCompare(b.label,'pl'))
-                  .map(s=> <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
-            </div>
-            <div className="text-[11px] opacity-60 mt-1">Dni z tymi zajęciami będą oznaczone jako „nie rekomenduję opuszczać”.</div>
-          </div>
-          <div>
-            <div className="text-xs uppercase tracking-wide opacity-70 mb-1">Toleruj nieobecność na</div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {Object.keys(toleratedSubjects).filter(k=>toleratedSubjects[k]).map(k=>{
-                const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===k)?.label || k;
-                return (
-                  <span key={k} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-yellow-900/20 border border-yellow-700 text-yellow-200 text-xs">
-                    {label}
-                    <button aria-label="Usuń z tolerowanych" onClick={()=>setToleratedSubjects(ts=>{ const c={...ts}; delete c[k]; return c; })} className="ml-1 opacity-80 hover:opacity-100">×</button>
-                  </span>
-                );
-              })}
-              <select value="" onChange={e=>{
-                const key = normalizeSubjectKey(e.target.value);
-                if (!key) return; setToleratedSubjects(ts=>({ ...ts, [key]: true })); e.currentTarget.value="";
-              }} className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-xs">
-                <option value="">Dodaj…</option>
-                {state.subjects
-                  .filter(s=>!toleratedSubjects[normalizeSubjectKey(s.key)])
-                  .sort((a,b)=>a.label.localeCompare(b.label,'pl'))
-                  .map(s=> <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
-            </div>
-            <div className="text-[11px] opacity-60 mt-1">Te zajęcia nie będą brane pod uwagę w limicie 50% per przedmiot.</div>
-          </div>
-        </div>
-      )}
-      {plan && days.length === 0 && (
-        <div className="text-sm opacity-70 bg-neutral-900 border border-neutral-800 rounded p-3 flex items-center gap-2">
-          <CalendarX className="w-4 h-4"/> Bieżący tydzień szkolny już minął. Wróć w poniedziałek.
-        </div>
-      )}
-      {plan && days.length > 0 && (
-        <div className="space-y-2">
-          {rows.map(r => (
-            <div key={r.dateISO} className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded px-3 py-2">
-              <div className="flex items-center gap-3 min-w-0">
-                <DateBadgeComp dateISO={r.dateISO} label={getPolishDayName(r.date)} />
-                <div className="text-xs opacity-70 whitespace-nowrap">{r.lessons} lekcji</div>
-                <div className="text-sm font-medium truncate">
-                  {r.tier === 'locked' ? (
-                    <span className="text-emerald-400 inline-flex items-center gap-1"><ShieldCheck className="w-4 h-4"/>Zaplanowana obecność</span>
-                  ) : r.tier === 'priority' ? (
-                    <span className="text-blue-300">Priorytet dnia: {r.risk.replace('Priorytetowe zajęcia: ','')}</span>
-                  ) : r.tier === 'filled' ? (
-                    <span className="text-blue-400">Dzień już wypełniony w dzienniku</span>
-                  ) : r.tier === 'disabled' ? (
-                    <span className="opacity-70">Brak planu</span>
-                  ) : (
-                    <span className={
-                      r.tier === 'safe' ? 'text-emerald-400' : r.tier === 'warn' ? 'text-yellow-300' : r.tier === 'danger' ? 'text-orange-400' : 'text-red-400'
-                    }>{r.risk}</span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={()=>toggleCommit(r.dateISO)}
-                        className={`px-2 py-1 rounded border text-sm ${commitAttend[r.dateISO] ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500' : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700'}`}>
-                  {commitAttend[r.dateISO] ? 'Na pewno idę' : 'Zaznacz: idę'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// Przeniesiony do /src/features/attendance/components/AbsencePlanner.tsx
 
 export default function FrekwencjaPage() {
   const [state, dispatch] = useAttendanceState();
@@ -1293,6 +1036,8 @@ export default function FrekwencjaPage() {
   const [focus, setFocus] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [plannerPlanId, setPlannerPlanId] = useState<string | null>(null);
+
+  // Priorytety przeniesione do planera nieobecności – brak ustawień tutaj
 
   useEffect(() => {
     if (!plannerPlanId && state.plans.length > 0) {
@@ -1421,7 +1166,7 @@ export default function FrekwencjaPage() {
                     <div className="flex items-center gap-2"><Download className="w-5 h-5"/><h2 className="font-semibold">Lista przedmiotów</h2></div>
                   </div>
                   <div className="p-5 space-y-3">
-                    <SubjectsManager subjects={state.subjects} dispatch={dispatch}/>
+                    <SubjectsManager subjects={state.subjects} dispatch={dispatch} />
                   </div>
                 </section>
                 <section className="bg-neutral-950 border border-neutral-800 rounded-xl">
