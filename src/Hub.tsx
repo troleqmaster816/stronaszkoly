@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { CalendarDays, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
@@ -8,6 +8,64 @@ type HubProps = {
 };
 
 export default function Hub({ navigate }: HubProps) {
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [isAuth, setIsAuth] = useState(false);
+  const [me, setMe] = useState<{ id: string; username: string } | null>(null);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
+  const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
+
+  const refreshMe = async () => {
+    try {
+      const res = await fetch('/api/me', { credentials: 'include' });
+      const j = await res.json();
+      if (j?.ok && j.authenticated) {
+        setIsAuth(true);
+        setMe(j.user);
+      } else {
+        setIsAuth(false);
+        setMe(null);
+      }
+    } catch {}
+  };
+  useEffect(() => { refreshMe(); }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(loginForm) });
+      if (!res.ok) { alert('Logowanie nieudane'); return; }
+      setLoginForm({ username: '', password: '' });
+      await refreshMe();
+    } catch {}
+  };
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(registerForm) });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Rejestracja nieudana'); return; }
+      setRegisterForm({ username: '', password: '' });
+      await refreshMe();
+    } catch {}
+  };
+  const handleLogout = async () => {
+    try { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); }
+  };
+  const loadSingleKey = async () => {
+    try {
+      const res = await fetch('/api/apikey', { credentials: 'include' });
+      const j = await res.json();
+      if (j?.ok) setSingleApiKey(j.apiKey);
+    } catch {}
+  };
+  const regenSingleKey = async () => {
+    try {
+      const res = await fetch('/api/apikey/regenerate', { method: 'POST', credentials: 'include' });
+      const j = await res.json();
+      if (j?.ok) setSingleApiKey(j.apiKey);
+    } catch {}
+  };
+
   return (
     <div className="relative min-h-[100svh] w-full">
       {/* Background image */}
@@ -23,6 +81,15 @@ export default function Hub({ navigate }: HubProps) {
 
       {/* Content */}
       <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col items-center px-4 pt-14 pb-20 sm:py-10 text-white">
+        {/* Profile button */}
+        <div className="absolute right-4 top-4">
+          <button
+            onClick={() => { setProfileOpen(true); if (isAuth) loadSingleKey(); }}
+            className="px-3 py-1.5 rounded-lg border border-white/30 bg-black/40 hover:bg-black/60 backdrop-blur"
+          >
+            {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
+          </button>
+        </div>
         <header className="w-full">
           <div className="relative mx-auto max-w-5xl text-center">
             {/* dekoracyjna poświata pod tytułem (elektroniczny klimat) */}
@@ -86,6 +153,58 @@ export default function Hub({ navigate }: HubProps) {
           © {new Date().getFullYear()} ZSE Zduńska Wola
         </footer>
       </div>
+
+      {/* Profile modal */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={()=>setProfileOpen(false)} />
+          <div className="relative z-10 w-[92vw] max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
+              <button onClick={()=>setProfileOpen(false)} className="px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800">Zamknij</button>
+            </div>
+            {!isAuth ? (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Logowanie</div>
+                  <input className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Nazwa użytkownika"
+                         value={loginForm.username} onChange={e=>setLoginForm(s=>({ ...s, username: e.target.value }))} />
+                  <input type="password" className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Hasło"
+                         value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
+                  <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500" type="submit">Zaloguj</button>
+                </form>
+                <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Rejestracja</div>
+                  <input className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Nazwa użytkownika"
+                         value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
+                  <input type="password" className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Hasło (min. 6)"
+                         value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
+                  <button className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500" type="submit">Zarejestruj</button>
+                </form>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div>
+                    <div className="text-sm">Zalogowano jako</div>
+                    <div className="text-lg font-semibold">{me?.username}</div>
+                  </div>
+                  <button onClick={handleLogout} className="px-3 py-2 rounded bg-red-600 hover:bg-red-500">Wyloguj</button>
+                </div>
+                <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Klucz API (test)</div>
+                  <div className="text-xs opacity-80 mb-2">Pojedynczy klucz do wszystkich endpointów. Na czas testów widoczny w panelu cały czas.</div>
+                  <div className="flex items-center gap-2">
+                    <input readOnly value={singleApiKey || ''} className="flex-1 px-3 py-2 rounded bg-zinc-900 border border-zinc-700 font-mono" />
+                    <button onClick={()=>{ navigator.clipboard.writeText(singleApiKey || ''); }} className="px-3 py-2 rounded border border-zinc-700 hover:bg-zinc-800">Kopiuj</button>
+                    <button onClick={regenSingleKey} className="px-3 py-2 rounded bg-amber-600 hover:bg-amber-500">Regeneruj</button>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -130,5 +249,3 @@ function HubTile({
     </motion.button>
   );
 }
-
-

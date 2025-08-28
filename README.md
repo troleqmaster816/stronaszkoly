@@ -43,3 +43,7 @@ npm run server
 - `npm run lint` – lintowanie kodu
 
 Repozytorium: https://github.com/troleqmaster816/stronaszkoly
+
+## Dokumentacja API
+
+Szczegółowa dokumentacja REST API znajduje się w `docs/API.md`.
