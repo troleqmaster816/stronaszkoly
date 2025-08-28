@@ -123,8 +123,8 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50">
-      <button className="absolute inset-0 bg-black/70" onClick={onClose} aria-label="Zamknij podgląd" />
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
       <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-8">
         <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-zinc-900 text-zinc-50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-6">
