@@ -1,4 +1,4 @@
-# API – Dokumentacja (wersja testowa)
+# API – Dokumentacja (v1)
 
 Ten dokument opisuje API aplikacji w bieżącej wersji testowej. API służy do pracy z:
 - planem lekcji (odczyt z pliku `timetable_data.json`),
@@ -6,19 +6,20 @@ Ten dokument opisuje API aplikacji w bieżącej wersji testowej. API służy do 
 - podsumowaniami frekwencji,
 - generowaniem jednorazowych linków do zdalnego zatwierdzania zmian (MVP).
 
-W trybie deweloperskim działa proxy Vite na `/api` do serwera Express.
+Legacy `/api/*` wyłączone (HTTP 410). Używaj tylko prefiksu `/v1`.
 
 ## Podstawy
 
 - Base URL (dev):
   - przez Vite: `http://localhost:5173`
   - bezpośrednio na serwer: `http://localhost:8787`
+  - prefiks: `\v1` (np. `http://localhost:8787/v1`)
 - Autoryzacja:
   - Single API key (zalecany dla aplikacji klienckich): dodaj nagłówek `Authorization: Bearer sk_...`
   - Sesja cookie (dla panelu w przeglądarce/WWW): po `POST /api/login` otrzymasz cookie `auth` (httpOnly).
 - Format odpowiedzi:
-  - Sukces: `{ ok: true, data?: any }`
-  - Błąd: `{ ok: false, error: string }` i odpowiedni status HTTP (400/401/403/404/409/500).
+  - Sukces: `{ ok: true, data?: any }` lub zasób bezpośrednio (np. mapy teachers)
+  - Błąd (v1): `application/problem+json` (RFC7807-like) z polami `{ type, title, status, code, detail }`
 
 ## Klucz API (single-key)
 
@@ -52,15 +53,20 @@ W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wyst
 
 ## Timetable
 
-- `GET /api/timetable` → surowy JSON planu (`public/timetable_data.json`).
+- `GET /v1/teachers` → `{ [id: string]: string }`
+- `GET /v1/teachers/:id/timetable` → `{ data: Lesson[] }`
+- `GET /v1/classes/:id/timetable?group=2/2&includeWhole=true` → `{ data: Lesson[] }`
+  - `group` (opcjonalnie): identyfikator lub nazwa grupy (np. `2/2`). Zwraca lekcje dla całej klasy ORAZ wskazanej grupy; inne grupy są wykluczone.
+  - `includeWhole` (opcjonalnie, domyślnie `true`): czy dołączyć lekcje „cała klasa” przy filtrowaniu po `group`.
+- `GET /v1/rooms/:id/timetable` → `{ data: Lesson[] }`
 
-Przykład:
-
+Przykład 4TAI Poniedziałek, grupa 2/2:
 ```bash
-curl -H "Authorization: Bearer sk_XXXX" http://localhost:5173/api/timetable
+curl -s 'http://localhost:8787/v1/classes/4TAI/timetable?group=2%2F2&includeWhole=true' \
+| jq '.data | map(select(.day=="Poniedziałek")) | sort_by(.lesson_num|tonumber) | .[] | {lesson_num,time,subject,teacher:(.teacher?.name),room:(.room?.name)}'
 ```
 
-## Frekwencja – cały stan
+## Frekwencja – odczyt i zapis wpisów
 
 Stan użytkownika zawiera:
 
@@ -91,27 +97,33 @@ type AttendanceState = {
 
 Endpointy:
 
-- `GET /api/attendance` → `{ ok: true, data: AttendanceState }`
-- `PUT /api/attendance` body = cały `AttendanceState` (min. `subjects`, `plans`, `byDate`) → zapisuje i zwraca `{ ok: true }`
+- `GET /v1/attendance/entries?from&to&subjectKey&classId&teacherId&limit&cursor` → `{ data: AttendanceEntry[], nextCursor? }`
+- `PATCH /v1/attendance/entries` body `{ updates: { id, present, ifMatch? }[] }` → `{ ok: true, updated }` (409 przy konflikcie wersji)
+- `GET /v1/attendance/summary?from&to&subjectKey` → `{ data: { total, present, percent, needToReach50, canSkipAndKeep50 } }`
+- `POST /v1/attendance/days/{dateISO}/present` body `{ present: true|false }` → masowe ustawienie obecności dla dnia
+- `GET /v1/attendance/plans` → lista zapisanych planów (FrekwencjaPage)
+- `POST /v1/attendance/days/{dateISO}/apply-plan` body `{ planId, overwrite?: boolean, setPresent?: boolean }` → wypełnij dzień z planu (opcjonalnie ustaw obecność)
 
-Przykład GET:
-
-```bash
-curl -H "Authorization: Bearer sk_XXXX" http://localhost:5173/api/attendance
-```
-
-Przykład PUT (minimalny):
+Przykłady:
 
 ```bash
-curl -X PUT http://localhost:5173/api/attendance \
-  -H "Authorization: Bearer sk_XXXX" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "subjects":[{"key":"matematyka","label":"Matematyka"}],
-    "plans":[],
-    "byDate":{},
-    "version":1
-  }'
+# Lista wpisów
+curl -H "Authorization: Bearer sk_XXXX" "http://localhost:8787/v1/attendance/entries?from=2025-09-01&to=2025-09-30&limit=100"
+
+# Aktualizacja wpisów
+curl -X PATCH "http://localhost:8787/v1/attendance/entries" \
+  -H "Authorization: Bearer sk_XXXX" -H "Content-Type: application/json" \
+  -d '{"updates":[{"id":"2025-09-01#Poniedziałek#1","present":false}]}'
+
+# Ustaw cały dzień na obecny
+curl -X POST "http://localhost:8787/v1/attendance/days/2025-09-01/present" \
+  -H "Authorization: Bearer sk_XXXX" -H "Content-Type: application/json" \
+  -d '{"present":true}'
+
+# Wypełnij dzień z planu (nadpisz istniejące wpisy i ustaw obecność na true)
+curl -X POST "http://localhost:8787/v1/attendance/days/2025-09-01/apply-plan" \
+  -H "Authorization: Bearer sk_XXXX" -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123","overwrite":true,"setPresent":true}'
 ```
 
 Uwagi:
@@ -120,28 +132,21 @@ Uwagi:
 
 ## Podsumowanie frekwencji
 
-- `GET /api/attendance/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&subject=opcjonalnie`
-  - zwraca `{ ok: true, data: { total, present, percent, needToReach50, canSkipAndKeep50 } }`
-  - `subject` – (opcjonalnie) klucz znormalizowany, np. `matematyka`
-
-Przykład:
+- `GET /v1/attendance/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&subjectKey=opcjonalnie`
 
 ```bash
 curl -H "Authorization: Bearer sk_XXXX" \
-  "http://localhost:5173/api/attendance/summary?from=2025-01-01&to=2025-12-31"
+  "http://localhost:8787/v1/attendance/summary?from=2025-01-01&to=2025-12-31"
 ```
 
-## Zdalne zatwierdzanie (MVP)
+## Planer nieobecności / zdalne zatwierdzanie (MVP)
 
 Linki jednorazowe do akceptacji/odrzucenia zmiany wpisu. Obecnie tworzenie wymaga sesji cookie (z przeglądarki); odczyt/akceptacja po tokenie.
 
-- Utwórz żądanie (cookie auth):
-  - `POST /api/attendance/approvals` body `{ action: 'toggle'|'set', dateISO, entryId, present? }`
-  - 200 → `{ ok: true, token: 'appr_...' }`
-- Podgląd statusu:
-  - `GET /api/attendance/approvals/:token` → `{ ok: true, data: { status, createdAt, expiresAt, payload } }`
-- Decyzja:
-  - `POST /api/attendance/approvals/:token/decision` body `{ decision: 'accept'|'deny' }` → `{ ok: true }`
+Endpointy:
+- `POST /v1/approvals` (opcjonalny `Idempotency-Key`) → `201 { ok, data: { token, url, expiresAt } }`
+- `GET /v1/approvals/:token` → `{ ok, data: { status, createdAt, expiresAt } }`
+- `POST /v1/approvals/:token` body `{ decision: 'accept'|'deny' }` → `{ ok: true }` lub `409`
 
 Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wskazanego `entryId` w dniu `dateISO`.
 
@@ -149,6 +154,9 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 
 - Odczyt (bez auth): `GET /api/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
 - Zapis (cookie auth): `POST /api/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
+- `/v1` (wymaga auth):
+  - `GET /v1/overrides`
+  - `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }`
 
 ## Przykłady (JS fetch)
 
@@ -185,6 +193,11 @@ await fetch('/api/attendance', { method: 'PUT', headers: H, body: JSON.stringify
 - 404 – nie znaleziono
 - 409 – konflikt
 - 500 – błąd serwera
+
+Nagłówki (v1):
+- `X-Request-Id` – identyfikator żądania
+- `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`
+- na endpointach planu lekcji cache: `Cache-Control: public, max-age=300, stale-while-revalidate=60`
 
 Rate limiting (obecnie):
 - `/api/login` – limiter 20 żądań / 10 min
