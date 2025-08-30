@@ -30,12 +30,12 @@ export function useAttendanceState() {
     let cancelled = false;
     (async () => {
       try {
-        const me = await fetch('/api/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null);
+        const me = await fetch('/v1/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null);
         const authed = !!(me && me.ok && me.authenticated);
         if (cancelled) return;
         setIsAuth(authed);
         if (authed) {
-          const res = await fetch('/api/attendance', { credentials: 'include', cache: 'no-store' });
+          const res = await fetch('/v1/attendance', { credentials: 'include', cache: 'no-store' });
           if (res.ok) {
             const j = await res.json();
             if (j && j.ok && j.data) {
@@ -59,7 +59,7 @@ export function useAttendanceState() {
     const doPersist = async () => {
       if (remoteEnabled.current) {
         try {
-          await fetch('/api/attendance', {
+          await fetch('/v1/attendance', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',

@@ -212,179 +212,36 @@ async function runCommand(cmd, args, options = {}) {
   });
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
-});
+// Legacy /api health – removed; use /v1/health
 
-app.get('/api/me', (req, res) => {
-  const token = (req.cookies && req.cookies.auth) || null;
-  const isAuth = !!(token && TOKENS.has(token));
-  if (!isAuth) return res.json({ ok: true, authenticated: false, user: null });
-  const db = loadDb();
-  const userId = TOKENS.get(token);
-  const user = db.users.find(u => u.id === userId);
-  res.json({ ok: true, authenticated: true, user: user ? { id: user.id, username: user.username } : { id: 'admin', username: ADMIN_USER } });
-});
+// Legacy /api/me removed; use /v1/users/me
 
-app.post('/api/register', (req, res) => {
-  try {
-    const { username, password } = (req.body && typeof req.body === 'object') ? req.body : {};
-    const u = String(username || '').trim().toLowerCase();
-    const p = String(password || '');
-    if (!u || !p || p.length < 6) return res.status(400).json({ ok: false, error: 'Nieprawidłowe dane (min. 6 znaków hasła)' });
-    const db = loadDb();
-    if (db.users.some(x => x.username === u)) return res.status(409).json({ ok: false, error: 'Użytkownik istnieje' });
-    const { salt, hash } = hashPassword(p);
-    const user = { id: uid('u_'), username: u, passSalt: salt, passHash: hash, createdAt: Date.now(), apiKey: genUserApiKey() };
-    db.users.push(user);
-    saveDb(db);
-    const session = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    TOKENS.set(session, user.id);
-    res.cookie('auth', session, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+// Legacy /api/register removed; use /v1/register
 
-app.post('/api/login', (req, res) => {
-  const { username, password } = (req.body && typeof req.body === 'object' ? req.body : {})
-    || {};
-  const qUser = req.query && typeof req.query.username === 'string' ? req.query.username : undefined;
-  const qPass = req.query && typeof req.query.password === 'string' ? req.query.password : undefined;
-  const userIn = String(username ?? qUser ?? '').trim().toLowerCase();
-  const passIn = String(password ?? qPass ?? '');
-  const db = loadDb();
-  const user = db.users.find(u => u.username === userIn);
-  if (user && verifyPassword(passIn, user.passSalt, user.passHash)) {
-    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    TOKENS.set(token, user.id);
-    res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
-    return res.json({ ok: true });
-  }
-  if (userIn === ADMIN_USER && passIn === ADMIN_PASS) {
-    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    TOKENS.set(token, 'admin');
-    res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
-    return res.json({ ok: true });
-  }
-  return res.status(401).json({ ok: false, error: 'Nieprawidłowe dane logowania' });
-});
+// Legacy /api/login removed; use /v1/login
 
-app.post('/api/logout', (req, res) => {
-  const token = (req.cookies && req.cookies.auth) || null;
-  if (token && TOKENS.has(token)) TOKENS.delete(token);
-  res.clearCookie('auth');
-  res.json({ ok: true });
-});
+// Legacy /api/logout removed; use /v1/logout
 
 const loginLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
-app.use('/api/login', loginLimiter);
-app.use('/api/refresh', refreshLimiter);
+// Legacy limiters no longer needed under /api
 
 // Disable legacy /api routes – v1 only
-app.use('/api', (_req, res) => {
+// Note: keep this catch-all AFTER active /api routes (me/login/logout/refresh/apikey, etc.)
+const legacyApiCatchAll = (_req, res) => {
   res.status(410).json({ ok: false, error: 'Legacy API disabled. Use /v1' });
-});
+};
 
-app.post('/api/refresh', requireAuth, async (_req, res) => {
-  if (isRunning) {
-    return res.status(409).json({ ok: false, error: 'Scraper już działa' });
-  }
-  const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand();
-  if (!pythonCmd) {
-    return res.status(500).json({ ok: false, error: 'Nie znaleziono interpretera Pythona (python/python3/py).' });
-  }
+// Legacy /api/refresh removed; use /v1/refresh
 
-  isRunning = true;
-  try {
-    // Ensure Python deps installed
-    const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
-    const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
-    if (pip.code !== 0) {
-      isRunning = false;
-      return res.status(500).json({ ok: false, step: 'pip', error: pip.stderr.slice(-4000) });
-    }
-
-    // Run scraper
-    const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'scraper.py'] : ['scraper.py'];
-    const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
-    isRunning = false;
-    if (run.code !== 0) {
-      return res.status(500).json({ ok: false, step: 'scraper', error: run.stderr.slice(-4000), output: run.stdout.slice(-4000) });
-    }
-    return res.json({ ok: true });
-  } catch (e) {
-    isRunning = false;
-    return res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-app.get('/api/overrides', (_req, res) => {
-  try {
-    const data = loadOverrides();
-    res.json({ ok: true, data });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-app.post('/api/overrides', requireAuth, (req, res) => {
-  try {
-    const { subjectOverrides, teacherNameOverrides } = req.body || {};
-    const data = {
-      subjectOverrides: subjectOverrides && typeof subjectOverrides === 'object' ? subjectOverrides : {},
-      teacherNameOverrides: teacherNameOverrides && typeof teacherNameOverrides === 'object' ? teacherNameOverrides : {},
-    };
-    saveOverrides(data);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+// Legacy /api/overrides removed; use /v1/overrides
 
 // ------------------ Single API key (testing) ------------------
-app.get('/api/apikey', requireAuth, (req, res) => {
-  const db = loadDb();
-  const userId = req.userId;
-  if (userId === 'admin') {
-    if (!db.adminApiKey) { db.adminApiKey = genUserApiKey(); saveDb(db); }
-    return res.json({ ok: true, apiKey: db.adminApiKey });
-  }
-  const user = db.users.find(u => u.id === userId);
-  if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
-  if (!user.apiKey) { user.apiKey = genUserApiKey(); saveDb(db); }
-  return res.json({ ok: true, apiKey: user.apiKey });
-});
-
-app.post('/api/apikey/regenerate', requireAuth, (req, res) => {
-  const db = loadDb();
-  const userId = req.userId;
-  const key = genUserApiKey();
-  if (userId === 'admin') {
-    db.adminApiKey = key;
-    saveDb(db);
-    return res.json({ ok: true, apiKey: db.adminApiKey });
-  }
-  const user = db.users.find(u => u.id === userId);
-  if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
-  user.apiKey = key;
-  saveDb(db);
-  return res.json({ ok: true, apiKey: user.apiKey });
-});
+// Legacy /api/apikey endpoints removed; use /v1/apikey
 
 // ------------------ Timetable API (public + auth) ------------------
-app.get('/api/timetable', async (_req, res) => {
-  try {
-    const data = readFileSync(join(publicDir, 'timetable_data.json'), 'utf8');
-    res.setHeader('Content-Type', 'application/json');
-    res.send(data);
-  } catch (e) {
-    res.status(404).json({ ok: false, error: 'Brak pliku timetable_data.json' });
-  }
-});
+// Legacy /api/timetable removed; use /v1/* timetable endpoints
 
 // ------------------ Attendance (per-user) ------------------
 function defaultAttendanceState() {
@@ -401,34 +258,7 @@ function defaultAttendanceState() {
   };
 }
 
-app.get('/api/attendance', requireAuthOrApiKey(['read:attendance']), (req, res) => {
-  const db = loadDb();
-  const userId = req.userId;
-  const state = db.attendanceByUser[userId] || defaultAttendanceState();
-  res.json({ ok: true, data: state });
-});
-
-app.put('/api/attendance', requireAuthOrApiKey(['write:attendance']), (req, res) => {
-  try {
-    const db = loadDb();
-    const userId = req.userId;
-    const incoming = req.body && typeof req.body === 'object' ? req.body : null;
-    if (!incoming || !incoming.subjects || !incoming.plans || !incoming.byDate) {
-      return res.status(400).json({ ok: false, error: 'Invalid payload' });
-    }
-    db.attendanceByUser[userId] = {
-      subjects: Array.isArray(incoming.subjects) ? incoming.subjects : [],
-      plans: Array.isArray(incoming.plans) ? incoming.plans : [],
-      byDate: (incoming.byDate && typeof incoming.byDate === 'object') ? incoming.byDate : {},
-      version: Number(incoming.version || 1),
-      updatedAt: Date.now(),
-    };
-    saveDb(db);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+// Legacy /api/attendance removed; use /v1/attendance
 
 // Summary: present/total/percent + to50/canSkip50
 app.get('/api/attendance/summary', requireAuthOrApiKey(['read:summary']), (req, res) => {
@@ -490,66 +320,10 @@ app.delete('/api/apikeys/:id', requireAuth, (req, res) => {
 });
 
 // ------------------ Remote Approvals ------------------
-app.post('/api/attendance/approvals', requireAuth, (req, res) => {
-  try {
-    const { action, dateISO, entryId, present } = req.body || {};
-    if (!action || !dateISO || !entryId) return res.status(400).json({ ok: false, error: 'Brak wymaganych pól' });
-    const db = loadDb();
-    const userId = req.userId;
-    const token = 'appr_' + crypto.randomBytes(10).toString('hex');
-    const tokenHash = hashApiKeySecret(token);
-    const rec = { id: uid('apr_'), userId, tokenHash, payload: { action, dateISO, entryId, present: !!present }, status: 'pending', createdAt: Date.now(), expiresAt: Date.now() + 7 * 24 * 3600 * 1000 };
-    db.approvals.push(rec);
-    saveDb(db);
-    res.json({ ok: true, token });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+// Legacy approval endpoints removed; use /v1/approvals*
 
-app.get('/api/attendance/approvals/:token', (req, res) => {
-  try {
-    const db = loadDb();
-    const token = String(req.params.token || '');
-    const tokenHash = hashApiKeySecret(token);
-    const item = db.approvals.find(a => a.tokenHash === tokenHash);
-    if (!item) return res.status(404).json({ ok: false, error: 'Nie znaleziono' });
-    res.json({ ok: true, data: { status: item.status, createdAt: item.createdAt, expiresAt: item.expiresAt, payload: item.payload } });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-app.post('/api/attendance/approvals/:token/decision', async (req, res) => {
-  try {
-    const db = loadDb();
-    const token = String(req.params.token || '');
-    const tokenHash = hashApiKeySecret(token);
-    const item = db.approvals.find(a => a.tokenHash === tokenHash);
-    if (!item) return res.status(404).json({ ok: false, error: 'Nie znaleziono' });
-    if (item.status !== 'pending') return res.status(409).json({ ok: false, error: 'Już rozpatrzone' });
-    const { decision } = req.body || {};
-    if (decision !== 'accept' && decision !== 'deny') return res.status(400).json({ ok: false, error: 'Brak decyzji' });
-    item.status = decision === 'accept' ? 'accepted' : 'denied';
-    if (decision === 'accept') {
-      const { action, dateISO, entryId, present } = item.payload || {};
-      const st = db.attendanceByUser[item.userId] || defaultAttendanceState();
-      const list = Array.isArray(st.byDate[dateISO]) ? [...st.byDate[dateISO]] : [];
-      const idx = list.findIndex(e => e && e.id === entryId);
-      if (idx >= 0) {
-        if (action === 'toggle') list[idx].present = !list[idx].present;
-        else if (action === 'set') list[idx].present = !!present;
-        st.byDate[dateISO] = list;
-        st.updatedAt = Date.now();
-        db.attendanceByUser[item.userId] = st;
-      }
-    }
-    saveDb(db);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+// Place legacy /api catch-all AFTER all active /api routes above
+app.use('/api', legacyApiCatchAll);
 
 const PORT = Number(process.env.PORT) || 8787;
 app.listen(PORT, () => {
@@ -581,6 +355,153 @@ v1.get('/users/me', (req, res) => {
     user = hit ? { id: hit.id, username: hit.username } : { id: 'admin', username: ADMIN_USER };
   }
   res.json({ ok: true, authenticated: !!hasCookie, user });
+});
+
+// Auth (cookie-based) under v1
+v1.post('/login', (req, res) => {
+  const { username, password } = (req.body && typeof req.body === 'object' ? req.body : {})
+    || {};
+  const qUser = req.query && typeof req.query.username === 'string' ? req.query.username : undefined;
+  const qPass = req.query && typeof req.query.password === 'string' ? req.query.password : undefined;
+  const userIn = String(username ?? qUser ?? '').trim().toLowerCase();
+  const passIn = String(password ?? qPass ?? '');
+  const db = loadDb();
+  const user = db.users.find(u => u.username === userIn);
+  if (user && verifyPassword(passIn, user.passSalt, user.passHash)) {
+    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    TOKENS.set(token, user.id);
+    res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+    return res.json({ ok: true });
+  }
+  if (userIn === ADMIN_USER && passIn === ADMIN_PASS) {
+    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    TOKENS.set(token, 'admin');
+    res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+    return res.json({ ok: true });
+  }
+  return res.status(401).json({ ok: false, error: 'Nieprawidłowe dane logowania' });
+});
+
+v1.post('/logout', (_req, res) => {
+  const token = (_req.cookies && _req.cookies.auth) || null;
+  if (token && TOKENS.has(token)) TOKENS.delete(token);
+  res.clearCookie('auth');
+  res.json({ ok: true });
+});
+
+v1.post('/register', (req, res) => {
+  try {
+    const { username, password } = (req.body && typeof req.body === 'object') ? req.body : {};
+    const u = String(username || '').trim().toLowerCase();
+    const p = String(password || '');
+    if (!u || !p || p.length < 6) return res.status(400).json({ ok: false, error: 'Nieprawidłowe dane (min. 6 znaków hasła)' });
+    const db = loadDb();
+    if (db.users.some(x => x.username === u)) return res.status(409).json({ ok: false, error: 'Użytkownik istnieje' });
+    const { salt, hash } = hashPassword(p);
+    const user = { id: uid('u_'), username: u, passSalt: salt, passHash: hash, createdAt: Date.now(), apiKey: genUserApiKey() };
+    db.users.push(user);
+    saveDb(db);
+    const session = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    TOKENS.set(session, user.id);
+    res.cookie('auth', session, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// Single API key (testing) under v1
+v1.get('/apikey', requireAuth, (req, res) => {
+  const db = loadDb();
+  const userId = req.userId;
+  if (userId === 'admin') {
+    if (!db.adminApiKey) { db.adminApiKey = genUserApiKey(); saveDb(db); }
+    return res.json({ ok: true, apiKey: db.adminApiKey });
+  }
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
+  if (!user.apiKey) { user.apiKey = genUserApiKey(); saveDb(db); }
+  return res.json({ ok: true, apiKey: user.apiKey });
+});
+
+v1.post('/apikey/regenerate', requireAuth, (req, res) => {
+  const db = loadDb();
+  const userId = req.userId;
+  const key = genUserApiKey();
+  if (userId === 'admin') {
+    db.adminApiKey = key;
+    saveDb(db);
+    return res.json({ ok: true, apiKey: db.adminApiKey });
+  }
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
+  user.apiKey = key;
+  saveDb(db);
+  return res.json({ ok: true, apiKey: user.apiKey });
+});
+
+// Attendance (state-level) under v1
+v1.get('/attendance', requireAuthOrApiKey(['read:attendance']), (req, res) => {
+  const db = loadDb();
+  const userId = req.userId;
+  const state = db.attendanceByUser[userId] || defaultAttendanceState();
+  res.json({ ok: true, data: state });
+});
+
+v1.put('/attendance', requireAuthOrApiKey(['write:attendance']), (req, res) => {
+  try {
+    const db = loadDb();
+    const userId = req.userId;
+    const incoming = req.body && typeof req.body === 'object' ? req.body : null;
+    if (!incoming || !incoming.subjects || !incoming.plans || !incoming.byDate) {
+      return res.status(400).json({ ok: false, error: 'Invalid payload' });
+    }
+    db.attendanceByUser[userId] = {
+      subjects: Array.isArray(incoming.subjects) ? incoming.subjects : [],
+      plans: Array.isArray(incoming.plans) ? incoming.plans : [],
+      byDate: (incoming.byDate && typeof incoming.byDate === 'object') ? incoming.byDate : {},
+      version: Number(incoming.version || 1),
+      updatedAt: Date.now(),
+    };
+    saveDb(db);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// Timetable refresh under v1 (synchronous, like legacy)
+v1.post('/refresh', requireAuth, async (_req, res) => {
+  if (isRunning) {
+    return res.status(409).json({ ok: false, error: 'Scraper już działa' });
+  }
+  const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand();
+  if (!pythonCmd) {
+    return res.status(500).json({ ok: false, error: 'Nie znaleziono interpretera Pythona (python/python3/py).' });
+  }
+
+  isRunning = true;
+  try {
+    // Ensure Python deps installed
+    const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
+    const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
+    if (pip.code !== 0) {
+      isRunning = false;
+      return res.status(500).json({ ok: false, step: 'pip', error: pip.stderr.slice(-4000) });
+    }
+
+    // Run scraper
+    const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'scraper.py'] : ['scraper.py'];
+    const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
+    isRunning = false;
+    if (run.code !== 0) {
+      return res.status(500).json({ ok: false, step: 'scraper', error: run.stderr.slice(-4000), output: run.stdout.slice(-4000) });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    isRunning = false;
+    return res.status(500).json({ ok: false, error: String(e) });
+  }
 });
 
 // Timetable helpers

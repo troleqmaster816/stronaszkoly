@@ -13,10 +13,10 @@ Legacy `/api/*` wyłączone (HTTP 410). Używaj tylko prefiksu `/v1`.
 - Base URL (dev):
   - przez Vite: `http://localhost:5173`
   - bezpośrednio na serwer: `http://localhost:8787`
-  - prefiks: `\v1` (np. `http://localhost:8787/v1`)
+  - prefiks: `/v1` (np. `http://localhost:8787/v1`)
 - Autoryzacja:
   - Single API key (zalecany dla aplikacji klienckich): dodaj nagłówek `Authorization: Bearer sk_...`
-  - Sesja cookie (dla panelu w przeglądarce/WWW): po `POST /api/login` otrzymasz cookie `auth` (httpOnly).
+  - Sesja cookie (dla panelu w przeglądarce/WWW): po `POST /v1/login` otrzymasz cookie `auth` (httpOnly).
 - Format odpowiedzi:
   - Sukces: `{ ok: true, data?: any }` lub zasób bezpośrednio (np. mapy teachers)
   - Błąd (v1): `application/problem+json` (RFC7807-like) z polami `{ type, title, status, code, detail }`
@@ -26,10 +26,10 @@ Legacy `/api/*` wyłączone (HTTP 410). Używaj tylko prefiksu `/v1`.
 Każdy użytkownik ma jeden klucz API. W czasie testów klucz jest widoczny w panelu użytkownika oraz dostępny przez endpointy.
 
 - Pobierz klucz (wymaga cookie sesyjnego):
-  - `GET /api/apikey`
+  - `GET /v1/apikey`
   - 200 → `{ ok: true, apiKey: "sk_..." }`
 - Zregeneruj klucz (unieważnia poprzedni):
-  - `POST /api/apikey/regenerate`
+  - `POST /v1/apikey/regenerate`
   - 200 → `{ ok: true, apiKey: "sk_..." }`
 - Użycie w żądaniu:
   - dodaj nagłówek: `Authorization: Bearer sk_TWÓJ_KLUCZ`
@@ -37,17 +37,17 @@ Każdy użytkownik ma jeden klucz API. W czasie testów klucz jest widoczny w pa
 Przykład (curl):
 
 ```bash
-curl -H "Authorization: Bearer sk_XXXX" http://localhost:5173/api/attendance
+curl -H "Authorization: Bearer sk_XXXX" http://localhost:5173/v1/attendance
 ```
 
 Uwaga: w Postman/Insomnia wybierz Auth = "Bearer Token" i wstaw `sk_XXXX`.
 
 ## Autoryzacja kont (opcjonalnie)
 
-- `POST /api/register` body `{ username, password }` → tworzy konto i loguje (cookie)
-- `POST /api/login` body `{ username, password }` → loguje (cookie)
-- `POST /api/logout` → wylogowuje (czyści cookie)
-- `GET /api/me` → `{ ok: true, authenticated: boolean, user: { id, username } | null }`
+- `POST /v1/register` body `{ username, password }` → tworzy konto i loguje (cookie)
+- `POST /v1/login` body `{ username, password }` → loguje (cookie)
+- `POST /v1/logout` → wylogowuje (czyści cookie)
+- `GET /v1/users/me` → `{ ok: true, authenticated: boolean, user: { id, username } | null }`
 
 W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wystarczy nagłówek `Authorization: Bearer` z kluczem API.
 
@@ -152,11 +152,8 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 
 ## Overrides (nauczyciele/przedmioty)
 
-- Odczyt (bez auth): `GET /api/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
-- Zapis (cookie auth): `POST /api/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
-- `/v1` (wymaga auth):
-  - `GET /v1/overrides`
-  - `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }`
+- Odczyt (wymaga auth): `GET /v1/overrides` → `{ data: { subjectOverrides, teacherNameOverrides } }`
+- Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
 
 ## Przykłady (JS fetch)
 
@@ -165,7 +162,7 @@ const key = 'sk_XXXX';
 const H = { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
 
 // Pobierz stan
-const st = await fetch('/api/attendance', { headers: { Authorization: 'Bearer ' + key } })
+const st = await fetch('/v1/attendance', { headers: { Authorization: 'Bearer ' + key } })
   .then(r => r.json()).then(j => j.data);
 
 // Dodaj lekcję
@@ -182,7 +179,7 @@ st.byDate[iso].push({
 });
 
 // Zapisz całość
-await fetch('/api/attendance', { method: 'PUT', headers: H, body: JSON.stringify({ ...st, version: 1 }) });
+await fetch('/v1/attendance', { method: 'PUT', headers: H, body: JSON.stringify({ ...st, version: 1 }) });
 ```
 
 ## Statusy i limity
@@ -200,12 +197,12 @@ Nagłówki (v1):
 - na endpointach planu lekcji cache: `Cache-Control: public, max-age=300, stale-while-revalidate=60`
 
 Rate limiting (obecnie):
-- `/api/login` – limiter 20 żądań / 10 min
-- `/api/refresh` – limiter 10 żądań / 15 min
+- `/v1/login` – limiter 20 żądań / 10 min
+- `/v1/refresh` – limiter 10 żądań / 15 min
 
 ## Bezpieczeństwo i środowisko
 
-- Klucz API trzymaj w sekrecie. `POST /api/apikey/regenerate` unieważnia poprzedni.
+- Klucz API trzymaj w sekrecie. `POST /v1/apikey/regenerate` unieważnia poprzedni.
 - W dev Vite proxy ustawia CORS/połączenie z serwerem automatycznie; bezpośrednio na serwerze Express obowiązują zasady CORS z `server/server.js`.
 - Zapis danych testowych jest w pliku `server/data.json` (ignorowany przez git).
 

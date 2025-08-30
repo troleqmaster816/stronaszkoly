@@ -17,7 +17,7 @@ export default function Hub({ navigate }: HubProps) {
 
   const refreshMe = async () => {
     try {
-      const res = await fetch('/api/me', { credentials: 'include' });
+      const res = await fetch('/v1/users/me', { credentials: 'include' });
       const j = await res.json();
       if (j?.ok && j.authenticated) {
         setIsAuth(true);
@@ -33,34 +33,36 @@ export default function Hub({ navigate }: HubProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(loginForm) });
+      const res = await fetch('/v1/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(loginForm) });
       if (!res.ok) { alert('Logowanie nieudane'); return; }
       setLoginForm({ username: '', password: '' });
       await refreshMe();
+      await loadSingleKey();
     } catch {}
   };
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(registerForm) });
+      const res = await fetch('/v1/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(registerForm) });
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Rejestracja nieudana'); return; }
       setRegisterForm({ username: '', password: '' });
       await refreshMe();
+      await loadSingleKey();
     } catch {}
   };
   const handleLogout = async () => {
-    try { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); }
+    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); }
   };
   const loadSingleKey = async () => {
     try {
-      const res = await fetch('/api/apikey', { credentials: 'include' });
+      const res = await fetch('/v1/apikey', { credentials: 'include' });
       const j = await res.json();
       if (j?.ok) setSingleApiKey(j.apiKey);
     } catch {}
   };
   const regenSingleKey = async () => {
     try {
-      const res = await fetch('/api/apikey/regenerate', { method: 'POST', credentials: 'include' });
+      const res = await fetch('/v1/apikey/regenerate', { method: 'POST', credentials: 'include' });
       const j = await res.json();
       if (j?.ok) setSingleApiKey(j.apiKey);
     } catch {}

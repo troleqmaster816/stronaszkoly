@@ -76,7 +76,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const loadOverrides = async () => {
     try {
-      const res = await fetch(`/api/overrides`, { cache: "no-store" });
+      const res = await fetch(`/v1/overrides`, { cache: "no-store" });
       if (!res.ok) return;
       const j = await res.json();
       if (j?.ok && j.data) {
@@ -373,7 +373,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      const res = await fetch("/api/refresh", { method: "POST" });
+      const res = await fetch("/v1/refresh", { method: "POST" });
       if (!res.ok) {
         const msg = await res.text();
         alert(`Błąd podczas odświeżania: ${msg || res.status}`);
@@ -395,7 +395,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       const fd = new FormData(form);
       const username = String(fd.get('username') || '');
       const password = String(fd.get('password') || '');
-      const res = await fetch('/api/login', {
+      const res = await fetch('/v1/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -412,7 +412,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      await fetch('/v1/logout', { method: 'POST', credentials: 'include' });
     } finally {
       setIsAuth(false);
     }
@@ -420,7 +420,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const saveOverrides = async () => {
     try {
-      const res = await fetch('/api/overrides', {
+      const res = await fetch('/v1/overrides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
