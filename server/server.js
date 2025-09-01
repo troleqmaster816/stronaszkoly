@@ -6,13 +6,17 @@ import rateLimit from 'express-rate-limit';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import crypto from 'node:crypto';
+import swaggerUi from 'swagger-ui-express';
+import yaml from 'js-yaml';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = dirname(__dirname);
 const publicDir = join(projectRoot, 'public');
+const timetableFilePath = join(publicDir, 'timetable_data.json');
+const timetableBackupsDir = join(publicDir, 'backups', 'timetables');
 
 const app = express();
 app.disable('x-powered-by');
@@ -20,6 +24,19 @@ app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Serve Swagger UI for the OpenAPI draft (dev/admin purpose)
+try {
+  const specPath = join(publicDir, 'openapi.v1.draft.yaml');
+  if (existsSync(specPath)) {
+    const specText = readFileSync(specPath, 'utf8');
+    const openapiDoc = yaml.load(specText);
+    app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDoc));
+    console.log('[server] Swagger UI at /docs');
+  }
+} catch (e) {
+  console.warn('[server] Failed to load OpenAPI spec for Swagger UI:', e);
+}
 
 // Expose observability headers to browsers
 app.use((req, res, next) => {
@@ -482,6 +499,9 @@ v1.post('/refresh', requireAuth, async (_req, res) => {
 
   isRunning = true;
   try {
+    // Read current timetable (raw) for comparison
+    let prevRaw = null;
+    try { if (existsSync(timetableFilePath)) prevRaw = readFileSync(timetableFilePath, 'utf8'); } catch {}
     // Ensure Python deps installed
     const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
     const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
@@ -497,6 +517,34 @@ v1.post('/refresh', requireAuth, async (_req, res) => {
     if (run.code !== 0) {
       return res.status(500).json({ ok: false, step: 'scraper', error: run.stderr.slice(-4000), output: run.stdout.slice(-4000) });
     }
+    // After successful run: compare and rotate backups (keep latest 5)
+    try {
+      const nowRaw = existsSync(timetableFilePath) ? readFileSync(timetableFilePath, 'utf8') : null;
+      const changed = (() => {
+        try {
+          if (!prevRaw || !nowRaw) return true;
+          const a = JSON.stringify(JSON.parse(prevRaw));
+          const b = JSON.stringify(JSON.parse(nowRaw));
+          return a !== b;
+        } catch { return true; }
+      })();
+      if (changed && prevRaw) {
+        try { mkdirSync(timetableBackupsDir, { recursive: true }); } catch {}
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const fname = `timetable_data-${stamp}.json`;
+        writeFileSync(join(timetableBackupsDir, fname), prevRaw, 'utf8');
+        // Enforce max 5 backups
+        try {
+          const files = readdirSync(timetableBackupsDir)
+            .filter(f => f.endsWith('.json'))
+            .map(f => ({ f, t: statSync(join(timetableBackupsDir, f)).mtimeMs }))
+            .sort((a, b) => b.t - a.t);
+          for (const item of files.slice(5)) {
+            try { unlinkSync(join(timetableBackupsDir, item.f)); } catch {}
+          }
+        } catch {}
+      }
+    } catch {}
     return res.json({ ok: true });
   } catch (e) {
     isRunning = false;
@@ -506,7 +554,7 @@ v1.post('/refresh', requireAuth, async (_req, res) => {
 
 // Timetable helpers
 function readTimetableFile() {
-  const file = join(publicDir, 'timetable_data.json');
+  const file = timetableFilePath;
   if (!existsSync(file)) return null;
   try {
     const txt = readFileSync(file, 'utf8');
@@ -807,6 +855,7 @@ v1.put('/overrides', requireAuth, (req, res) => {
 
 // Jobs: async timetable scrape
 const JOBS = new Map();
+let isArticleRunning = false;
 v1.post('/jobs/timetable-scrape', async (_req, res) => {
   if (isRunning) {
     // Create a pseudo-job representing ongoing work
@@ -847,6 +896,95 @@ v1.get('/jobs/:jobId', (req, res) => {
   const job = JOBS.get(jobId);
   if (!job) return problem(res, 404, 'jobs.not_found', 'Not Found', 'Nie znaleziono');
   res.json(job);
+});
+
+// Articles scrape job (admin-only)
+v1.post('/jobs/articles-scrape', requireAuth, async (req, res) => {
+  try {
+    if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
+    if (isArticleRunning) {
+      const running = Array.from(JOBS.values()).find(j => j && j.kind === 'articles' && j.status === 'running');
+      if (running) return res.status(202).json({ jobId: running.id, statusUrl: `/v1/jobs/${running.id}` });
+    }
+    const jobId = 'job_' + crypto.randomUUID();
+    const job = { id: jobId, kind: 'articles', status: 'queued', startedAt: null, finishedAt: null, error: null };
+    JOBS.set(jobId, job);
+    res.status(202).json({ jobId, statusUrl: `/v1/jobs/${jobId}` });
+    (async () => {
+      isArticleRunning = true;
+      try {
+        job.status = 'running';
+        job.startedAt = new Date().toISOString();
+        const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand();
+        if (!pythonCmd) throw new Error('Brak interpretera Pythona');
+        const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
+        const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
+        if (pip.code !== 0) throw new Error(pip.stderr.slice(-4000));
+        const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'article_scraper.py'] : ['article_scraper.py'];
+        const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
+        if (run.code !== 0) throw new Error(run.stderr.slice(-4000));
+        job.status = 'succeeded';
+        job.finishedAt = new Date().toISOString();
+      } catch (e) {
+        job.status = 'failed';
+        job.finishedAt = new Date().toISOString();
+        job.error = String(e);
+      } finally {
+        isArticleRunning = false;
+      }
+    })();
+  } catch (e) {
+    problem(res, 500, 'server.error', 'Internal Server Error', String(e));
+  }
+});
+
+// Timetable backups list (admin only)
+v1.get('/timetable/backups', requireAuth, (req, res) => {
+  if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
+  try {
+    if (!existsSync(timetableBackupsDir)) return res.json({ data: [] });
+    const list = readdirSync(timetableBackupsDir)
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        const p = join(timetableBackupsDir, f);
+        const st = statSync(p);
+        return { filename: f, size: st.size, mtime: new Date(st.mtimeMs).toISOString() };
+      })
+      .sort((a, b) => (a.mtime < b.mtime ? 1 : -1));
+    res.json({ data: list });
+  } catch (e) {
+    problem(res, 500, 'server.error', 'Internal Server Error', String(e));
+  }
+});
+
+// Restore a selected backup (admin only)
+v1.post('/timetable/restore', requireAuth, (req, res) => {
+  if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const filename = String(body.filename || '');
+    if (!filename || filename.includes('..') || filename.includes('/') || !filename.endsWith('.json')) {
+      return problem(res, 400, 'request.invalid', 'Bad Request', 'Invalid filename');
+    }
+    const src = join(timetableBackupsDir, filename);
+    if (!existsSync(src)) return problem(res, 404, 'backups.not_found', 'Not Found', 'Backup not found');
+    const content = readFileSync(src, 'utf8');
+    // Always keep the backup; also create a backup of current before overwrite
+    try {
+      if (existsSync(timetableFilePath)) {
+        const current = readFileSync(timetableFilePath, 'utf8');
+        if (current) {
+          try { mkdirSync(timetableBackupsDir, { recursive: true }); } catch {}
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          writeFileSync(join(timetableBackupsDir, `timetable_data-${stamp}.json`), current, 'utf8');
+        }
+      }
+    } catch {}
+    writeFileSync(timetableFilePath, content, 'utf8');
+    return res.json({ ok: true });
+  } catch (e) {
+    problem(res, 500, 'server.error', 'Internal Server Error', String(e));
+  }
 });
 
 // Mount /v1

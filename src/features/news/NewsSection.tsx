@@ -25,6 +25,43 @@ function hasPdfEmbed(html?: string): boolean {
   if (!html) return false;
   return /<iframe[^>]+src=["'][^"']+\.pdf["']/i.test(html);
 }
+function extractPdfUrl(html?: string): string | null {
+  if (!html) return null;
+  // Prefer explicit link label if present
+  const linkMatch = html.match(/<a[^>]+href=["']([^"']+\.pdf)(?:\?[^"']*)?["'][^>]*>\s*Pobierz\s+PDF\s*<\/a>/i);
+  if (linkMatch) return linkMatch[1];
+  // Fallback: first iframe src ending with .pdf
+  const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+\.pdf)(?:\?[^"']*)?["']/i);
+  if (iframeMatch) return iframeMatch[1];
+  // Fallback: first anchor to .pdf
+  const aMatch = html.match(/<a[^>]+href=["']([^"']+\.pdf)(?:\?[^"']*)?["']/i);
+  return aMatch ? aMatch[1] : null;
+}
+
+function extractFirstImageUrl(html?: string): string | null {
+  if (!html) return null;
+  const imgMatch = html.match(/<img[^>]+src=["']([^"'>]+)["']/i);
+  return imgMatch ? imgMatch[1] : null;
+}
+
+function hasDocxEmbed(html?: string): boolean {
+  if (!html) return false;
+  // Office web viewer pattern
+  return /<iframe[^>]+src=["']https?:\/\/view\.officeapps\.live\.com\/op\/embed\.aspx\?src=[^"']+["']/i.test(html);
+}
+
+function extractDocxDirectUrl(html?: string): string | null {
+  if (!html) return null;
+  // Also look for explicit link added by scraper: "Pobierz plik DOCX"
+  const linkMatch = html.match(/<a[^>]+href=["']([^"']+\.(?:docx|doc))(?:\?[^"']*)?["'][^>]*>\s*Pobierz\s+plik\s+DOCX\s*<\/a>/i);
+  if (linkMatch) return linkMatch[1];
+  // Fallback: parse office viewer src and decode src param if present
+  const viewerMatch = html.match(/<iframe[^>]+src=["']https?:\/\/view\.officeapps\.live\.com\/op\/embed\.aspx\?src=([^"']+)["']/i);
+  if (viewerMatch) {
+    try { return decodeURIComponent(viewerMatch[1]); } catch { return viewerMatch[1]; }
+  }
+  return null;
+}
 
 function getExcerpt(article: Article, maxLen = 140) {
   const plain = stripHtml(article.content_html);
@@ -36,6 +73,7 @@ function getExcerpt(article: Article, maxLen = 140) {
 function NewsCard({ article, index, onOpen }: { article: Article; index: number; onOpen: (a: Article) => void }) {
   const img = useMemo(() => pickFirstImage(article.content_html), [article.content_html]);
   const pdf = useMemo(() => hasPdfEmbed(article.content_html), [article.content_html]);
+  const docx = useMemo(() => hasDocxEmbed(article.content_html), [article.content_html]);
   const date = formatArticleDate(article.date);
   const showExcerpt = !pdf && !img;
   return (
@@ -52,10 +90,10 @@ function NewsCard({ article, index, onOpen }: { article: Article; index: number;
         {img ? (
           <div className="relative h-28 w-full overflow-hidden">
             <img src={img} alt="" className="h-full w-full object-cover" />
-            {pdf ? (
+            {pdf || docx ? (
               <span className="absolute right-2 top-2">
                 <Badge className="bg-slate-900/90 text-white border-slate-900/90 inline-flex items-center gap-1">
-                  <FileText className="h-3.5 w-3.5" /> PDF
+                  <FileText className="h-3.5 w-3.5" /> {pdf ? 'PDF' : 'DOCX'}
                 </Badge>
               </span>
             ) : null}
@@ -67,6 +105,8 @@ function NewsCard({ article, index, onOpen }: { article: Article; index: number;
         <CardContent className="p-3 pt-0 sm:p-4 sm:pt-0 flex-1 flex flex-col">
           {pdf ? (
             <p className="text-xs sm:text-sm text-slate-700">Podgląd dokumentu PDF</p>
+          ) : docx ? (
+            <p className="text-xs sm:text-sm text-slate-700">Podgląd dokumentu DOCX</p>
           ) : showExcerpt ? (
             <p className="text-xs sm:text-sm text-slate-700 line-clamp-2">{getExcerpt(article)}</p>
           ) : null}
@@ -115,6 +155,9 @@ function sanitizeHtml(html?: string): string {
 function ArticleModal({ article, onClose }: { article: Article; onClose: () => void }) {
   const date = formatArticleDate(article.date);
   const content = useMemo(() => sanitizeHtml(article.content_html), [article.content_html]);
+  const docxUrl = useMemo(() => extractDocxDirectUrl(article.content_html), [article.content_html]);
+  const pdfUrl = useMemo(() => extractPdfUrl(article.content_html), [article.content_html]);
+  const imageUrl = useMemo(() => extractFirstImageUrl(article.content_html), [article.content_html]);
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -132,12 +175,44 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
               <h3 className="m-0 text-xl font-semibold leading-snug">{article.title}</h3>
               <div className="mt-1 text-sm text-zinc-400">{date}</div>
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
-            >
-              Zamknij
-            </button>
+            <div className="flex items-center gap-2">
+              {docxUrl ? (
+                <a
+                  href={docxUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm text-white"
+                >
+                  Pobierz DOCX
+                </a>
+              ) : null}
+              {pdfUrl ? (
+                <a
+                  href={pdfUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white"
+                >
+                  Pobierz PDF
+                </a>
+              ) : null}
+              {imageUrl ? (
+                <a
+                  href={imageUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white"
+                >
+                  Pobierz obraz
+                </a>
+              ) : null}
+              <button
+                onClick={onClose}
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+              >
+                Zamknij
+              </button>
+            </div>
           </div>
           <div className="p-4 sm:p-6">
             <div className="prose prose-invert max-w-none prose-headings:mt-6 prose-headings:mb-3 prose-p:my-3 prose-li:my-1 prose-img:rounded-xl prose-a:text-sky-400"

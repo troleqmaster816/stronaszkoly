@@ -11,6 +11,7 @@ import { ListView } from '@/features/timetable/components/ListView';
 import { EntityPicker } from '@/features/timetable/components/EntityPicker';
 import { FiltersBar } from '@/features/timetable/components/FiltersBar';
 import { AdminPanel } from '@/features/timetable/components/AdminPanel';
+import { AnimatedBackdrop } from '@/features/timetable/components/AnimatedBackdrop';
 
 
 // ==========================================
@@ -440,7 +441,9 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   // RENDER (ciemny motyw)
   // ==========================================
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
+    <div className="relative min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
+      {/* Animated backdrop – desktop only, sits behind all content */}
+      <AnimatedBackdrop text={activeName} />
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
       <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
         <div className="mx-auto max-w-7xl px-4 py-2 flex items-center gap-3">
@@ -511,7 +514,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="relative z-10 mx-auto max-w-7xl px-4 py-6">
         <div className="print:hidden">
         {/* Pasek statusu/metadanych */}
         {!isMobile && (

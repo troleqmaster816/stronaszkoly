@@ -13,6 +13,7 @@ const TimetableViewer = React.lazy(() => import('./TimetableViewer'))
 const Harmonogram = React.lazy(() => import('./harmonogram'))
 const StatutSzkolnyViewer = React.lazy(() => import('./statut'))
 const FrekwencjaPage = React.lazy(() => import('./FrekwencjaPage'))
+const Docs = React.lazy(() => import('./Docs'))
 
 function HubRoute() {
   const navigate = useNavigate()
@@ -42,6 +43,7 @@ function AppRouter() {
       <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<HubRoute />} />
+          <Route path="/docs" element={<Docs />} />
           <Route path="/plan" element={<TimetableRoute setOverlayActive={setOverlayActive} />} />
           <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
           <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />

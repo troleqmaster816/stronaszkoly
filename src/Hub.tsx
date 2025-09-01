@@ -14,6 +14,10 @@ export default function Hub({ navigate }: HubProps) {
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
   const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
+  const [articlesJob, setArticlesJob] = useState<{ id: string; status: string } | null>(null);
+  const [articlesBusy, setArticlesBusy] = useState(false);
+  const [ttBusy, setTtBusy] = useState(false);
+  const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
 
   const refreshMe = async () => {
     try {
@@ -66,6 +70,69 @@ export default function Hub({ navigate }: HubProps) {
       const j = await res.json();
       if (j?.ok) setSingleApiKey(j.apiKey);
     } catch {}
+  };
+
+  const refreshTimetable = async () => {
+    try {
+      setTtBusy(true);
+      const res = await fetch('/v1/refresh', { method: 'POST', credentials: 'include' });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić odświeżania'); return; }
+      alert('Plan został odświeżony.');
+    } finally {
+      setTtBusy(false);
+    }
+  };
+
+  const loadBackups = async () => {
+    try {
+      const res = await fetch('/v1/timetable/backups', { credentials: 'include' });
+      const j = await res.json();
+      setBackups(Array.isArray(j?.data) ? j.data : []);
+    } catch {}
+  };
+
+  const restoreBackup = async (filename: string) => {
+    try {
+      const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ filename }) });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się przywrócić kopii'); return; }
+      alert('Przywrócono wybrany plan.');
+    } catch {}
+  };
+
+  const startArticlesScrape = async () => {
+    try {
+      setArticlesBusy(true);
+      const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include' });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić zadania'); setArticlesBusy(false); return; }
+      const j = await res.json();
+      const jobId = j?.jobId;
+      if (!jobId) { setArticlesBusy(false); return; }
+      setArticlesJob({ id: jobId, status: 'queued' });
+      // Poll co 2s do zakończenia
+      const poll = async () => {
+        try {
+          const st = await fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' });
+          const jj = await st.json();
+          setArticlesJob({ id: jobId, status: jj?.status || 'unknown' });
+          if (jj?.status === 'succeeded' || jj?.status === 'failed') {
+            setArticlesBusy(false);
+            if (jj?.status === 'succeeded') {
+              // Odśwież newsy po zakończeniu (proste przeładowanie pliku statycznego)
+              try { await fetch('/articles.json', { cache: 'no-store' }); } catch {}
+            } else if (jj?.error) {
+              console.error('Articles job error:', jj.error);
+            }
+            return;
+          }
+          setTimeout(poll, 2000);
+        } catch {
+          setTimeout(poll, 2000);
+        }
+      };
+      setTimeout(poll, 1500);
+    } catch {
+      setArticlesBusy(false);
+    }
   };
 
   return (
@@ -202,6 +269,51 @@ export default function Hub({ navigate }: HubProps) {
                     <button onClick={regenSingleKey} className="px-3 py-2 rounded bg-amber-600 hover:bg-amber-500">Regeneruj</button>
                   </div>
                 </section>
+                {me?.username === 'admin' ? (
+                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                    <div className="text-sm font-medium mb-2">Aktualności</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={startArticlesScrape}
+                        disabled={articlesBusy}
+                        className={`px-3 py-2 rounded ${articlesBusy ? 'bg-zinc-700' : 'bg-emerald-600 hover:bg-emerald-500'}`}
+                      >
+                        {articlesBusy ? 'Aktualizuję…' : 'Aktualizuj artykuły'}
+                      </button>
+                      {articlesJob ? (
+                        <span className="text-xs opacity-80">Status: {articlesJob.status}</span>
+                      ) : null}
+                    </div>
+                    <div className="text-[11px] mt-2 opacity-70">Po zakończeniu zadania nowe artykuły pojawią się w sekcji aktualności.</div>
+                  </section>
+                ) : null}
+                {me?.username === 'admin' ? (
+                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                    <div className="text-sm font-medium mb-2">Plan lekcji</div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <button onClick={refreshTimetable} disabled={ttBusy} className={`px-3 py-2 rounded ${ttBusy ? 'bg-zinc-700' : 'bg-blue-600 hover:bg-blue-500'}`}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</button>
+                      <button onClick={loadBackups} className="px-3 py-2 rounded border border-zinc-700 hover:bg-zinc-800">Pokaż kopie zapasowe</button>
+                    </div>
+                    {Array.isArray(backups) ? (
+                      backups.length === 0 ? (
+                        <div className="text-xs text-zinc-400">Brak kopii zapasowych.</div>
+                      ) : (
+                        <div className="max-h-40 overflow-y-auto text-xs">
+                          {backups.map((b) => (
+                            <div key={b.filename} className="flex items-center justify-between py-1 border-b border-zinc-800 last:border-b-0">
+                              <div className="truncate pr-2">{b.filename}</div>
+                              <div className="flex items-center gap-2">
+                                <span className="opacity-70">{new Date(b.mtime).toLocaleString()}</span>
+                                <button onClick={() => restoreBackup(b.filename)} className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500">Przywróć</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : null}
+                    <div className="text-[11px] mt-2 opacity-70">Przechowujemy 5 ostatnich różnych wersji planu.</div>
+                  </section>
+                ) : null}
               </div>
             )}
           </div>

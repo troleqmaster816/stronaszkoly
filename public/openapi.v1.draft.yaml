@@ -136,6 +136,20 @@ components:
         expiresAt: { type: string, format: date-time }
       required: [token, url, expiresAt]
 
+    BackupEntry:
+      type: object
+      properties:
+        filename: { type: string }
+        size: { type: integer }
+        mtime: { type: string, format: date-time }
+      required: [filename, size, mtime]
+
+    OkResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+
 paths:
   /v1/health:
     get:
@@ -571,6 +585,20 @@ paths:
                   jobId: { type: string }
                   statusUrl: { type: string }
                 required: [jobId, statusUrl]
+  /v1/jobs/articles-scrape:
+    post:
+      summary: Start an async job to refresh articles (admin-only)
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string }
+                  statusUrl: { type: string }
+                required: [jobId, statusUrl]
   /v1/jobs/{jobId}:
     get:
       summary: Get job status
@@ -593,5 +621,100 @@ paths:
                   finishedAt: { type: string, format: date-time, nullable: true }
                   error: { type: string, nullable: true }
                 required: [id, status]
+
+  /v1/refresh:
+    post:
+      summary: Synchronously refresh timetable data using the scraper
+      responses:
+        '200':
+          description: Scrape finished successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '409':
+          description: Scraper already running
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          description: Error during scraping
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/timetable/backups:
+    get:
+      summary: List available timetable backups (admin-only)
+      responses:
+        '200':
+          description: Backups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BackupEntry' }
+                required: [data]
+
+  /v1/timetable/restore:
+    post:
+      summary: Restore timetable_data.json from a selected backup (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename: { type: string }
+              required: [filename]
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '400':
+          description: Invalid filename
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: Backup not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/apikey:
+    get:
+      summary: Get current user's API key (or admin API key)
+      responses:
+        '200':
+          description: API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  apiKey: { type: string }
+                required: [ok, apiKey]
+
+  /v1/apikey/regenerate:
+    post:
+      summary: Regenerate the API key for the current user (or admin)
+      responses:
+        '200':
+          description: New key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  apiKey: { type: string }
+                required: [ok, apiKey]
 
 
