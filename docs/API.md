@@ -54,11 +54,20 @@ W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wyst
 ## Timetable
 
 - `GET /v1/teachers` → `{ [id: string]: string }`
+- `GET /v1/classes` → `{ [id: string]: string }`
+- `GET /v1/rooms` → `{ [id: string]: string }`
 - `GET /v1/teachers/:id/timetable` → `{ data: Lesson[] }`
 - `GET /v1/classes/:id/timetable?group=2/2&includeWhole=true` → `{ data: Lesson[] }`
   - `group` (opcjonalnie): identyfikator lub nazwa grupy (np. `2/2`). Zwraca lekcje dla całej klasy ORAZ wskazanej grupy; inne grupy są wykluczone.
   - `includeWhole` (opcjonalnie, domyślnie `true`): czy dołączyć lekcje „cała klasa” przy filtrowaniu po `group`.
 - `GET /v1/rooms/:id/timetable` → `{ data: Lesson[] }`
+
+Identyfikatory: `:id` może być kanonicznym identyfikatorem z pliku (np. `n12`, `o5`, `s36`) albo aliasem czytelnym dla człowieka:
+- nauczyciel: inicjały/kod (np. `RM`),
+- klasa: kod klasy (np. `4TAI`),
+- sala: numer (np. `407`).
+
+Jeśli alias jest niejednoznaczny, zwrócony zostanie `409 Conflict`. W odpowiedzi `200` timetablowej zwracamy również pole `id` – kanoniczne ID, które zostało rozpoznane.
 
 Przykład 4TAI Poniedziałek, grupa 2/2:
 ```bash
@@ -97,6 +106,8 @@ type AttendanceState = {
 
 Endpointy:
 
+- `GET /v1/attendance` → `{ ok: true, data: AttendanceState }`
+- `PUT /v1/attendance` body `AttendanceState` → `{ ok: true }`
 - `GET /v1/attendance/entries?from&to&subjectKey&classId&teacherId&limit&cursor` → `{ data: AttendanceEntry[], nextCursor? }`
 - `PATCH /v1/attendance/entries` body `{ updates: { id, present, ifMatch? }[] }` → `{ ok: true, updated }` (409 przy konflikcie wersji)
 - `GET /v1/attendance/summary?from&to&subjectKey` → `{ data: { total, present, percent, needToReach50, canSkipAndKeep50 } }`
@@ -154,6 +165,15 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 
 - Odczyt (wymaga auth): `GET /v1/overrides` → `{ data: { subjectOverrides, teacherNameOverrides } }`
 - Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
+
+## Zadania i utrzymanie planu
+
+- `POST /v1/jobs/timetable-scrape` (admin) → `202 { jobId, statusUrl }` – uruchamia asynchroniczne odświeżenie planu
+- `POST /v1/jobs/articles-scrape` (admin) → `202 { jobId, statusUrl }` – odświeża artykuły
+- `GET /v1/jobs/:jobId` → status zadania (`queued|running|succeeded|failed`)
+- `POST /v1/refresh` (admin) → synchroniczne odświeżenie planu przez scraper (`200|409|500`)
+- `GET /v1/timetable/backups` (admin) → `{ data: { filename, size, mtime }[] }`
+- `POST /v1/timetable/restore` (admin) body `{ filename }` → `{ ok: true }`
 
 ## Przykłady (JS fetch)
 

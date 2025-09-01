@@ -46,6 +46,31 @@ export type AttendanceSummary = {
   canSkipAndKeep50: number;
 };
 
+export type AttendanceState = {
+  subjects: { key: string; label: string }[];
+  plans: Array<{
+    id: string;
+    name: string;
+    days: Record<string, { items: { slotHint?: string; subjectKey: string; subjectLabel: string }[] }>;
+  }>;
+  byDate: Record<string, Array<{
+    id: string;
+    date: string;
+    dayName?: string;
+    slot?: string;
+    subjectKey: string;
+    subjectLabel: string;
+    present: boolean;
+    teacherId?: string | null;
+    classId?: string | null;
+    roomId?: string | null;
+  }>>;
+  version?: number;
+  updatedAt?: number;
+};
+
+export type BackupEntry = { filename: string; size: number; mtime: string };
+
 type FetchOptions = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
 
 export class ApiClient {
@@ -83,17 +108,33 @@ export class ApiClient {
   listTeachers() {
     return fetch(`${this.baseUrl}/v1/teachers`, { headers: this.headers() }).then(r => this.handle<Record<string, string>>(r));
   }
+  listClasses() {
+    return fetch(`${this.baseUrl}/v1/classes`, { headers: this.headers() }).then(r => this.handle<Record<string, string>>(r));
+  }
+  listRooms() {
+    return fetch(`${this.baseUrl}/v1/rooms`, { headers: this.headers() }).then(r => this.handle<Record<string, string>>(r));
+  }
   getTeacherTimetable(id: string) {
-    return fetch(`${this.baseUrl}/v1/teachers/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[] }>(r));
+    return fetch(`${this.baseUrl}/v1/teachers/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[]; id?: string }>(r));
   }
   getClassTimetable(id: string) {
-    return fetch(`${this.baseUrl}/v1/classes/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[] }>(r));
+    return fetch(`${this.baseUrl}/v1/classes/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[]; id?: string }>(r));
   }
   getRoomTimetable(id: string) {
-    return fetch(`${this.baseUrl}/v1/rooms/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[] }>(r));
+    return fetch(`${this.baseUrl}/v1/rooms/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[]; id?: string }>(r));
   }
 
   // Attendance
+  getAttendance() {
+    return fetch(`${this.baseUrl}/v1/attendance`, { headers: this.headers() }).then(r => this.handle<{ ok: boolean; data: AttendanceState }>(r));
+  }
+  putAttendance(state: AttendanceState) {
+    return fetch(`${this.baseUrl}/v1/attendance`, {
+      method: "PUT",
+      headers: this.headers(),
+      body: JSON.stringify(state),
+    }).then(r => this.handle<{ ok: boolean }>(r));
+  }
   getAttendanceEntries(params: { from?: string; to?: string; subjectKey?: string; classId?: string; teacherId?: string; limit?: number; cursor?: string } = {}) {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) q.set(k, String(v));
@@ -116,6 +157,25 @@ export class ApiClient {
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) q.set(k, String(v));
     const url = `${this.baseUrl}/v1/attendance/summary${q.toString() ? "?" + q.toString() : ""}`;
     return fetch(url, { headers: this.headers() }).then(r => this.handle<{ data: AttendanceSummary }>(r));
+  }
+
+  setDayPresent(dateISO: string, present: boolean) {
+    return fetch(`${this.baseUrl}/v1/attendance/days/${encodeURIComponent(dateISO)}/present`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ present }),
+    }).then(r => this.handle<{ ok: boolean; updated: number }>(r));
+  }
+
+  getPlans() {
+    return fetch(`${this.baseUrl}/v1/attendance/plans`, { headers: this.headers() }).then(r => this.handle<{ data: AttendanceState["plans"] }>(r));
+  }
+  applyPlan(dateISO: string, body: { planId: string; overwrite?: boolean; setPresent?: boolean }) {
+    return fetch(`${this.baseUrl}/v1/attendance/days/${encodeURIComponent(dateISO)}/apply-plan`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    }).then(r => this.handle<{ ok: boolean; created: number; overwritten: boolean }>(r));
   }
 
   // Approvals
@@ -153,8 +213,26 @@ export class ApiClient {
   startTimetableScrape() {
     return fetch(`${this.baseUrl}/v1/jobs/timetable-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<{ jobId: string; statusUrl: string }>(r));
   }
+  startArticlesScrape() {
+    return fetch(`${this.baseUrl}/v1/jobs/articles-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<{ jobId: string; statusUrl: string }>(r));
+  }
   getJob(jobId: string) {
     return fetch(`${this.baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`, { headers: this.headers() }).then(r => this.handle<{ id: string; status: string }>(r));
+  }
+
+  // Timetable maintenance
+  refreshTimetableSync() {
+    return fetch(`${this.baseUrl}/v1/refresh`, { method: "POST", headers: this.headers() }).then(r => this.handle<{ ok: boolean }>(r));
+  }
+  listBackups() {
+    return fetch(`${this.baseUrl}/v1/timetable/backups`, { headers: this.headers() }).then(r => this.handle<{ data: BackupEntry[] }>(r));
+  }
+  restoreBackup(filename: string) {
+    return fetch(`${this.baseUrl}/v1/timetable/restore`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ filename }),
+    }).then(r => this.handle<{ ok: boolean }>(r));
   }
 }
 

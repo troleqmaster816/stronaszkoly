@@ -150,6 +150,52 @@ components:
         ok: { type: boolean }
       required: [ok]
 
+    AttendanceState:
+      type: object
+      description: Full per-user attendance state (used by GET/PUT /v1/attendance)
+      properties:
+        subjects:
+          type: array
+          items: { type: object, properties: { key: { type: string }, label: { type: string } }, required: [key, label] }
+        plans:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              days:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          slotHint: { type: string, nullable: true }
+                          subjectKey: { type: string }
+                          subjectLabel: { type: string }
+            required: [id, name, days]
+        byDate:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                id: { type: string }
+                date: { type: string, format: date }
+                dayName: { type: string }
+                slot: { type: string }
+                subjectKey: { type: string }
+                subjectLabel: { type: string }
+                present: { type: boolean }
+              required: [id, date, subjectKey, subjectLabel, present]
+        version: { type: integer, nullable: true }
+        updatedAt: { type: integer, nullable: true }
+
 paths:
   /v1/health:
     get:
@@ -179,12 +225,74 @@ paths:
                   authenticated: { type: boolean }
                   user: { anyOf: [ { $ref: '#/components/schemas/User' }, { type: 'null' } ] }
                 required: [ok, authenticated]
+
+  /v1/login:
+    post:
+      summary: Log in and set a session cookie (for web panel)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+              required: [username, password]
+      responses:
+        '200': { description: Logged in }
+
+  /v1/logout:
+    post:
+      summary: Log out and clear the session cookie
+      responses:
+        '200': { description: Logged out }
+
+  /v1/register:
+    post:
+      summary: Register a new user and create a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+              required: [username, password]
+      responses:
+        '200': { description: Registered }
   /v1/teachers:
     get:
       summary: List teachers
       responses:
         '200':
           description: Map of teacher id to label
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: string }
+
+  /v1/classes:
+    get:
+      summary: List classes
+      responses:
+        '200':
+          description: Map of class id to label
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: string }
+
+  /v1/rooms:
+    get:
+      summary: List rooms
+      responses:
+        '200':
+          description: Map of room id to label
           content:
             application/json:
               schema:
@@ -198,7 +306,7 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema: { type: string, description: Canonical id (e.g., n12) or alias (e.g., initials like RM). Aliases may be ambiguous (409). }
       responses:
         '200':
           description: Lessons for the teacher
@@ -210,6 +318,7 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Lesson' }
+                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
                 required: [data]
 
   /v1/classes/{id}/timetable:
@@ -219,7 +328,7 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema: { type: string, description: Canonical id (e.g., o5) or alias (e.g., 4TAI). Aliases may be ambiguous (409). }
         - name: group
           in: query
           required: false
@@ -241,6 +350,7 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Lesson' }
+                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
                 required: [data]
 
   /v1/rooms/{id}/timetable:
@@ -250,7 +360,7 @@ paths:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema: { type: string, description: Canonical id (e.g., s36) or alias (e.g., room number 407). Aliases may be ambiguous (409). }
       responses:
         '200':
           description: Lessons for the room
@@ -262,6 +372,7 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Lesson' }
+                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
                 required: [data]
 
   /v1/attendance/entries:
@@ -339,6 +450,34 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/attendance:
+    get:
+      summary: Get full attendance state for the current user
+      responses:
+        '200':
+          description: Current state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/AttendanceState' }
+                required: [ok, data]
+    put:
+      summary: Replace full attendance state for the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceState' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
 
   /v1/attendance/summary:
     get:
@@ -573,7 +712,7 @@ paths:
 
   /v1/jobs/timetable-scrape:
     post:
-      summary: Start an async job to refresh timetable data
+      summary: Start an async job to refresh timetable data (admin-only)
       responses:
         '202':
           description: Job accepted
@@ -624,7 +763,7 @@ paths:
 
   /v1/refresh:
     post:
-      summary: Synchronously refresh timetable data using the scraper
+      summary: Synchronously refresh timetable data using the scraper (admin-only)
       responses:
         '200':
           description: Scrape finished successfully

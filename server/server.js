@@ -488,7 +488,8 @@ v1.put('/attendance', requireAuthOrApiKey(['write:attendance']), (req, res) => {
 });
 
 // Timetable refresh under v1 (synchronous, like legacy)
-v1.post('/refresh', requireAuth, async (_req, res) => {
+v1.post('/refresh', requireAuth, async (req, res) => {
+  if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
   if (isRunning) {
     return res.status(409).json({ ok: false, error: 'Scraper już działa' });
   }
@@ -575,20 +576,95 @@ v1.get('/teachers', (_req, res) => {
   res.json(data.teachers);
 });
 
+// New: list classes
+v1.get('/classes', (_req, res) => {
+  const data = readTimetableFile();
+  if (!data || !data.classes) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json');
+  setTimetableCacheHeaders(res);
+  res.json(data.classes);
+});
+
+// New: list rooms
+v1.get('/rooms', (_req, res) => {
+  const data = readTimetableFile();
+  if (!data || !data.rooms) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json');
+  setTimetableCacheHeaders(res);
+  res.json(data.rooms);
+});
+
+// Helper: resolve human-friendly alias (e.g., "4TAI", "RM", "407") to canonical timetable id (o*/n*/s*)
+function resolveCanonicalId(data, domain, inputId) {
+  if (!data || !data.timetables) return { ok: false, error: 'missing' };
+  const id = String(inputId || '').trim();
+  if (id in (data.timetables || {})) return { ok: true, id };
+  const map = domain === 'teachers' ? (data.teachers || {}) : domain === 'classes' ? (data.classes || {}) : (data.rooms || {});
+  const values = Object.entries(map || {});
+  if (values.length === 0) return { ok: false, error: 'missing' };
+  const needle = id.toLowerCase();
+  const candidates = [];
+  for (const [canon, label] of values) {
+    const name = String(label || '').trim();
+    // 1) Exact match on label (case-insensitive)
+    if (name.toLowerCase() === needle) candidates.push(canon);
+    // 2) For rooms: match first token/number from label (e.g., "316 Pracownia..." => "316")
+    if (domain === 'rooms') {
+      const firstToken = name.split(/\s+/)[0];
+      if (firstToken && firstToken.toLowerCase() === needle) candidates.push(canon);
+      // Also allow numeric-only match when token has leading zeros
+      const numeric = firstToken && firstToken.replace(/^0+/, '');
+      const needleNumeric = needle.replace(/^0+/, '');
+      if (numeric && numeric && numeric.toLowerCase() === needleNumeric && !candidates.includes(canon)) candidates.push(canon);
+    }
+    // 3) For teachers: allow matching simple initials/codes like "RM"
+    if (domain === 'teachers') {
+      const compact = name.replace(/\s+/g, '').toLowerCase();
+      if (compact === needle) candidates.push(canon);
+    }
+    // 4) For classes: allow hyphen/space-insensitive
+    if (domain === 'classes') {
+      const normalized = name.replace(/\s+|-/g, '').toLowerCase();
+      const needleNorm = needle.replace(/\s+|-/g, '');
+      if (normalized === needleNorm) candidates.push(canon);
+    }
+  }
+  const uniq = Array.from(new Set(candidates));
+  if (uniq.length === 1) return { ok: true, id: uniq[0] };
+  if (uniq.length > 1) return { ok: false, error: 'ambiguous', candidates: uniq };
+  return { ok: false, error: 'not_found' };
+}
+
 v1.get('/teachers/:id/timetable', (req, res) => {
   const data = readTimetableFile();
   if (!data || !data.timetables) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json');
-  const id = String(req.params.id);
-  const lessons = Array.isArray(data.timetables[id]) ? data.timetables[id] : [];
+  const idIn = String(req.params.id || '').trim();
+  let canon = idIn;
+  if (!(canon in data.timetables)) {
+    const resolved = resolveCanonicalId(data, 'teachers', idIn);
+    if (!resolved.ok) {
+      if (resolved.error === 'ambiguous') return problem(res, 409, 'timetable.alias_ambiguous', 'Conflict', 'Alias matches multiple items', { candidates: resolved.candidates });
+      return problem(res, 404, 'timetable.not_found', 'Not Found', 'Nie znaleziono nauczyciela');
+    }
+    canon = resolved.id;
+  }
+  const lessons = Array.isArray(data.timetables[canon]) ? data.timetables[canon] : [];
   setTimetableCacheHeaders(res);
-  res.json({ data: lessons });
+  res.json({ data: lessons, id: canon });
 });
 
 v1.get('/classes/:id/timetable', (req, res) => {
   const data = readTimetableFile();
   if (!data || !data.timetables) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json');
-  const id = String(req.params.id);
-  const lessons = Array.isArray(data.timetables[id]) ? data.timetables[id] : [];
+  const idIn = String(req.params.id || '').trim();
+  let canon = idIn;
+  if (!(canon in data.timetables)) {
+    const resolved = resolveCanonicalId(data, 'classes', idIn);
+    if (!resolved.ok) {
+      if (resolved.error === 'ambiguous') return problem(res, 409, 'timetable.alias_ambiguous', 'Conflict', 'Alias matches multiple items', { candidates: resolved.candidates });
+      return problem(res, 404, 'timetable.not_found', 'Not Found', 'Nie znaleziono klasy');
+    }
+    canon = resolved.id;
+  }
+  const lessons = Array.isArray(data.timetables[canon]) ? data.timetables[canon] : [];
   const groupQuery = typeof req.query.group === 'string' ? req.query.group.trim() : null;
   const includeWhole = req.query.includeWhole === undefined ? true : String(req.query.includeWhole).toLowerCase() !== 'false';
   let filtered = lessons;
@@ -610,16 +686,25 @@ v1.get('/classes/:id/timetable', (req, res) => {
     });
   }
   setTimetableCacheHeaders(res);
-  res.json({ data: filtered });
+  res.json({ data: filtered, id: canon });
 });
 
 v1.get('/rooms/:id/timetable', (req, res) => {
   const data = readTimetableFile();
   if (!data || !data.timetables) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json');
-  const id = String(req.params.id);
-  const lessons = Array.isArray(data.timetables[id]) ? data.timetables[id] : [];
+  const idIn = String(req.params.id || '').trim();
+  let canon = idIn;
+  if (!(canon in data.timetables)) {
+    const resolved = resolveCanonicalId(data, 'rooms', idIn);
+    if (!resolved.ok) {
+      if (resolved.error === 'ambiguous') return problem(res, 409, 'timetable.alias_ambiguous', 'Conflict', 'Alias matches multiple items', { candidates: resolved.candidates });
+      return problem(res, 404, 'timetable.not_found', 'Not Found', 'Nie znaleziono sali');
+    }
+    canon = resolved.id;
+  }
+  const lessons = Array.isArray(data.timetables[canon]) ? data.timetables[canon] : [];
   setTimetableCacheHeaders(res);
-  res.json({ data: lessons });
+  res.json({ data: lessons, id: canon });
 });
 
 // Attendance entries (list + patch)
@@ -856,7 +941,8 @@ v1.put('/overrides', requireAuth, (req, res) => {
 // Jobs: async timetable scrape
 const JOBS = new Map();
 let isArticleRunning = false;
-v1.post('/jobs/timetable-scrape', async (_req, res) => {
+v1.post('/jobs/timetable-scrape', async (req, res) => {
+  if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
   if (isRunning) {
     // Create a pseudo-job representing ongoing work
     const running = Array.from(JOBS.values()).find(j => j.status === 'running');
