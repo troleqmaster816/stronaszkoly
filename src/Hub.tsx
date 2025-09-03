@@ -75,7 +75,8 @@ export default function Hub({ navigate }: HubProps) {
   const refreshTimetable = async () => {
     try {
       setTtBusy(true);
-      const res = await fetch('/v1/refresh', { method: 'POST', credentials: 'include' });
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/refresh', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić odświeżania'); return; }
       alert('Plan został odświeżony.');
     } finally {
@@ -93,7 +94,8 @@ export default function Hub({ navigate }: HubProps) {
 
   const restoreBackup = async (filename: string) => {
     try {
-      const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ filename }) });
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, credentials: 'include', body: JSON.stringify({ filename }) });
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się przywrócić kopii'); return; }
       alert('Przywrócono wybrany plan.');
     } catch {}
@@ -102,7 +104,8 @@ export default function Hub({ navigate }: HubProps) {
   const startArticlesScrape = async () => {
     try {
       setArticlesBusy(true);
-      const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include' });
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić zadania'); setArticlesBusy(false); return; }
       const j = await res.json();
       const jobId = j?.jobId;

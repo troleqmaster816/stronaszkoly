@@ -77,7 +77,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const loadOverrides = async () => {
     try {
-      const res = await fetch(`/v1/overrides`, { cache: "no-store" });
+      const res = await fetch(`/v1/overrides`, { cache: "no-store", credentials: 'include' });
       if (!res.ok) return;
       const j = await res.json();
       if (j?.ok && j.data) {
@@ -374,7 +374,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      const res = await fetch("/v1/refresh", { method: "POST" });
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch("/v1/refresh", { method: "POST", headers: { 'X-CSRF-Token': csrf } });
       if (!res.ok) {
         const msg = await res.text();
         alert(`Błąd podczas odświeżania: ${msg || res.status}`);
@@ -421,9 +422,10 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const saveOverrides = async () => {
     try {
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
       const res = await fetch('/v1/overrides', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         credentials: 'include',
         body: JSON.stringify(overrides),
       });

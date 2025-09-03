@@ -59,9 +59,10 @@ export function useAttendanceState() {
     const doPersist = async () => {
       if (remoteEnabled.current) {
         try {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
           await fetch('/v1/attendance', {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
             credentials: 'include',
             body: JSON.stringify({ ...state, version: 1 }),
           });

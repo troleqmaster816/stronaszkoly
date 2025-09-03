@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync, renameSync } from 'node:fs';
 import crypto from 'node:crypto';
 import swaggerUi from 'swagger-ui-express';
 import yaml from 'js-yaml';
@@ -21,9 +21,55 @@ const timetableBackupsDir = join(publicDir, 'backups', 'timetables');
 const app = express();
 app.disable('x-powered-by');
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+const isDevEnv = (process.env.NODE_ENV || '').toLowerCase() !== 'production';
+function isDevOriginAllowed(origin) {
+  try {
+    if (!origin) return true;
+    const url = new URL(origin);
+    const host = url.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+    if (host.endsWith('.ngrok-free.app') || host.endsWith('.ngrok.io')) return true;
+  } catch {}
+  return false;
+}
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (isDevEnv && isDevOriginAllowed(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'), false);
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: '64kb' }));
 app.use(cookieParser());
+// CSRF helpers
+const IS_PROD = process.env.NODE_ENV === 'production';
+const CSRF_COOKIE_NAME = 'csrf';
+function ensureCsrfCookie(req, res, next) {
+  try {
+    const cur = req.cookies && req.cookies[CSRF_COOKIE_NAME];
+    if (!cur) {
+      const token = crypto.randomBytes(24).toString('base64url');
+      res.cookie(CSRF_COOKIE_NAME, token, { httpOnly: false, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000, secure: IS_PROD });
+    }
+  } catch {}
+  next();
+}
+function requireCsrfIfCookieAuth(req, res, next) {
+  // Enforce CSRF only when the request uses cookie-based auth/session
+  const hasSessionCookie = !!(req.cookies && req.cookies.auth);
+  if (!hasSessionCookie) return next();
+  const header = req.get('x-csrf-token');
+  const cookie = req.cookies && req.cookies[CSRF_COOKIE_NAME];
+  if (cookie && header && header === cookie) return next();
+  return problem(res, 403, 'csrf.missing_or_invalid', 'Forbidden', 'Missing or invalid CSRF token');
+}
+app.use(ensureCsrfCookie);
 
 // Serve Swagger UI for the OpenAPI draft (dev/admin purpose)
 try {
@@ -73,7 +119,9 @@ function loadDb() {
   return { users: [], apiKeys: [], attendanceByUser: {}, approvals: [], adminApiKey: null };
 }
 function saveDb(db) {
-  writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+  const tmp = dbPath + '.' + process.pid + '.tmp';
+  writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
+  renameSync(tmp, dbPath);
 }
 
 function uid(prefix = 'id_') {
@@ -109,7 +157,9 @@ function loadOverrides() {
 
 function saveOverrides(data) {
   const safe = data && typeof data === 'object' ? data : { subjectOverrides: {}, teacherNameOverrides: {} };
-  writeFileSync(overridesPath, JSON.stringify(safe, null, 2), 'utf8');
+  const tmp = overridesPath + '.' + process.pid + '.tmp';
+  writeFileSync(tmp, JSON.stringify(safe, null, 2), 'utf8');
+  renameSync(tmp, overridesPath);
 }
 
 // Problem Details helper (RFC7807-like)
@@ -125,6 +175,7 @@ function requireAuth(req, res, next) {
   if (!token || !TOKENS.has(token)) return res.status(401).json({ ok: false, error: 'Unauthenticated' });
   const userId = TOKENS.get(token);
   req.userId = userId;
+  req.authMethod = 'cookie';
   return next();
 }
 
@@ -157,6 +208,7 @@ function requireAuthOrApiKey(scopes = []) {
           if (!checkApiKeyScopes(item.scopes, scopes)) return problem(res, 403, 'auth.insufficient_scope', 'Forbidden', 'Insufficient scope');
           req.userId = item.userId;
           req.apiKeyId = item.id;
+          req.authMethod = 'bearer';
           return next();
         }
         throw new Error('Malformed');
@@ -169,6 +221,7 @@ function requireAuthOrApiKey(scopes = []) {
     if (!cookieToken || !TOKENS.has(cookieToken)) return problem(res, 401, 'auth.missing', 'Unauthorized', 'Missing Bearer token or session cookie');
     const userId = TOKENS.get(cookieToken);
     req.userId = userId;
+    req.authMethod = 'cookie';
     return next();
   };
 }
@@ -193,6 +246,7 @@ function requireBearer(scopes = []) {
         if (!checkApiKeyScopes(item.scopes, scopes)) return problem(res, 403, 'auth.insufficient_scope', 'Forbidden', 'Insufficient scope');
         req.userId = item.userId;
         req.apiKeyId = item.id;
+        req.authMethod = 'bearer';
         return next();
       }
       // Also allow single-key during migration
@@ -227,6 +281,27 @@ async function runCommand(cmd, args, options = {}) {
     if (child.stderr) child.stderr.on('data', (d) => (stderr += d.toString()));
     child.on('close', (code) => resolve({ code, stdout, stderr }));
   });
+}
+
+// Python deps caching – skip pip install if requirements.txt unchanged
+function getRequirementsHash() {
+  try {
+    const reqPath = join(publicDir, 'requirements.txt');
+    if (!existsSync(reqPath)) return null;
+    const content = readFileSync(reqPath, 'utf8');
+    return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+  } catch { return null; }
+}
+async function ensurePythonDepsInstalled(pythonCmd) {
+  const hash = getRequirementsHash();
+  const markerName = hash ? `.pip_installed_${hash}.txt` : `.pip_installed.txt`;
+  const markerPath = join(publicDir, markerName);
+  if (existsSync(markerPath)) return { skipped: true };
+  const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
+  const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
+  if (pip.code !== 0) return { error: pip.stderr.slice(-4000) };
+  try { writeFileSync(markerPath, String(Date.now()), 'utf8'); } catch {}
+  return { skipped: false };
 }
 
 // Legacy /api health – removed; use /v1/health
@@ -375,23 +450,20 @@ v1.get('/users/me', (req, res) => {
 });
 
 // Auth (cookie-based) under v1
-v1.post('/login', (req, res) => {
-  const { username, password } = (req.body && typeof req.body === 'object' ? req.body : {})
-    || {};
-  const qUser = req.query && typeof req.query.username === 'string' ? req.query.username : undefined;
-  const qPass = req.query && typeof req.query.password === 'string' ? req.query.password : undefined;
-  const userIn = String(username ?? qUser ?? '').trim().toLowerCase();
-  const passIn = String(password ?? qPass ?? '');
+v1.post('/login', loginLimiter, (req, res) => {
+  const { username, password } = (req.body && typeof req.body === 'object' ? req.body : {}) || {};
+  const userIn = String(username ?? '').trim().toLowerCase();
+  const passIn = String(password ?? '');
   const db = loadDb();
   const user = db.users.find(u => u.username === userIn);
   if (user && verifyPassword(passIn, user.passSalt, user.passHash)) {
-    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const token = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(token, user.id);
     res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
     return res.json({ ok: true });
   }
   if (userIn === ADMIN_USER && passIn === ADMIN_PASS) {
-    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const token = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(token, 'admin');
     res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
     return res.json({ ok: true });
@@ -418,7 +490,7 @@ v1.post('/register', (req, res) => {
     const user = { id: uid('u_'), username: u, passSalt: salt, passHash: hash, createdAt: Date.now(), apiKey: genUserApiKey() };
     db.users.push(user);
     saveDb(db);
-    const session = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const session = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(session, user.id);
     res.cookie('auth', session, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
     res.json({ ok: true });
@@ -465,7 +537,7 @@ v1.get('/attendance', requireAuthOrApiKey(['read:attendance']), (req, res) => {
   res.json({ ok: true, data: state });
 });
 
-v1.put('/attendance', requireAuthOrApiKey(['write:attendance']), (req, res) => {
+v1.put('/attendance', requireAuthOrApiKey(['write:attendance']), requireCsrfIfCookieAuth, (req, res) => {
   try {
     const db = loadDb();
     const userId = req.userId;
@@ -488,7 +560,7 @@ v1.put('/attendance', requireAuthOrApiKey(['write:attendance']), (req, res) => {
 });
 
 // Timetable refresh under v1 (synchronous, like legacy)
-v1.post('/refresh', requireAuth, async (req, res) => {
+v1.post('/refresh', requireAuth, requireCsrfIfCookieAuth, refreshLimiter, async (req, res) => {
   if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
   if (isRunning) {
     return res.status(409).json({ ok: false, error: 'Scraper już działa' });
@@ -503,12 +575,11 @@ v1.post('/refresh', requireAuth, async (req, res) => {
     // Read current timetable (raw) for comparison
     let prevRaw = null;
     try { if (existsSync(timetableFilePath)) prevRaw = readFileSync(timetableFilePath, 'utf8'); } catch {}
-    // Ensure Python deps installed
-    const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
-    const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
-    if (pip.code !== 0) {
+    // Ensure Python deps installed (cached)
+    const deps = await ensurePythonDepsInstalled(pythonCmd);
+    if (deps && deps.error) {
       isRunning = false;
-      return res.status(500).json({ ok: false, step: 'pip', error: pip.stderr.slice(-4000) });
+      return res.status(500).json({ ok: false, step: 'pip', error: deps.error });
     }
 
     // Run scraper
@@ -750,7 +821,7 @@ v1.get('/attendance/entries', requireAuthOrApiKey(['read:attendance']), (req, re
   res.json({ data: page, nextCursor: next });
 });
 
-v1.patch('/attendance/entries', requireAuthOrApiKey(['write:attendance']), (req, res) => {
+v1.patch('/attendance/entries', requireAuthOrApiKey(['write:attendance']), requireCsrfIfCookieAuth, (req, res) => {
   try {
     const db = loadDb();
     const userId = req.userId;
@@ -809,7 +880,7 @@ v1.get('/attendance/summary', requireAuthOrApiKey(['read:summary']), (req, res) 
 });
 
 // Set all entries for a given day to present/absent
-v1.post('/attendance/days/:dateISO/present', requireAuthOrApiKey(['write:attendance']), (req, res) => {
+v1.post('/attendance/days/:dateISO/present', requireAuthOrApiKey(['write:attendance']), requireCsrfIfCookieAuth, (req, res) => {
   try {
     const db = loadDb();
     const userId = req.userId;
@@ -853,7 +924,7 @@ function idempotencyMiddleware(req, res, next) {
   next();
 }
 
-v1.post('/approvals', requireAuth, idempotencyMiddleware, (req, res) => {
+v1.post('/approvals', requireAuth, requireCsrfIfCookieAuth, idempotencyMiddleware, (req, res) => {
   try {
     const { action, dateISO, entryId, present } = req.body || {};
     if (!action || !dateISO || !entryId) return problem(res, 400, 'request.invalid', 'Bad Request', 'Missing required fields');
@@ -877,13 +948,18 @@ v1.get('/approvals/:token', (req, res) => {
     const tokenHash = hashApiKeySecret(token);
     const item = db.approvals.find(a => a.tokenHash === tokenHash);
     if (!item) return problem(res, 404, 'approvals.not_found', 'Not Found', 'Nie znaleziono');
+    if (Date.now() > item.expiresAt) {
+      item.status = 'expired';
+      saveDb(db);
+      return problem(res, 410, 'approvals.expired', 'Gone', 'Token expired');
+    }
     res.json({ ok: true, data: { status: item.status, createdAt: new Date(item.createdAt).toISOString(), expiresAt: new Date(item.expiresAt).toISOString() } });
   } catch (e) {
     problem(res, 500, 'server.error', 'Internal Server Error', String(e));
   }
 });
 
-v1.post('/approvals/:token', async (req, res) => {
+v1.post('/approvals/:token', requireCsrfIfCookieAuth, async (req, res) => {
   try {
     const db = loadDb();
     const token = String(req.params.token || '');
@@ -891,6 +967,11 @@ v1.post('/approvals/:token', async (req, res) => {
     const item = db.approvals.find(a => a.tokenHash === tokenHash);
     if (!item) return problem(res, 404, 'approvals.not_found', 'Not Found', 'Nie znaleziono');
     if (item.status !== 'pending') return problem(res, 409, 'approvals.already_decided', 'Conflict', 'Already decided');
+    if (Date.now() > item.expiresAt) {
+      item.status = 'expired';
+      saveDb(db);
+      return problem(res, 410, 'approvals.expired', 'Gone', 'Token expired');
+    }
     const { decision } = req.body || {};
     if (decision !== 'accept' && decision !== 'deny') return problem(res, 400, 'request.invalid', 'Bad Request', 'Missing or invalid decision');
     item.status = decision === 'accept' ? 'accepted' : 'denied';
@@ -924,8 +1005,9 @@ v1.get('/overrides', requireAuth, (_req, res) => {
   }
 });
 
-v1.put('/overrides', requireAuth, (req, res) => {
+v1.put('/overrides', requireAuth, requireCsrfIfCookieAuth, (req, res) => {
   try {
+    if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
     const { subjectOverrides, teacherNameOverrides } = req.body || {};
     const data = {
       subjectOverrides: subjectOverrides && typeof subjectOverrides === 'object' ? subjectOverrides : {},
@@ -941,7 +1023,7 @@ v1.put('/overrides', requireAuth, (req, res) => {
 // Jobs: async timetable scrape
 const JOBS = new Map();
 let isArticleRunning = false;
-v1.post('/jobs/timetable-scrape', async (req, res) => {
+v1.post('/jobs/timetable-scrape', requireAuth, requireCsrfIfCookieAuth, async (req, res) => {
   if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
   if (isRunning) {
     // Create a pseudo-job representing ongoing work
@@ -959,10 +1041,9 @@ v1.post('/jobs/timetable-scrape', async (req, res) => {
       job.startedAt = new Date().toISOString();
       const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand();
       if (!pythonCmd) throw new Error('Brak interpretera Pythona');
-      // Ensure Python deps installed
-      const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
-      const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
-      if (pip.code !== 0) throw new Error(pip.stderr.slice(-4000));
+      // Ensure Python deps installed (cached)
+      const deps = await ensurePythonDepsInstalled(pythonCmd);
+      if (deps && deps.error) throw new Error(deps.error);
       // Run scraper
       const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'scraper.py'] : ['scraper.py'];
       const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
@@ -985,7 +1066,7 @@ v1.get('/jobs/:jobId', (req, res) => {
 });
 
 // Articles scrape job (admin-only)
-v1.post('/jobs/articles-scrape', requireAuth, async (req, res) => {
+v1.post('/jobs/articles-scrape', requireAuth, requireCsrfIfCookieAuth, async (req, res) => {
   try {
     if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
     if (isArticleRunning) {
@@ -1003,9 +1084,8 @@ v1.post('/jobs/articles-scrape', requireAuth, async (req, res) => {
         job.startedAt = new Date().toISOString();
         const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand();
         if (!pythonCmd) throw new Error('Brak interpretera Pythona');
-        const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
-        const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
-        if (pip.code !== 0) throw new Error(pip.stderr.slice(-4000));
+        const deps = await ensurePythonDepsInstalled(pythonCmd);
+        if (deps && deps.error) throw new Error(deps.error);
         const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'article_scraper.py'] : ['article_scraper.py'];
         const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
         if (run.code !== 0) throw new Error(run.stderr.slice(-4000));
@@ -1044,7 +1124,7 @@ v1.get('/timetable/backups', requireAuth, (req, res) => {
 });
 
 // Restore a selected backup (admin only)
-v1.post('/timetable/restore', requireAuth, (req, res) => {
+v1.post('/timetable/restore', requireAuth, requireCsrfIfCookieAuth, (req, res) => {
   if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator');
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
