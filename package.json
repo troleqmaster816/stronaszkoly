@@ -9,6 +9,7 @@
     "server": "node server/server.js",
     "dev:full": "concurrently -k -n server,vite -c blue,magenta \"npm:server\" \"npm:dev\"",
     "build": "tsc -b && vite build",
+    "start": "NODE_ENV=production node server/server.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "docs:ui": "node server/server.js",

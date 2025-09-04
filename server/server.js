@@ -15,6 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = dirname(__dirname);
 const publicDir = join(projectRoot, 'public');
+const distDir = join(projectRoot, 'dist');
 const timetableFilePath = join(publicDir, 'timetable_data.json');
 const timetableBackupsDir = join(publicDir, 'backups', 'timetables');
 
@@ -50,6 +51,13 @@ app.use(cookieParser());
 // CSRF helpers
 const IS_PROD = process.env.NODE_ENV === 'production';
 const CSRF_COOKIE_NAME = 'csrf';
+const AUTH_COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  path: '/',
+  secure: IS_PROD,
+  maxAge: 7 * 24 * 3600 * 1000,
+};
 function ensureCsrfCookie(req, res, next) {
   try {
     const cur = req.cookies && req.cookies[CSRF_COOKIE_NAME];
@@ -459,13 +467,13 @@ v1.post('/login', loginLimiter, (req, res) => {
   if (user && verifyPassword(passIn, user.passSalt, user.passHash)) {
     const token = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(token, user.id);
-    res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+    res.cookie('auth', token, AUTH_COOKIE_OPTS);
     return res.json({ ok: true });
   }
   if (userIn === ADMIN_USER && passIn === ADMIN_PASS) {
     const token = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(token, 'admin');
-    res.cookie('auth', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+    res.cookie('auth', token, AUTH_COOKIE_OPTS);
     return res.json({ ok: true });
   }
   return res.status(401).json({ ok: false, error: 'Nieprawidłowe dane logowania' });
@@ -474,7 +482,7 @@ v1.post('/login', loginLimiter, (req, res) => {
 v1.post('/logout', (_req, res) => {
   const token = (_req.cookies && _req.cookies.auth) || null;
   if (token && TOKENS.has(token)) TOKENS.delete(token);
-  res.clearCookie('auth');
+  res.clearCookie('auth', { path: '/', sameSite: 'lax', secure: IS_PROD });
   res.json({ ok: true });
 });
 
@@ -492,7 +500,7 @@ v1.post('/register', (req, res) => {
     saveDb(db);
     const session = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(session, user.id);
-    res.cookie('auth', session, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600 * 1000 });
+    res.cookie('auth', session, AUTH_COOKIE_OPTS);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -1223,3 +1231,20 @@ v1.post('/attendance/days/:dateISO/apply-plan', requireAuthOrApiKey(['write:atte
     problem(res, 500, 'server.error', 'Internal Server Error', String(e));
   }
 });
+
+// -------------------- Production static hosting --------------------
+// Serve built SPA from /dist when available (production)
+try {
+  if (existsSync(distDir)) {
+    app.use(express.static(distDir, { index: false, extensions: ['html'] }));
+    // SPA fallback: send index.html for unknown routes (except API/docs)
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/v1') || req.path.startsWith('/api') || req.path.startsWith('/docs')) return next();
+      try {
+        res.sendFile(join(distDir, 'index.html'));
+      } catch (e) {
+        next();
+      }
+    });
+  }
+} catch {}
