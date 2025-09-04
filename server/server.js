@@ -21,7 +21,29 @@ const timetableBackupsDir = join(publicDir, 'backups', 'timetables');
 
 const app = express();
 app.disable('x-powered-by');
-app.use(helmet());
+// Security headers
+// - Allow cross-origin resources (e.g., images) as requested
+// - Add an explicit CSP in production to allow Tailwind CDN and zse-zdwola.pl
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // We attach CSP separately below to customize per-environment
+  contentSecurityPolicy: false,
+}));
+if ((process.env.NODE_ENV || '').toLowerCase() === 'production') {
+  const directives = {
+    "default-src": ["'self'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    "script-src": ["'self'", 'https://cdn.tailwindcss.com', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    "style-src": ["'self'", "'unsafe-inline'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    "img-src": ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    "connect-src": ["'self'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    "font-src": ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    "object-src": ["'none'"],
+    "frame-ancestors": ["'self'"],
+    // You can enable the following if desired
+    // "upgrade-insecure-requests": [],
+  };
+  app.use(helmet.contentSecurityPolicy({ useDefaults: true, directives }));
+}
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map(s => s.trim())
@@ -49,6 +71,7 @@ app.use(cors({
 app.use(express.json({ limit: '64kb' }));
 app.use(cookieParser());
 // CSRF helpers
+// NOTE: keep using IS_PROD for cookie security below
 const IS_PROD = process.env.NODE_ENV === 'production';
 const CSRF_COOKIE_NAME = 'csrf';
 const AUTH_COOKIE_OPTS = {
