@@ -26,6 +26,14 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true,
         secure: false,
+      },
+      // Proxy Swagger UI served by the local Express server so that
+      // navigating to /docs in dev returns Swagger instead of SPA index.
+      // This also ensures X-Frame-Options SAMEORIGIN applies correctly.
+      '/docs': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+        secure: false,
       }
     }
   }
