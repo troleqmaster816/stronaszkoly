@@ -37,6 +37,14 @@ if ((process.env.NODE_ENV || '').toLowerCase() === 'production') {
     "img-src": ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
     "connect-src": ["'self'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
     "font-src": ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+    // Allow embedding Microsoft Office viewer for DOCX previews
+    "frame-src": [
+      "'self'",
+      'https://zse-zdwola.pl',
+      'https://*.zse-zdwola.pl',
+      'https://view.officeapps.live.com',
+      'https://*.officeapps.live.com'
+    ],
     "object-src": ["'none'"],
     "frame-ancestors": ["'self'"],
     // You can enable the following if desired
@@ -1256,6 +1264,25 @@ v1.post('/attendance/days/:dateISO/apply-plan', requireAuthOrApiKey(['write:atte
 });
 
 // -------------------- Production static hosting --------------------
+// Serve runtime-updated assets from /public (e.g., articles.json, timetable_data.json)
+try {
+  if (existsSync(publicDir)) {
+    app.use(express.static(publicDir, {
+      index: false,
+      etag: false,
+      cacheControl: false,
+      setHeaders: (res, path) => {
+        // Ensure JSON is never cached so admin updates are visible immediately
+        if (path.endsWith('.json')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      },
+    }));
+  }
+} catch {}
+
 // Serve built SPA from /dist when available (production)
 try {
   if (existsSync(distDir)) {

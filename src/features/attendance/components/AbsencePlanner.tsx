@@ -249,7 +249,9 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       const dayMiss = subjectsInDayCount[key] || 0;
       const cur = statPlus(base, add);
       // Mapa bez tolerowanych (do oceny tier)
-      if ((subjectPolicy[key] || 'NEUTRAL') !== 'TOLERATED') {
+      // UWAGA: używaj efektywnej polityki (z ustawień użytkownika),
+      // a nie wyłącznie subjectPolicy z propsów
+      if (getEffectivePolicy(key) !== 'TOLERATED') {
         perAfter[key] = { present: cur.present, total: cur.total + dayMiss };
       }
       // Mapa pełna (do listy zagrożeń i szczegółów)
@@ -268,7 +270,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       const req = getRequiredMargin(k);
       // uwzględnij cel frekwencji: przesuń punkt odniesienia powyżej 50%
       const target = getTargetPct(k); // np. 50, 60, 75
-      const targetBuf = Math.round((target/50 - 1) * st.total); // ile ponad 50% odpowiada celowi
+      const targetBuf = Math.ceil((target/50 - 1) * st.total); // bufor wymagany dla celu (zaokrąglenie w górę)
       const effectiveReq = Math.max(req, targetBuf);
       if (b < worstBuf) { worstBuf = b; worstKey = k; }
       if (b < 0) anyCritical = true;
@@ -297,13 +299,15 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       const isTolerated = getEffectivePolicy(key) === 'TOLERATED';
       const req = getRequiredMargin(key);
       const target = getTargetPct(key);
-      const targetBuf = st ? Math.round((target/50 - 1) * st.total) : 0;
+      const targetBuf = st ? Math.ceil((target/50 - 1) * st.total) : 0;
       const effectiveReq = Math.max(req, targetBuf);
       const projectedPct = st && st.total > 0 ? (st.present / st.total) * 100 : 0;
       const missingPctToTarget = Math.max(0, target - projectedPct);
+      const t = Math.max(0, Math.min(100, target))/100;
+      const missingLessonsToTarget = st ? (t >= 1 ? Infinity : Math.max(0, Math.ceil(((t * st.total) - Math.max(0,st.present)) / Math.max(1e-9,(1 - t))))) : 0;
       const present = st ? st.present : 0;
       const total = st ? st.total : 0;
-      return { key, label, buf, isTolerated, req: effectiveReq, target, targetBuf, projectedPct, missingPctToTarget, present, total };
+      return { key, label, buf, isTolerated, req: effectiveReq, target, targetBuf, projectedPct, missingPctToTarget, missingLessonsToTarget, present, total };
     }).filter(x => x.buf < x.req || x.buf <= 0)
       .sort((a,b)=>a.buf-b.buf);
 
@@ -458,16 +462,14 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                     else parts.push('Po opuszczeniu tego dnia całkowita frekwencja będzie dokładnie na progu 50% (bez zapasu).');
                   }
                   // 2) Lista zagrożonych przedmiotów
-                  const th = (r as any).threatened as Array<{label:string;buf:number;isTolerated:boolean;req:number;target:number;targetBuf:number;projectedPct:number;missingPctToTarget:number;present:number;total:number}> | undefined;
+                  const th = (r as any).threatened as Array<{label:string;buf:number;isTolerated:boolean;req:number;target:number;targetBuf:number;projectedPct:number;missingPctToTarget:number;missingLessonsToTarget:number;present:number;total:number}> | undefined;
                   if (th && th.length > 0) {
                     const listNodes = th.map((x, idx) => {
-                      const t = Math.max(0, Math.min(100, x.target))/100;
-                      const nTarget = t >= 1 ? Infinity : Math.max(0, Math.ceil(((t * x.total) - Math.max(0,x.present)) / (1 - t)));
+                      const nTarget = x.missingLessonsToTarget;
                       const showShort = () => {
-                        if (x.buf < 0) return <> {x.label}: brakuje {Math.abs(x.buf)} {pluralLekcja(Math.abs(x.buf))} do celu {x.target}%</>;
+                        if (Number.isFinite(nTarget) && nTarget > 0) return <> {x.label}: brakuje {nTarget} {pluralLekcja(nTarget)} do celu {x.target}%</>;
                         if (x.buf < x.req) return <> {x.label}: zapas {x.buf} {pluralLekcja(x.buf)} (wymagane {x.req} {pluralLekcja(x.req)}) względem celu {x.target}%</>;
-                        if (x.buf === 0) return <> {x.label}: dokładnie cel {x.target}%</>;
-                        return <> {x.label}: zapas {x.buf} {pluralLekcja(x.buf)} względem celu {x.target}%</>;
+                        return <> {x.label}: cel {x.target}% osiągnięty z zapasem {Math.max(0,x.buf)} {pluralLekcja(Math.max(0,x.buf))}</>;
                       };
                       const tooltip = (
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-neutral-950 border border-neutral-700 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
@@ -475,7 +477,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                           <div>Cel: {x.target}%</div>
                           <div>Wymagany zapas: {x.req} {pluralLekcja(x.req)}</div>
                           <div>Zapas po opuszczeniu: {x.buf} {pluralLekcja(x.buf)}</div>
-                          {Number.isFinite(nTarget) && <div>Brakuje do celu: {nTarget} {pluralLekcja(nTarget)}</div>}
+                          {Number.isFinite(nTarget) && (nTarget>0) && <div>Brakuje do celu: {nTarget} {pluralLekcja(nTarget)}</div>}
                         </div>
                       );
                       return (
@@ -495,9 +497,20 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                   if (sel) {
                     const map = (r as any).perAfterAll as Record<string,{present:number;total:number}> | undefined;
                     if (map && map[sel]) {
-                      const buf = 2*map[sel].present - map[sel].total;
+                      const presentSel = Math.max(0, map[sel].present);
+                      const totalSel = Math.max(0, map[sel].total);
+                      const buf = 2*presentSel - totalSel;
                       const sLabel = (r as any).daySubjects?.find((ds:any)=>ds.key===sel)?.label || sel;
-                      parts.push(buf >= 0 ? `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia pozostanie zapas ${buf} ${pluralLekcja(buf)}.` : `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia będzie brakować ${Math.abs(buf)} ${pluralLekcja(Math.abs(buf))} do progu 50%.`);
+                      const tgt = getTargetPct(sel);
+                      const rTarget = Math.max(0, Math.min(100, tgt))/100;
+                      const needToTarget = rTarget >= 1 ? Infinity : Math.max(0, Math.ceil(((rTarget * totalSel) - presentSel) / Math.max(1e-9, (1 - rTarget))));
+                      const baseMsg = buf >= 0
+                        ? `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia pozostanie zapas ${buf} ${pluralLekcja(buf)}.`
+                        : `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia będzie brakować ${Math.abs(buf)} ${pluralLekcja(Math.abs(buf))} do progu 50%.`;
+                      const targetMsg = Number.isFinite(needToTarget) && needToTarget > 0
+                        ? ` Aby osiągnąć cel ${tgt}%, potrzeba jeszcze ${needToTarget} ${pluralLekcja(needToTarget)} obecności.`
+                        : '';
+                      parts.push(baseMsg + targetMsg);
                     }
                   }
                   return <>{parts.filter(Boolean).map((node, i) => (<React.Fragment key={i}>{node}{i < parts.length - 1 ? ' ' : null}</React.Fragment>))}</>;
