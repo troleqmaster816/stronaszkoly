@@ -127,12 +127,13 @@ button:focus-visible {
 /* =============================
    Animated Backdrop (desktop)
    ============================= */
-@keyframes marqueeLeft {
+/* 3-tile marquee for seamless loop without visible reset */
+@keyframes marqueeLeft3 {
   0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-50%, 0, 0); }
+  100% { transform: translate3d(-33.3333%, 0, 0); }
 }
-@keyframes marqueeRight {
-  0% { transform: translate3d(-50%, 0, 0); }
+@keyframes marqueeRight3 {
+  0% { transform: translate3d(-33.3333%, 0, 0); }
   100% { transform: translate3d(0, 0, 0); }
 }
 @keyframes slowFloat {
@@ -140,11 +141,11 @@ button:focus-visible {
   50% { transform: translate3d(0, -10px, 0) scale(1.02); }
 }
 
-.animate-marquee-left {
-  animation: marqueeLeft 22s linear infinite;
+.animate-marquee-left-3 {
+  animation: marqueeLeft3 24s linear infinite;
 }
-.animate-marquee-right {
-  animation: marqueeRight 28s linear infinite;
+.animate-marquee-right-3 {
+  animation: marqueeRight3 26s linear infinite;
 }
 .animate-slow-float {
   animation: slowFloat 12s ease-in-out infinite;
@@ -155,9 +156,95 @@ button:focus-visible {
 }
 .animation-delay-1500 { animation-delay: 1.5s; }
 .animation-delay-3000 { animation-delay: 3s; }
+/* Negative delays to start mid-cycle (prevents initial still frame) */
+.-animation-delay-1000 { animation-delay: -1s; }
+.-animation-delay-2000 { animation-delay: -2s; }
 
 /* Soft vertical fade to keep text subtle and non-obtrusive */
 .mask-fade {
   -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 18%, rgba(0,0,0,0.8) 82%, rgba(0,0,0,0) 100%);
   mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 18%, rgba(0,0,0,0.8) 82%, rgba(0,0,0,0) 100%);
+}
+
+/* =============================
+   Enhanced backdrop layers
+   ============================= */
+@keyframes auroraDriftA {
+  0% { transform: translate3d(-10%, -5%, 0) rotate(0deg) scale(1); filter: hue-rotate(0deg); }
+  50% { transform: translate3d(5%, 4%, 0) rotate(3deg) scale(1.05); filter: hue-rotate(15deg); }
+  100% { transform: translate3d(-10%, -5%, 0) rotate(0deg) scale(1); filter: hue-rotate(0deg); }
+}
+@keyframes auroraDriftB {
+  0% { transform: translate3d(8%, -6%, 0) rotate(-2deg) scale(1); }
+  50% { transform: translate3d(-6%, 6%, 0) rotate(2deg) scale(1.07); }
+  100% { transform: translate3d(8%, -6%, 0) rotate(-2deg) scale(1); }
+}
+@keyframes auroraDriftC {
+  0% { transform: translate3d(-6%, 6%, 0) rotate(1deg) scale(1); }
+  50% { transform: translate3d(6%, -4%, 0) rotate(-2deg) scale(1.08); }
+  100% { transform: translate3d(-6%, 6%, 0) rotate(1deg) scale(1); }
+}
+
+.aurora-ribbon {
+  position: absolute;
+  inset: -10% -10% -10% -10%;
+  background: radial-gradient(1200px 400px at 20% 40%, color-mix(in oklab, var(--accent1) 60%, transparent) 0%, transparent 60%),
+              radial-gradient(1000px 380px at 70% 60%, color-mix(in oklab, var(--accent2) 55%, transparent) 0%, transparent 60%),
+              radial-gradient(1200px 420px at 40% 80%, color-mix(in oklab, var(--accent3) 50%, transparent) 0%, transparent 60%);
+  opacity: 0.18;
+  filter: blur(28px) saturate(1.05);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, filter, opacity;
+}
+.aurora-ribbon--a { animation: auroraDriftA 22s ease-in-out infinite; }
+.aurora-ribbon--b { animation: auroraDriftB 28s ease-in-out infinite; opacity: 0.16; }
+.aurora-ribbon--c { animation: auroraDriftC 34s ease-in-out infinite; opacity: 0.14; }
+
+/* Animated subtle grid */
+@keyframes gridPan {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-80px, -40px, 0); }
+}
+.backdrop-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(to right, rgba(148,163,184,0.08) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(148,163,184,0.08) 1px, transparent 1px);
+  background-size: 80px 80px;
+  animation: gridPan 60s linear infinite;
+  opacity: 0.12;
+  mask-image: radial-gradient(80% 60% at 50% 50%, black 30%, transparent 100%);
+}
+
+/* Scanlines + grain */
+@keyframes scan {
+  0% { background-position: 0 0, 0 0; opacity: 0.12; }
+  50% { background-position: 0 2px, 0 0; opacity: 0.16; }
+  100% { background-position: 0 0, 0 0; opacity: 0.12; }
+}
+.scanlines {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.10"/></svg>');
+  background-size: auto 2px, 128px 128px;
+  mix-blend-mode: overlay;
+  opacity: 0.14;
+  animation: scan 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Reduced motion respect */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-left,
+  .animate-marquee-right,
+  .animate-slow-float,
+  .animate-slow-float-delayed,
+  .aurora-ribbon--a,
+  .aurora-ribbon--b,
+  .aurora-ribbon--c,
+  .backdrop-grid,
+  .scanlines {
+    animation: none !important;
+  }
 }

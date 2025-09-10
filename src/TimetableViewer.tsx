@@ -141,6 +141,19 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const activeName = activeId ?
     (activeKind === "class" ? refs.classes[activeId] : activeKind === "teacher" ? refs.teachers[activeId] : refs.rooms[activeId]) : "";
 
+  // Specjalny format dla sal: pokaż "Sala <KOD>" jeżeli nazwa zaczyna się od kodu (np. 003, GIM3)
+  const extractRoomCode = (label: string): string | null => {
+    const first = (label || "").trim().split(/\s+/)[0] || "";
+    if (/^\d{1,4}$/.test(first)) return first; // 003, 111, 9
+    if (/^[A-Za-zĄĆĘŁŃÓŚŻŹ]{2,6}\d{1,4}$/i.test(first)) return first.toUpperCase(); // GIM3, S1, A12
+    return null;
+  };
+  const formatRoomDisplay = (label: string): string => {
+    const code = extractRoomCode(label);
+    return code ? `Sala ${code}` : label;
+  };
+  const activeDisplayName = activeKind === 'room' ? formatRoomDisplay(activeName) : activeName;
+
   // Filtry: dni + grupa (1/2, 2/2, wszystkie)
   const activeLessons: Lesson[] = useMemo(() => {
     const arr: Lesson[] = (activeId && data?.timetables?.[activeId]) || [];
@@ -282,7 +295,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const teacherDisplay = teacherName ? (overrides.teacherNameOverrides[teacherName] ?? teacherName) : null;
     if (activeKind !== "class" && l.group) parts.push(`Klasa: ${l.group.name}`);
     if (activeKind !== "teacher" && teacherDisplay) parts.push(`Nauczyciel: ${teacherDisplay}`);
-    if (activeKind !== "room" && l.room) parts.push(`Sala: ${l.room.name}`);
+    if (activeKind !== "room" && l.room) parts.push(`Sala: ${formatRoomDisplay(l.room.name)}`);
     const half = extractHalfMark(l.subject);
 
     const crossLinks = (
@@ -308,10 +321,10 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {l.room ? (
           <button
             className="text-xs px-2 py-0.5 rounded-full bg-violet-900/40 hover:bg-violet-900/60 text-violet-200 border border-violet-800"
-            title={`Przejdź do planu sali ${l.room.name}`}
+            title={`Przejdź do planu sali ${formatRoomDisplay(l.room.name)}`}
             onClick={() => goTo(l.room!.id)}
           >
-            {l.room.name}
+            {formatRoomDisplay(l.room.name)}
           </button>
         ) : null}
       </div>
@@ -355,7 +368,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const teacherName = l.teacher?.name ?? '';
     const roomName = l.room?.name ?? '';
     if (activeKind !== 'teacher' && teacherName) extraParts.push(teacherName);
-    if (activeKind !== 'room' && roomName) extraParts.push(roomName);
+    if (activeKind !== 'room' && roomName) extraParts.push(formatRoomDisplay(roomName));
     const groupText = activeKind === 'class' ? (l.group?.name ?? half ?? '') : (l.group?.name ?? '');
     const subjectWithGroup = groupText ? `${subjectDisplay} ${groupText}` : subjectDisplay;
     return extraParts.length > 0 ? `${subjectWithGroup} (${extraParts.join(', ')})` : subjectWithGroup;
@@ -445,15 +458,16 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   return (
     <div className="relative min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
       {/* Animated backdrop – desktop only, sits behind all content */}
-      <AnimatedBackdrop text={activeName} />
+      <AnimatedBackdrop text={activeDisplayName} variant={activeKind ?? null as any} />
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
       <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
         <div className="mx-auto max-w-7xl px-4 py-2 flex items-center gap-3">
           {!isMobile && <CalendarDays className="w-5 h-5 text-zinc-200" />}
+          {!isMobile && <div className="text-sm font-semibold text-zinc-200">Plan lekcji</div>}
           {/* Mobile: nazwa planu + nawigacja po dniach w top barze */}
           {isMobile && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="text-base font-semibold truncate">{activeName || '—'}</div>
+              <div className="text-base font-semibold truncate">{activeDisplayName || '—'}</div>
               {daysInData.length > 0 && (
                 <div className="flex items-center gap-1 ml-2">
                   <button
@@ -601,7 +615,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
               <div>
                 {!isMobile && (
                   <h2 className="text-xl font-semibold tracking-tight">
-                    {prettyKind(activeKind)}: {activeName}
+                    {prettyKind(activeKind)}: {activeDisplayName}
                   </h2>
                 )}
                 {/* Przeniesiono wybór dnia do top bar (mobile). Tutaj nic nie renderujemy. */}
