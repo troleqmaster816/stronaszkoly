@@ -87,10 +87,35 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     } catch {}
   };
 
+  // Load initial data and current auth state
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadData(), loadOverrides()]).finally(() => setLoading(false));
-  }, []);
+    const refreshAuth = async () => {
+      try {
+        const res = await fetch('/v1/users/me', { credentials: 'include' })
+        const j = await res.json().catch(() => ({}))
+        setIsAuth(!!(j && j.ok && j.authenticated))
+      } catch { setIsAuth(false) }
+    }
+    setLoading(true)
+    Promise.all([loadData(), loadOverrides(), refreshAuth()]).finally(() => setLoading(false))
+  }, [])
+
+  // React to global auth changes (e.g., login/logout in Hub)
+  useEffect(() => {
+    const onAuth = () => {
+      ;(async () => {
+        try {
+          const res = await fetch('/v1/users/me', { credentials: 'include' })
+          const j = await res.json().catch(() => ({}))
+          setIsAuth(!!(j && j.ok && j.authenticated))
+          // Also refresh overrides when auth changes
+          await loadOverrides()
+        } catch {}
+      })()
+    }
+    window.addEventListener('auth:changed', onAuth as any)
+    return () => window.removeEventListener('auth:changed', onAuth as any)
+  }, [])
 
   // Load persisted UI prefs - moved to lazy initializers above
 
@@ -422,6 +447,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       }
       setIsAuth(true);
       await loadOverrides();
+      // notify other parts of the app (e.g., Hub)
+      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
     } catch {}
   };
 
@@ -430,6 +457,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       await fetch('/v1/logout', { method: 'POST', credentials: 'include' });
     } finally {
       setIsAuth(false);
+      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
     }
   };
 

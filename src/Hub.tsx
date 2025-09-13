@@ -33,6 +33,11 @@ export default function Hub({ navigate }: HubProps) {
     } catch {}
   };
   useEffect(() => { refreshMe(); }, []);
+  useEffect(() => {
+    const onAuth = () => { refreshMe(); };
+    window.addEventListener('auth:changed', onAuth as any);
+    return () => window.removeEventListener('auth:changed', onAuth as any);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +46,7 @@ export default function Hub({ navigate }: HubProps) {
       if (!res.ok) { alert('Logowanie nieudane'); return; }
       setLoginForm({ username: '', password: '' });
       await refreshMe();
+      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
       await loadSingleKey();
     } catch {}
   };
@@ -51,11 +57,12 @@ export default function Hub({ navigate }: HubProps) {
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Rejestracja nieudana'); return; }
       setRegisterForm({ username: '', password: '' });
       await refreshMe();
+      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
       await loadSingleKey();
     } catch {}
   };
   const handleLogout = async () => {
-    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); }
+    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); try { window.dispatchEvent(new Event('auth:changed')) } catch {} }
   };
   const loadSingleKey = async () => {
     try {
