@@ -21,6 +21,22 @@ const timetableBackupsDir = join(publicDir, 'backups', 'timetables');
 
 const app = express();
 app.disable('x-powered-by');
+// Respect reverse proxy headers when deployed behind a proxy (e.g., Nginx)
+// - Avoid express-rate-limit ValidationError when X-Forwarded-* is present
+// - Configurable via TRUST_PROXY env (e.g., "1", "true", "loopback")
+(() => {
+  const envVal = (process.env.TRUST_PROXY || '').trim().toLowerCase()
+  const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production'
+  if (envVal) {
+    if (envVal === 'true') app.set('trust proxy', true)
+    else if (envVal === 'false') app.set('trust proxy', false)
+    else if (/^\d+$/.test(envVal)) app.set('trust proxy', Number(envVal))
+    else app.set('trust proxy', envVal)
+  } else {
+    // Default: trust a single proxy in production; keep default in dev
+    if (isProd) app.set('trust proxy', 1)
+  }
+})()
 // Security headers
 // - Allow cross-origin resources (e.g., images) as requested
 // - Add an explicit CSP in production to allow Tailwind CDN and zse-zdwola.pl
