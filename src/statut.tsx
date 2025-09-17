@@ -551,7 +551,10 @@ function highlightHtml(html: string, query: string): string {
       }
       if (lastIndex < value.length) parts.push(value.slice(lastIndex));
       const frag = document.createDocumentFragment();
-      for (const p of parts) frag.append(p as any);
+      for (const p of parts) {
+        if (typeof p === 'string') frag.append(p);
+        else frag.append(p);
+      }
       t.parentNode?.replaceChild(frag, t);
     }
     return wrapper.innerHTML;

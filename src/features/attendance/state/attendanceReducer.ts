@@ -1,4 +1,4 @@
-import { DAY_ORDER } from '@/lib/schedule';
+// no imports needed
 
 // Types co-located with reducer for clarity and testability
 export type AttendanceEntry = {
@@ -20,7 +20,7 @@ export type Plan = {
   name: string;
   days: Record<string, PlanDay>;
   createdAt: number;
-  source?: { kind: 'school'; classId: string; className: string; group?: string|null; meta?: any };
+  source?: { kind: 'school'; classId: string; className: string; group?: string|null; meta?: unknown };
 };
 
 export type State = {

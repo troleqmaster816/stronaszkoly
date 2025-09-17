@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, Printer, Share2, Upload, Rows3, Columns3, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { CalendarDays, Printer, Share2, Upload, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Overrides, Lesson, RefTables } from '@/types/schedule';
 import type { DataFile } from '@/lib/api';
-import { DAY_ORDER, cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey } from '@/lib/schedule';
+import { cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey } from '@/lib/schedule';
 import { DataFileSchema, OverridesSchema, fetchJsonValidated } from '@/lib/api';
 import { useHashId } from '@/features/timetable/hooks/useHashId';
 import { GridView } from '@/features/timetable/components/GridView';
@@ -26,7 +26,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [adminOpen, setAdminOpen] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
   const [overrides, setOverrides] = useState<Overrides>({ subjectOverrides: {}, teacherNameOverrides: {} });
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  // loginForm removed; handle form values from event target
   const [subjectFilter, setSubjectFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
 
@@ -35,7 +35,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     try {
       const saved = localStorage.getItem('timetable.lastEntityTab');
       if (saved === 'teachers' || saved === 'classes' || saved === 'rooms') return saved;
-    } catch {}
+    } catch { /* ignore */ }
     return "classes";
   });
   const [query, setQuery] = useState("");
@@ -55,7 +55,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const prevDesktopView = useRef<"grid" | "list">("grid");
   // const [showMobileFilters, setShowMobileFilters] = useState(false); // deprecated small filters toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  // swipeStart removed; swipe gestures not used currently
 
   // wczytaj JSON
   const loadData = async () => {
@@ -70,7 +70,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         const toUse = (hasSaved ? saved : fallback) as string | null;
         if (toUse) setHashId(toUse);
       }
-    } catch (e: any) {
+    } catch {
       setError("Nie udało się pobrać pliku /timetable_data.json. Możesz wczytać go ręcznie poniżej.");
     }
   };
@@ -84,7 +84,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         const parsed = OverridesSchema.safeParse(j.data)
         if (parsed.success) setOverrides(parsed.data)
       }
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   // Load initial data and current auth state
@@ -110,11 +110,11 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           setIsAuth(!!(j && j.ok && j.authenticated))
           // Also refresh overrides when auth changes
           await loadOverrides()
-        } catch {}
+        } catch { /* ignore */ }
       })()
     }
-    window.addEventListener('auth:changed', onAuth as any)
-    return () => window.removeEventListener('auth:changed', onAuth as any)
+    window.addEventListener('auth:changed', onAuth as EventListener)
+    return () => window.removeEventListener('auth:changed', onAuth as EventListener)
   }, [])
 
   // Load persisted UI prefs - moved to lazy initializers above
@@ -129,7 +129,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         const firstClass = Object.keys(json.classes ?? {})[0] ?? null;
         if (firstClass) setHashId(firstClass);
       }
-    } catch (e) {
+    } catch {
       setError("Niepoprawny plik JSON.");
     }
   };
@@ -421,7 +421,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       }
       await loadData();
       alert("Plan został odświeżony.");
-    } catch (e) {
+    } catch {
       alert("Nie udało się uruchomić odświeżania.");
     } finally {
       setRefreshing(false);
@@ -448,8 +448,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       setIsAuth(true);
       await loadOverrides();
       // notify other parts of the app (e.g., Hub)
-      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
-    } catch {}
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
+    } catch { /* ignore */ }
   };
 
   const handleLogout = async () => {
@@ -457,28 +457,11 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       await fetch('/v1/logout', { method: 'POST', credentials: 'include' });
     } finally {
       setIsAuth(false);
-      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
     }
   };
 
-  const saveOverrides = async () => {
-    try {
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch('/v1/overrides', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        credentials: 'include',
-        body: JSON.stringify(overrides),
-      });
-      if (!res.ok) {
-        alert('Nie udało się zapisać zmian.');
-        return;
-      }
-      alert('Zapisano zmiany.');
-    } catch {
-      alert('Błąd zapisu.');
-    }
-  };
+  // saving overrides is handled in AdminPanel via props
 
   // ==========================================
   // RENDER (ciemny motyw)
@@ -486,7 +469,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   return (
     <div className="relative min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
       {/* Animated backdrop – desktop only, sits behind all content */}
-      <AnimatedBackdrop text={activeDisplayName} variant={activeKind ?? null as any} />
+      <AnimatedBackdrop text={activeDisplayName} variant={(activeKind ?? null) as 'class' | 'teacher' | 'room' | null} />
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
       <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
         <div className="mx-auto max-w-7xl px-4 py-2 flex items-center gap-3">
@@ -612,7 +595,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {data && !isMobile && (
           <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 shadow-sm print:hidden ${isMobile ? 'p-3' : 'p-4'}`}>
             <EntityPicker
-              entityTab={entityTab as any}
+              entityTab={entityTab}
               setEntityTab={(t) => setEntityTab(t)}
               query={query}
               setQuery={setQuery}
@@ -664,7 +647,6 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 />
               ) : (
                 <ListView
-                  daysInData={daysInData}
                   selectedDays={selectedDays}
                   lessonsByDay={lessonsByDay}
                   isMobile={isMobile}
@@ -760,7 +742,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 aria-label="Typ planu"
                 className="px-3 py-2 border border-zinc-700 rounded-lg bg-zinc-900 text-zinc-100"
                 value={entityTab}
-                onChange={(e) => setEntityTab(e.target.value as any)}
+                onChange={(e) => setEntityTab(e.target.value as 'teachers'|'classes'|'rooms')}
               >
                 <option value="teachers">Nauczyciele</option>
                 <option value="classes">Klasy</option>

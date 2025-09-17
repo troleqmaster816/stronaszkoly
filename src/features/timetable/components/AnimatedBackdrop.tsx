@@ -149,22 +149,6 @@ function MovingRow({ text, index }: { text: string; index: number }) {
   )
 }
 
-function RowContent({ text }: { text: string }) {
-  return (
-    <span
-      className="mx-8 inline-block text-[14vw] leading-none tracking-[-0.02em] font-extrabold uppercase opacity-[0.04] text-white/90 drop-shadow-[0_0_24px_rgba(99,102,241,0.10)] hover:opacity-[0.06] transition-opacity duration-500"
-      style={{
-        WebkitTextStroke: '1px rgba(255,255,255,0.08)',
-        fontKerning: 'none',
-        fontVariantLigatures: 'none',
-      }}
-    >
-      {text}
-    </span>
-  )
-}
-
 export default AnimatedBackdrop
-
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import { reducer, type State } from '@/features/attendance/state/attendanceReducer';
 
 const LS_KEY = 'frekwencja/v1';
@@ -7,7 +7,7 @@ function loadInitial(): State {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { /* ignore */ }
   return {
     subjects: [
       { key: 'matematyka', label: 'Matematyka' },
@@ -20,8 +20,7 @@ function loadInitial(): State {
 }
 
 export function useAttendanceState() {
-  const [state, dispatch] = useReducer(reducer, undefined as any, loadInitial);
-  const [isAuth, setIsAuth] = useState<boolean>(false);
+  const [state, dispatch] = useReducer(reducer, undefined as unknown as State, loadInitial);
   const remoteEnabled = useRef(false);
   const putInFlight = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,7 +32,6 @@ export function useAttendanceState() {
         const me = await fetch('/v1/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null);
         const authed = !!(me && me.ok && me.authenticated);
         if (cancelled) return;
-        setIsAuth(authed);
         if (authed) {
           const res = await fetch('/v1/attendance', { credentials: 'include', cache: 'no-store' });
           if (res.ok) {
@@ -49,7 +47,7 @@ export function useAttendanceState() {
             }
           }
         }
-      } catch {}
+      } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -66,10 +64,10 @@ export function useAttendanceState() {
             credentials: 'include',
             body: JSON.stringify({ ...state, version: 1 }),
           });
-        } catch {}
+        } catch { /* ignore */ }
         return;
       }
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch { /* ignore */ }
     };
     if (putInFlight.current) clearTimeout(putInFlight.current);
     putInFlight.current = setTimeout(doPersist, 200);
@@ -78,5 +76,3 @@ export function useAttendanceState() {
 
   return [state, dispatch] as const;
 }
-
-

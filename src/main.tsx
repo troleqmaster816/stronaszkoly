@@ -15,12 +15,12 @@ const StatutSzkolnyViewer = React.lazy(() => import('./statut'))
 const FrekwencjaPage = React.lazy(() => import('./FrekwencjaPage'))
 const Docs = React.lazy(() => import('./Docs'))
 
-function HubRoute() {
+export function HubRoute() {
   const navigate = useNavigate()
   return <Hub navigate={(to: string) => navigate(to)} />
 }
 
-function TimetableRoute({ setOverlayActive }: { setOverlayActive: (v: boolean) => void }) {
+export function TimetableRoute({ setOverlayActive }: { setOverlayActive: (v: boolean) => void }) {
   const navigate = useNavigate()
   return <>
     <TimetableViewer onOverlayActiveChange={setOverlayActive} />
@@ -28,7 +28,7 @@ function TimetableRoute({ setOverlayActive }: { setOverlayActive: (v: boolean) =
   </>
 }
 
-function PageWithFab({ children }: { children: React.ReactNode }) {
+export function PageWithFab({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   return <>
     {children}
@@ -36,8 +36,8 @@ function PageWithFab({ children }: { children: React.ReactNode }) {
   </>
 }
 
-function AppRouter() {
-  const [overlayActive, setOverlayActive] = useState(false)
+export function AppRouter() {
+  const [, setOverlayActive] = useState(false)
   return (
     <BrowserRouter>
       <Suspense fallback={null}>

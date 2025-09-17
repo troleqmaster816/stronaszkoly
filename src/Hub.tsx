@@ -30,13 +30,13 @@ export default function Hub({ navigate }: HubProps) {
         setIsAuth(false);
         setMe(null);
       }
-    } catch {}
+    } catch { /* ignore */ }
   };
   useEffect(() => { refreshMe(); }, []);
   useEffect(() => {
     const onAuth = () => { refreshMe(); };
-    window.addEventListener('auth:changed', onAuth as any);
-    return () => window.removeEventListener('auth:changed', onAuth as any);
+    window.addEventListener('auth:changed', onAuth as EventListener);
+    return () => window.removeEventListener('auth:changed', onAuth as EventListener);
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -46,9 +46,9 @@ export default function Hub({ navigate }: HubProps) {
       if (!res.ok) { alert('Logowanie nieudane'); return; }
       setLoginForm({ username: '', password: '' });
       await refreshMe();
-      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
       await loadSingleKey();
-    } catch {}
+    } catch { /* ignore */ }
   };
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,26 +57,26 @@ export default function Hub({ navigate }: HubProps) {
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Rejestracja nieudana'); return; }
       setRegisterForm({ username: '', password: '' });
       await refreshMe();
-      try { window.dispatchEvent(new Event('auth:changed')) } catch {}
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
       await loadSingleKey();
-    } catch {}
+    } catch { /* ignore */ }
   };
   const handleLogout = async () => {
-    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); try { window.dispatchEvent(new Event('auth:changed')) } catch {} }
+    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ } }
   };
   const loadSingleKey = async () => {
     try {
       const res = await fetch('/v1/apikey', { credentials: 'include' });
       const j = await res.json();
       if (j?.ok) setSingleApiKey(j.apiKey);
-    } catch {}
+    } catch { /* ignore */ }
   };
   const regenSingleKey = async () => {
     try {
       const res = await fetch('/v1/apikey/regenerate', { method: 'POST', credentials: 'include' });
       const j = await res.json();
       if (j?.ok) setSingleApiKey(j.apiKey);
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const refreshTimetable = async () => {
@@ -96,7 +96,7 @@ export default function Hub({ navigate }: HubProps) {
       const res = await fetch('/v1/timetable/backups', { credentials: 'include' });
       const j = await res.json();
       setBackups(Array.isArray(j?.data) ? j.data : []);
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const restoreBackup = async (filename: string) => {
@@ -105,7 +105,7 @@ export default function Hub({ navigate }: HubProps) {
       const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, credentials: 'include', body: JSON.stringify({ filename }) });
       if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się przywrócić kopii'); return; }
       alert('Przywrócono wybrany plan.');
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const startArticlesScrape = async () => {
@@ -128,7 +128,7 @@ export default function Hub({ navigate }: HubProps) {
             setArticlesBusy(false);
             if (jj?.status === 'succeeded') {
               // Odśwież newsy po zakończeniu (proste przeładowanie pliku statycznego)
-              try { await fetch('/articles.json', { cache: 'no-store' }); } catch {}
+              try { await fetch('/articles.json', { cache: 'no-store' }); } catch { /* ignore */ }
             } else if (jj?.error) {
               console.error('Articles job error:', jj.error);
             }

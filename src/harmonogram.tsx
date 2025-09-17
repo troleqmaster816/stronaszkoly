@@ -267,7 +267,7 @@ export default function SchedulePage() {
   const cleanTitle = (title: string): string => {
     const withoutDateParens = title
       // nawiasy z cyframi i kropką lub dwukropkiem (daty/godziny)
-      .replace(/\s*\((?=[^)]*[0-9])(?=[^)]*[\.:])[^)]*\)\s*/g, " ")
+      .replace(/\s*\((?=[^)]*[0-9])(?=[^)]*[.:])[^)]*\)\s*/g, " ")
       .replace(/\s{2,}/g, " ")
       .trim();
     return withoutDateParens;
