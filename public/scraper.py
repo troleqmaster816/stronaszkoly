@@ -15,17 +15,49 @@ PLANS_PATH = "plany/"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_FILE = os.path.join(SCRIPT_DIR, "timetable_data.json")
 
-def discover_plan_urls_and_names():
+POLISH_DIACRITICS = set("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
+_MOJIBAKE_SUSPECT_CHARS = {"Ã", "Å", "Ä", "Ę", "Ĺ", "Ľ", "Â", "Ă", "", "", ""}
+_MOJIBAKE_ENCODINGS = ["iso-8859-2", "cp1250", "latin-1", "cp1252"]
+
+
+
+def _prepare_response_encoding(response: requests.Response, fallback: str = "utf-8") -> requests.Response:
+    """Ensure the response uses a proper text encoding before accessing .text."""
+    encoding = (response.encoding or "").lower()
+    if not encoding or encoding in {"iso-8859-1", "latin-1", "latin1", "ascii"}:
+        apparent = response.apparent_encoding
+        if apparent:
+            encoding = apparent
+    if not encoding:
+        encoding = fallback
+    response.encoding = encoding
+    return response
+
+
+def _fix_mojibake(text: str) -> str:
+    """Best-effort fix for UTF-8 mojibake (e.g. HaÅapup -> Hałapup)."""
+    if not text or not any(ch in text for ch in _MOJIBAKE_SUSPECT_CHARS):
+        return text
+
+    for encoding in _MOJIBAKE_ENCODINGS:
+        try:
+            candidate = text.encode(encoding).decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if any(ch in candidate for ch in POLISH_DIACRITICS):
+            return candidate
+    return text
+
+def discover_plan_urls_and_names(session: requests.Session):
     """
     Odkrywa wszystkie URL-e do planów lekcji (nauczyciele, sale, oddziały)
     oraz ich nazwy ze strony lista.html.
     """
     print(f"Pobieranie strony z listą planów: {LIST_PAGE_URL}")
     try:
-        response = requests.get(LIST_PAGE_URL)
+        response = session.get(LIST_PAGE_URL)
         response.raise_for_status()
-        # Strona używa kodowania iso-8859-2, musimy to uwzględnić
-        response.encoding = 'iso-8859-2'
+        response = _prepare_response_encoding(response)
     except requests.RequestException as e:
         print(f"Błąd podczas pobierania strony z listą planów: {e}")
         return None, None
@@ -53,7 +85,7 @@ def discover_plan_urls_and_names():
 
     for link in links:
         href = link['href']
-        name = link.get_text(strip=True)
+        name = _fix_mojibake(link.get_text(strip=True))
         file_id = href.split('/')[-1].replace('.html', '')
         
         # Linki na liście są w formacie ../plany/n1.html
@@ -87,10 +119,10 @@ def parse_lesson_chunk(chunk_soup):
     group_tag = chunk_soup.find('a', class_='o')
     room_tag = chunk_soup.find('a', class_='s')
 
-    teacher = {"id": teacher_tag['href'].split('/')[-1].replace('.html', ''), "name": teacher_tag.get_text(strip=True)} if teacher_tag else None
-    group = {"id": group_tag['href'].split('/')[-1].replace('.html', ''), "name": group_tag.get_text(strip=True)} if group_tag else None
-    room = {"id": room_tag['href'].split('/')[-1].replace('.html', ''), "name": room_tag.get_text(strip=True)} if room_tag else None
-    subject = subject_tag.get_text(strip=True) if subject_tag else None
+    teacher = {"id": teacher_tag['href'].split('/')[-1].replace('.html', ''), "name": _fix_mojibake(teacher_tag.get_text(strip=True))} if teacher_tag else None
+    group = {"id": group_tag['href'].split('/')[-1].replace('.html', ''), "name": _fix_mojibake(group_tag.get_text(strip=True))} if group_tag else None
+    room = {"id": room_tag['href'].split('/')[-1].replace('.html', ''), "name": _fix_mojibake(room_tag.get_text(strip=True))} if room_tag else None
+    subject = _fix_mojibake(subject_tag.get_text(strip=True)) if subject_tag else None
 
     if not any([subject, teacher, group, room]):
         return None
@@ -143,82 +175,83 @@ def main():
     # Upewnij się, że katalog docelowy istnieje
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
 
-    discovered_urls, names_map = discover_plan_urls_and_names()
-    
-    if not discovered_urls or not any(discovered_urls.values()):
-        print("\nNie udało się odkryć żadnych URL-i do planów. Zatrzymuję skrypt.")
-        return
-
-    print("\nPobieranie pełnych nazw sal...")
-    for url_path in discovered_urls['rooms']:
-        file_id = url_path.split('/')[-1].replace('.html', '')
-        full_url = urljoin(BASE_URL, url_path)
-        try:
-            response = requests.get(full_url)
-            response.raise_for_status()
-            response.encoding = response.apparent_encoding
-            soup = BeautifulSoup(response.text, 'html.parser')
-            title = soup.find('span', class_='tytulnapis')
-            if title:
-                names_map['rooms'][file_id] = title.get_text(strip=True)
-        except requests.RequestException as e:
-            print(f"Błąd przy pobieraniu nazwy sali z {full_url}: {e}")
-
-    all_timetables = {}
-    all_urls_to_process = [
-        *discovered_urls['teachers'],
-        *discovered_urls['rooms'],
-        *discovered_urls['classes']
-    ]
-    
-    print(f"\nRozpoczynam pobieranie i parsowanie {len(all_urls_to_process)} planów lekcji...")
-    
-    for i, url_path in enumerate(all_urls_to_process):
-        file_id = url_path.split('/')[-1].replace('.html', '')
-        full_url = urljoin(BASE_URL, url_path)
+    with requests.Session() as session:
+        discovered_urls, names_map = discover_plan_urls_and_names(session)
         
-        print(f"[{i+1}/{len(all_urls_to_process)}] Przetwarzam: {full_url} (ID: {file_id})")
+        if not discovered_urls or not any(discovered_urls.values()):
+            print("\nNie udało się odkryć żadnych URL-i do planów. Zatrzymuję skrypt.")
+            return
 
+        print("\nPobieranie pełnych nazw sal...")
+        for url_path in discovered_urls['rooms']:
+            file_id = url_path.split('/')[-1].replace('.html', '')
+            full_url = urljoin(BASE_URL, url_path)
+            try:
+                response = session.get(full_url)
+                response.raise_for_status()
+                response = _prepare_response_encoding(response)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                title = soup.find('span', class_='tytulnapis')
+                if title:
+                    names_map['rooms'][file_id] = _fix_mojibake(title.get_text(strip=True))
+            except requests.RequestException as e:
+                print(f"Błąd przy pobieraniu nazwy sali z {full_url}: {e}")
+
+        all_timetables = {}
+        all_urls_to_process = [
+            *discovered_urls['teachers'],
+            *discovered_urls['rooms'],
+            *discovered_urls['classes']
+        ]
+        
+        print(f"\nRozpoczynam pobieranie i parsowanie {len(all_urls_to_process)} planów lekcji...")
+        
+        for i, url_path in enumerate(all_urls_to_process):
+            file_id = url_path.split('/')[-1].replace('.html', '')
+            full_url = urljoin(BASE_URL, url_path)
+            
+            print(f"[{i+1}/{len(all_urls_to_process)}] Przetwarzam: {full_url} (ID: {file_id})")
+
+            try:
+                response = session.get(full_url)
+                response.raise_for_status()
+                response = _prepare_response_encoding(response)
+
+                lessons = parse_timetable_html(response.text)
+                all_timetables[file_id] = lessons
+
+            except requests.RequestException as e:
+                print(f"  -> Błąd! Nie udało się pobrać {full_url}: {e}")
+                all_timetables[file_id] = []
+
+        final_data = {
+            "metadata": {
+                "source": BASE_URL,
+                "scraped_on": __import__('datetime').datetime.now().isoformat(),
+                "generation_date_from_page": ""
+            },
+            "teachers": names_map['teachers'],
+            "rooms": names_map['rooms'],
+            "classes": names_map['classes'],
+            "timetables": all_timetables,
+        }
+        
         try:
-            response = requests.get(full_url)
-            response.raise_for_status()
-            response.encoding = response.apparent_encoding
-            
-            lessons = parse_timetable_html(response.text)
-            all_timetables[file_id] = lessons
-            
-        except requests.RequestException as e:
-            print(f"  -> Błąd! Nie udało się pobrać {full_url}: {e}")
-            all_timetables[file_id] = []
-
-    final_data = {
-        "metadata": {
-            "source": BASE_URL,
-            "scraped_on": __import__('datetime').datetime.now().isoformat(),
-            "generation_date_from_page": ""
-        },
-        "teachers": names_map['teachers'],
-        "rooms": names_map['rooms'],
-        "classes": names_map['classes'],
-        "timetables": all_timetables,
-    }
-    
-    try:
-        if all_urls_to_process:
-            any_url = urljoin(BASE_URL, all_urls_to_process[0])
-            response = requests.get(any_url)
-            response.raise_for_status()
-            response.encoding = response.apparent_encoding
-            soup = BeautifulSoup(response.text, 'html.parser')
-            op_td = soup.find('td', class_='op')
-            if op_td:
-                gen_date_text = op_td.get_text(strip=True)
-                match = re.search(r'wygenerowano (\d{2}\.\d{2}\.\d{4})', gen_date_text)
-                if match:
-                    final_data["metadata"]["generation_date_from_page"] = match.group(1)
-                    print(f"\nData generacji planu (ze strony): {match.group(1)}")
-    except Exception as e:
-        print(f"\nNie udało się odczytać daty generacji planu: {e}")
+            if all_urls_to_process:
+                any_url = urljoin(BASE_URL, all_urls_to_process[0])
+                response = session.get(any_url)
+                response.raise_for_status()
+                response = _prepare_response_encoding(response)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                op_td = soup.find('td', class_='op')
+                if op_td:
+                    gen_date_text = op_td.get_text(strip=True)
+                    match = re.search(r'wygenerowano (\d{2}\.\d{2}\.\d{4})', gen_date_text)
+                    if match:
+                        final_data["metadata"]["generation_date_from_page"] = match.group(1)
+                        print(f"\nData generacji planu (ze strony): {match.group(1)}")
+        except Exception as e:
+            print(f"\nNie udało się odczytać daty generacji planu: {e}")
 
     print(f"\nZapisywanie wszystkich danych do pliku: {OUTPUT_FILE}")
     try:
