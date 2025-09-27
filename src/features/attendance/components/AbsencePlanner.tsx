@@ -76,6 +76,36 @@ interface AbsencePlannerProps {
   subjectPolicy?: Record<string, SubjectPolicy>;
 }
 
+type ThreatItem = {
+  key: string;
+  label: string;
+  buf: number;
+  isTolerated: boolean;
+  req: number;
+  target: number;
+  targetBuf: number;
+  projectedPct: number;
+  missingPctToTarget: number;
+  missingLessonsToTarget: number;
+  present: number;
+  total: number;
+}
+
+type RowResult = {
+  date: Date;
+  dateISO: string;
+  lessons: number;
+  risk: string;
+  tier: 'disabled' | 'locked' | 'filled' | 'priority' | 'critical' | 'danger' | 'warn' | 'safe';
+  globalBuf?: number;
+  worstKey?: string;
+  worstBuf?: number;
+  perAfterAll?: Record<string, Stat>;
+  threatened?: ThreatItem[];
+  daySubjects?: { key: string; label: string }[];
+  absoluteLabels?: string[];
+}
+
 export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = {} }: AbsencePlannerProps) {
   const plan = state.plans.find(p => p.id === selectedPlanId);
 
@@ -100,7 +130,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
   // Bazowe statystyki z historii
   const baseStats = useMemo(() => {
     const perSubject: Record<string, Stat> = {};
-    let global: Stat = { present: 0, total: 0 };
+    const global: Stat = { present: 0, total: 0 };
     for (const entries of Object.values(state.byDate)) {
       for (const e of entries) {
         const key = normalizeSubjectKey(e.subjectKey || e.subjectLabel);
@@ -118,7 +148,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
   const [commits, setCommits] = useState<Record<string, CommitState>>(() => {
     try { return JSON.parse(localStorage.getItem('planner:commits') || '{}'); } catch { return {}; }
   });
-  useEffect(() => { try { localStorage.setItem('planner:commits', JSON.stringify(commits)); } catch {} }, [commits]);
+  useEffect(() => { try { localStorage.setItem('planner:commits', JSON.stringify(commits)); } catch { /* ignore */ } }, [commits]);
 
   function toggleCommit(dateISO: string, next: Exclude<CommitState, undefined>) {
     setCommits(s => {
@@ -134,17 +164,17 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       // migracja: dopisz brakujący targetPct=50 i margin=1 jeśli nie istnieją
       const migrated: Record<string, SubjectSetting> = {};
       for (const [k, v] of Object.entries(raw || {})) {
-        const vv: any = v || {};
+        const vv = (v || {}) as Partial<SubjectSetting>;
         migrated[k] = {
           priority: (vv.priority as SubjectPolicy) ?? 'NEUTRAL',
-          margin: Number.isFinite(vv.margin) ? Number(vv.margin) : 1,
-          targetPct: Number.isFinite(vv.targetPct) ? Number(vv.targetPct) : 50,
+          margin: Number.isFinite(vv.margin as number) ? Number(vv.margin) : 1,
+          targetPct: Number.isFinite(vv.targetPct as number) ? Number(vv.targetPct) : 50,
         };
       }
       return migrated;
     } catch { return {}; }
   });
-  useEffect(() => { try { localStorage.setItem('planner:subjectSettings', JSON.stringify(subjectSettings)); } catch {} }, [subjectSettings]);
+  useEffect(() => { try { localStorage.setItem('planner:subjectSettings', JSON.stringify(subjectSettings)); } catch { /* ignore */ } }, [subjectSettings]);
 
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
@@ -170,7 +200,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
   // Delta od commitów (Idę/Nie idę), pomijając rozpatrywany dzień
   function getCommitDelta(excludeISO?: string) {
     const perSubject: Record<string, Stat> = {};
-    let global: Stat = { present: 0, total: 0 };
+    const global: Stat = { present: 0, total: 0 };
     if (!plan) return { perSubject, global };
     for (const [iso, stateCommit] of Object.entries(commits)) {
       if (!stateCommit) continue;
@@ -199,19 +229,19 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
     return { present: aa.present + bb.present, total: aa.total + bb.total };
   }
 
-  function evaluateSkipFor(date: Date) {
+  function evaluateSkipFor(date: Date): RowResult {
     const dateISO = toISODate(date);
-    if (!plan) return { date, dateISO, lessons: 0, risk: 'Brak planu', tier: 'disabled' as const };
+    if (!plan) return { date, dateISO, lessons: 0, risk: 'Brak planu', tier: 'disabled' };
     const dayName = getPolishDayName(date);
     const def = plan.days[dayName];
     const lessonsInDay = (def?.items?.length) || 0;
     // Jeśli w przyszłości dzień został już wypełniony w dzienniku, pokaż komunikat
     const todayISO = toISODate(new Date());
     if (dateISO > todayISO && ((state.byDate[dateISO]?.length) || 0) > 0) {
-      return { date, dateISO, lessons: lessonsInDay, risk: 'Dzień już wypełniony w dzienniku', tier: 'filled' as const };
+      return { date, dateISO, lessons: lessonsInDay, risk: 'Dzień już wypełniony w dzienniku', tier: 'filled' };
     }
-    if (commits[dateISO] === 'attend') return { date, dateISO, lessons: lessonsInDay, risk: 'Zaplanowana obecność', tier: 'locked' as const };
-    if (!def || lessonsInDay === 0) return { date, dateISO, lessons: 0, risk: 'Brak lekcji', tier: 'safe' as const };
+    if (commits[dateISO] === 'attend') return { date, dateISO, lessons: lessonsInDay, risk: 'Zaplanowana obecność', tier: 'locked' };
+    if (!def || lessonsInDay === 0) return { date, dateISO, lessons: 0, risk: 'Brak lekcji', tier: 'safe' };
 
     // ABSOLUTE: jeśli dzień zawiera przedmioty ABSOLUTE – nie rekomenduj opuszczenia
     const absoluteLabels: string[] = [];
@@ -224,7 +254,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       if (policy === 'PREFERRED') preferredLabels.push(label);
     }
     if (absoluteLabels.length > 0) {
-      return { date, dateISO, lessons: lessonsInDay, risk: `Priorytet absolutny: ${absoluteLabels.join(', ')}`, tier: 'priority' as const, absoluteLabels };
+      return { date, dateISO, lessons: lessonsInDay, risk: `Priorytet absolutny: ${absoluteLabels.join(', ')}`, tier: 'priority', absoluteLabels };
     }
 
     // Bazowe + deklaracje (bez rozpatrywanego dnia)
@@ -249,7 +279,9 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       const dayMiss = subjectsInDayCount[key] || 0;
       const cur = statPlus(base, add);
       // Mapa bez tolerowanych (do oceny tier)
-      if ((subjectPolicy[key] || 'NEUTRAL') !== 'TOLERATED') {
+      // UWAGA: używaj efektywnej polityki (z ustawień użytkownika),
+      // a nie wyłącznie subjectPolicy z propsów
+      if (getEffectivePolicy(key) !== 'TOLERATED') {
         perAfter[key] = { present: cur.present, total: cur.total + dayMiss };
       }
       // Mapa pełna (do listy zagrożeń i szczegółów)
@@ -268,7 +300,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
       const req = getRequiredMargin(k);
       // uwzględnij cel frekwencji: przesuń punkt odniesienia powyżej 50%
       const target = getTargetPct(k); // np. 50, 60, 75
-      const targetBuf = Math.round((target/50 - 1) * st.total); // ile ponad 50% odpowiada celowi
+      const targetBuf = Math.ceil((target/50 - 1) * st.total); // bufor wymagany dla celu (zaokrąglenie w górę)
       const effectiveReq = Math.max(req, targetBuf);
       if (b < worstBuf) { worstBuf = b; worstKey = k; }
       if (b < 0) anyCritical = true;
@@ -290,20 +322,22 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
           : `Ryzyko spadku poniżej 50%`;
 
     // Lista zagrożonych przedmiotów (w tym tolerowane – z adnotacją)
-    const threatened = Array.from(new Set(Object.keys(subjectsInDayCount))).map(key => {
+    const threatened: ThreatItem[] = Array.from(new Set(Object.keys(subjectsInDayCount))).map(key => {
       const st = perAfterAll[key];
       const buf = st ? (2*st.present - st.total) : 0;
       const label = state.subjects.find(s=>normalizeSubjectKey(s.key)===key)?.label || key;
       const isTolerated = getEffectivePolicy(key) === 'TOLERATED';
       const req = getRequiredMargin(key);
       const target = getTargetPct(key);
-      const targetBuf = st ? Math.round((target/50 - 1) * st.total) : 0;
+      const targetBuf = st ? Math.ceil((target/50 - 1) * st.total) : 0;
       const effectiveReq = Math.max(req, targetBuf);
       const projectedPct = st && st.total > 0 ? (st.present / st.total) * 100 : 0;
       const missingPctToTarget = Math.max(0, target - projectedPct);
+      const t = Math.max(0, Math.min(100, target))/100;
+      const missingLessonsToTarget = st ? (t >= 1 ? Infinity : Math.max(0, Math.ceil(((t * st.total) - Math.max(0,st.present)) / Math.max(1e-9,(1 - t))))) : 0;
       const present = st ? st.present : 0;
       const total = st ? st.total : 0;
-      return { key, label, buf, isTolerated, req: effectiveReq, target, targetBuf, projectedPct, missingPctToTarget, present, total };
+      return { key, label, buf, isTolerated, req: effectiveReq, target, targetBuf, projectedPct, missingPctToTarget, missingLessonsToTarget, present, total };
     }).filter(x => x.buf < x.req || x.buf <= 0)
       .sort((a,b)=>a.buf-b.buf);
 
@@ -317,7 +351,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
   }
 
   const [detailByDate, setDetailByDate] = useState<Record<string, string | ''>>({});
-  const rows = useMemo(() => {
+  const rows: RowResult[] = useMemo(() => {
     // Naturalna kolejność: dni w porządku chronologicznym bez dodatkowego sortowania
     return days.map(d => evaluateSkipFor(d));
   }, [days, plan, baseStats, commits, subjectPolicy, subjectSettings]);
@@ -443,31 +477,29 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
               {/* Rozszerzone wyjaśnienie dnia */}
               <div className="mt-1 text-sm opacity-90 whitespace-normal break-words">
                 {(() => {
-                  if ((r as any).tier === 'priority') {
-                    const abs = (r as any).absoluteLabels as string[] | undefined;
+                  if (r.tier === 'priority') {
+                    const abs = r.absoluteLabels as string[] | undefined;
                     const list = Array.isArray(abs) && abs.length > 0 ? `: ${abs.join(', ')}` : '';
                     return `Tego dnia zaplanowano zajęcia o absolutnym priorytecie${list}. Ze względu na ich wagę nie rekomendujemy planowania nieobecności.`;
                   }
-                  if ((r as any).tier === 'locked') return 'Zadeklarowałeś, że będziesz obecny. Ten dzień jest zablokowany; aby to zmienić, odznacz wybór „Idę” powyżej.';
-                  if ((r as any).tier === 'filled') return 'Ten dzień jest już uzupełniony w dzienniku, dlatego nie planujemy dodatkowych nieobecności.';
+                  if (r.tier === 'locked') return 'Zadeklarowałeś, że będziesz obecny. Ten dzień jest zablokowany; aby to zmienić, odznacz wybór „Idę” powyżej.';
+                  if (r.tier === 'filled') return 'Ten dzień jest już uzupełniony w dzienniku, dlatego nie planujemy dodatkowych nieobecności.';
                   const parts: React.ReactNode[] = [];
                   // 1) Global – pokazuj tylko, gdy zagrożony
-                  const g = (r as any).globalBuf as number | undefined;
+                  const g = r.globalBuf as number | undefined;
                   if (typeof g === 'number' && g <= 0) {
                     if (g < 0) parts.push(`Po opuszczeniu tego dnia całkowita frekwencja spadnie poniżej progu 50% (zabraknie ${Math.abs(g)} ${pluralLekcja(Math.abs(g))}).`);
                     else parts.push('Po opuszczeniu tego dnia całkowita frekwencja będzie dokładnie na progu 50% (bez zapasu).');
                   }
                   // 2) Lista zagrożonych przedmiotów
-                  const th = (r as any).threatened as Array<{label:string;buf:number;isTolerated:boolean;req:number;target:number;targetBuf:number;projectedPct:number;missingPctToTarget:number;present:number;total:number}> | undefined;
+                  const th = r.threatened as ThreatItem[] | undefined;
                   if (th && th.length > 0) {
                     const listNodes = th.map((x, idx) => {
-                      const t = Math.max(0, Math.min(100, x.target))/100;
-                      const nTarget = t >= 1 ? Infinity : Math.max(0, Math.ceil(((t * x.total) - Math.max(0,x.present)) / (1 - t)));
+                      const nTarget = x.missingLessonsToTarget;
                       const showShort = () => {
-                        if (x.buf < 0) return <> {x.label}: brakuje {Math.abs(x.buf)} {pluralLekcja(Math.abs(x.buf))} do celu {x.target}%</>;
+                        if (Number.isFinite(nTarget) && nTarget > 0) return <> {x.label}: brakuje {nTarget} {pluralLekcja(nTarget)} do celu {x.target}%</>;
                         if (x.buf < x.req) return <> {x.label}: zapas {x.buf} {pluralLekcja(x.buf)} (wymagane {x.req} {pluralLekcja(x.req)}) względem celu {x.target}%</>;
-                        if (x.buf === 0) return <> {x.label}: dokładnie cel {x.target}%</>;
-                        return <> {x.label}: zapas {x.buf} {pluralLekcja(x.buf)} względem celu {x.target}%</>;
+                        return <> {x.label}: cel {x.target}% osiągnięty z zapasem {Math.max(0,x.buf)} {pluralLekcja(Math.max(0,x.buf))}</>;
                       };
                       const tooltip = (
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-neutral-950 border border-neutral-700 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
@@ -475,7 +507,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                           <div>Cel: {x.target}%</div>
                           <div>Wymagany zapas: {x.req} {pluralLekcja(x.req)}</div>
                           <div>Zapas po opuszczeniu: {x.buf} {pluralLekcja(x.buf)}</div>
-                          {Number.isFinite(nTarget) && <div>Brakuje do celu: {nTarget} {pluralLekcja(nTarget)}</div>}
+                          {Number.isFinite(nTarget) && (nTarget>0) && <div>Brakuje do celu: {nTarget} {pluralLekcja(nTarget)}</div>}
                         </div>
                       );
                       return (
@@ -493,18 +525,29 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                   // 3) Szczegóły wybranego przedmiotu (selektor poniżej)
                   const sel = detailByDate[r.dateISO];
                   if (sel) {
-                    const map = (r as any).perAfterAll as Record<string,{present:number;total:number}> | undefined;
+                    const map = r.perAfterAll as Record<string,{present:number;total:number}> | undefined;
                     if (map && map[sel]) {
-                      const buf = 2*map[sel].present - map[sel].total;
-                      const sLabel = (r as any).daySubjects?.find((ds:any)=>ds.key===sel)?.label || sel;
-                      parts.push(buf >= 0 ? `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia pozostanie zapas ${buf} ${pluralLekcja(buf)}.` : `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia będzie brakować ${Math.abs(buf)} ${pluralLekcja(Math.abs(buf))} do progu 50%.`);
+                      const presentSel = Math.max(0, map[sel].present);
+                      const totalSel = Math.max(0, map[sel].total);
+                      const buf = 2*presentSel - totalSel;
+                      const sLabel = r.daySubjects?.find((ds)=>ds.key===sel)?.label || sel;
+                      const tgt = getTargetPct(sel);
+                      const rTarget = Math.max(0, Math.min(100, tgt))/100;
+                      const needToTarget = rTarget >= 1 ? Infinity : Math.max(0, Math.ceil(((rTarget * totalSel) - presentSel) / Math.max(1e-9, (1 - rTarget))));
+                      const baseMsg = buf >= 0
+                        ? `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia pozostanie zapas ${buf} ${pluralLekcja(buf)}.`
+                        : `Dla wybranego przedmiotu „${sLabel}” po opuszczeniu tego dnia będzie brakować ${Math.abs(buf)} ${pluralLekcja(Math.abs(buf))} do progu 50%.`;
+                      const targetMsg = Number.isFinite(needToTarget) && needToTarget > 0
+                        ? ` Aby osiągnąć cel ${tgt}%, potrzeba jeszcze ${needToTarget} ${pluralLekcja(needToTarget)} obecności.`
+                        : '';
+                      parts.push(baseMsg + targetMsg);
                     }
                   }
                   return <>{parts.filter(Boolean).map((node, i) => (<React.Fragment key={i}>{node}{i < parts.length - 1 ? ' ' : null}</React.Fragment>))}</>;
                 })()}
               </div>
               {/* Selektor szczegółów per-przedmiot dla tego dnia */}
-              {Array.isArray((r as any).daySubjects) && (r as any).daySubjects.length > 0 && (
+              {Array.isArray(r.daySubjects) && r.daySubjects.length > 0 && (
                 <div className="mt-1 flex items-center gap-2">
                   <label className="text-[11px] opacity-70">Pokaż szczegóły dla przedmiotu:</label>
                   <select
@@ -513,7 +556,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                     className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-xs"
                   >
                     <option value="">— wybierz przedmiot —</option>
-                    {(r as any).daySubjects.map((ds:any)=> (
+                    {r.daySubjects.map((ds)=> (
                       <option key={ds.key} value={ds.key}>{ds.label}</option>
                     ))}
                   </select>

@@ -13,7 +13,6 @@ type Lesson = {
 }
 
 export function ListView({
-  daysInData,
   selectedDays,
   lessonsByDay,
   isMobile,
@@ -21,7 +20,6 @@ export function ListView({
   onSwipeNext,
   onRenderLesson,
 }: {
-  daysInData: string[]
   selectedDays: string[]
   lessonsByDay: Map<string, Lesson[]>
   isMobile: boolean
@@ -62,5 +60,4 @@ export function ListView({
     </motion.div>
   )
 }
-
 

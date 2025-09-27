@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, Printer, Share2, Upload, Rows3, Columns3, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { CalendarDays, Printer, Share2, Upload, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Overrides, Lesson, RefTables } from '@/types/schedule';
 import type { DataFile } from '@/lib/api';
-import { DAY_ORDER, cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey } from '@/lib/schedule';
+import { cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey } from '@/lib/schedule';
 import { DataFileSchema, OverridesSchema, fetchJsonValidated } from '@/lib/api';
 import { useHashId } from '@/features/timetable/hooks/useHashId';
 import { GridView } from '@/features/timetable/components/GridView';
@@ -11,6 +11,7 @@ import { ListView } from '@/features/timetable/components/ListView';
 import { EntityPicker } from '@/features/timetable/components/EntityPicker';
 import { FiltersBar } from '@/features/timetable/components/FiltersBar';
 import { AdminPanel } from '@/features/timetable/components/AdminPanel';
+import { AnimatedBackdrop } from '@/features/timetable/components/AnimatedBackdrop';
 
 
 // ==========================================
@@ -25,7 +26,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [adminOpen, setAdminOpen] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
   const [overrides, setOverrides] = useState<Overrides>({ subjectOverrides: {}, teacherNameOverrides: {} });
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  // loginForm removed; handle form values from event target
   const [subjectFilter, setSubjectFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
 
@@ -34,7 +35,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     try {
       const saved = localStorage.getItem('timetable.lastEntityTab');
       if (saved === 'teachers' || saved === 'classes' || saved === 'rooms') return saved;
-    } catch {}
+    } catch { /* ignore */ }
     return "classes";
   });
   const [query, setQuery] = useState("");
@@ -54,7 +55,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const prevDesktopView = useRef<"grid" | "list">("grid");
   // const [showMobileFilters, setShowMobileFilters] = useState(false); // deprecated small filters toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  // swipeStart removed; swipe gestures not used currently
 
   // wczytaj JSON
   const loadData = async () => {
@@ -69,27 +70,52 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         const toUse = (hasSaved ? saved : fallback) as string | null;
         if (toUse) setHashId(toUse);
       }
-    } catch (e: any) {
+    } catch {
       setError("Nie udało się pobrać pliku /timetable_data.json. Możesz wczytać go ręcznie poniżej.");
     }
   };
 
   const loadOverrides = async () => {
     try {
-      const res = await fetch(`/api/overrides`, { cache: "no-store" });
+      const res = await fetch(`/v1/overrides`, { cache: "no-store", credentials: 'include' });
       if (!res.ok) return;
       const j = await res.json();
       if (j?.ok && j.data) {
         const parsed = OverridesSchema.safeParse(j.data)
         if (parsed.success) setOverrides(parsed.data)
       }
-    } catch {}
+    } catch { /* ignore */ }
   };
 
+  // Load initial data and current auth state
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadData(), loadOverrides()]).finally(() => setLoading(false));
-  }, []);
+    const refreshAuth = async () => {
+      try {
+        const res = await fetch('/v1/users/me', { credentials: 'include' })
+        const j = await res.json().catch(() => ({}))
+        setIsAuth(!!(j && j.ok && j.authenticated))
+      } catch { setIsAuth(false) }
+    }
+    setLoading(true)
+    Promise.all([loadData(), loadOverrides(), refreshAuth()]).finally(() => setLoading(false))
+  }, [])
+
+  // React to global auth changes (e.g., login/logout in Hub)
+  useEffect(() => {
+    const onAuth = () => {
+      ;(async () => {
+        try {
+          const res = await fetch('/v1/users/me', { credentials: 'include' })
+          const j = await res.json().catch(() => ({}))
+          setIsAuth(!!(j && j.ok && j.authenticated))
+          // Also refresh overrides when auth changes
+          await loadOverrides()
+        } catch { /* ignore */ }
+      })()
+    }
+    window.addEventListener('auth:changed', onAuth as EventListener)
+    return () => window.removeEventListener('auth:changed', onAuth as EventListener)
+  }, [])
 
   // Load persisted UI prefs - moved to lazy initializers above
 
@@ -103,7 +129,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         const firstClass = Object.keys(json.classes ?? {})[0] ?? null;
         if (firstClass) setHashId(firstClass);
       }
-    } catch (e) {
+    } catch {
       setError("Niepoprawny plik JSON.");
     }
   };
@@ -139,6 +165,19 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const activeKind = idToKind(activeId ?? undefined);
   const activeName = activeId ?
     (activeKind === "class" ? refs.classes[activeId] : activeKind === "teacher" ? refs.teachers[activeId] : refs.rooms[activeId]) : "";
+
+  // Specjalny format dla sal: pokaż "Sala <KOD>" jeżeli nazwa zaczyna się od kodu (np. 003, GIM3)
+  const extractRoomCode = (label: string): string | null => {
+    const first = (label || "").trim().split(/\s+/)[0] || "";
+    if (/^\d{1,4}$/.test(first)) return first; // 003, 111, 9
+    if (/^[A-Za-zĄĆĘŁŃÓŚŻŹ]{2,6}\d{1,4}$/i.test(first)) return first.toUpperCase(); // GIM3, S1, A12
+    return null;
+  };
+  const formatRoomDisplay = (label: string): string => {
+    const code = extractRoomCode(label);
+    return code ? `Sala ${code}` : label;
+  };
+  const activeDisplayName = activeKind === 'room' ? formatRoomDisplay(activeName) : activeName;
 
   // Filtry: dni + grupa (1/2, 2/2, wszystkie)
   const activeLessons: Lesson[] = useMemo(() => {
@@ -281,7 +320,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const teacherDisplay = teacherName ? (overrides.teacherNameOverrides[teacherName] ?? teacherName) : null;
     if (activeKind !== "class" && l.group) parts.push(`Klasa: ${l.group.name}`);
     if (activeKind !== "teacher" && teacherDisplay) parts.push(`Nauczyciel: ${teacherDisplay}`);
-    if (activeKind !== "room" && l.room) parts.push(`Sala: ${l.room.name}`);
+    if (activeKind !== "room" && l.room) parts.push(`Sala: ${formatRoomDisplay(l.room.name)}`);
     const half = extractHalfMark(l.subject);
 
     const crossLinks = (
@@ -307,10 +346,10 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {l.room ? (
           <button
             className="text-xs px-2 py-0.5 rounded-full bg-violet-900/40 hover:bg-violet-900/60 text-violet-200 border border-violet-800"
-            title={`Przejdź do planu sali ${l.room.name}`}
+            title={`Przejdź do planu sali ${formatRoomDisplay(l.room.name)}`}
             onClick={() => goTo(l.room!.id)}
           >
-            {l.room.name}
+            {formatRoomDisplay(l.room.name)}
           </button>
         ) : null}
       </div>
@@ -354,7 +393,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const teacherName = l.teacher?.name ?? '';
     const roomName = l.room?.name ?? '';
     if (activeKind !== 'teacher' && teacherName) extraParts.push(teacherName);
-    if (activeKind !== 'room' && roomName) extraParts.push(roomName);
+    if (activeKind !== 'room' && roomName) extraParts.push(formatRoomDisplay(roomName));
     const groupText = activeKind === 'class' ? (l.group?.name ?? half ?? '') : (l.group?.name ?? '');
     const subjectWithGroup = groupText ? `${subjectDisplay} ${groupText}` : subjectDisplay;
     return extraParts.length > 0 ? `${subjectWithGroup} (${extraParts.join(', ')})` : subjectWithGroup;
@@ -373,7 +412,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      const res = await fetch("/api/refresh", { method: "POST" });
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch("/v1/refresh", { method: "POST", headers: { 'X-CSRF-Token': csrf } });
       if (!res.ok) {
         const msg = await res.text();
         alert(`Błąd podczas odświeżania: ${msg || res.status}`);
@@ -381,7 +421,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       }
       await loadData();
       alert("Plan został odświeżony.");
-    } catch (e) {
+    } catch {
       alert("Nie udało się uruchomić odświeżania.");
     } finally {
       setRefreshing(false);
@@ -395,7 +435,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       const fd = new FormData(form);
       const username = String(fd.get('username') || '');
       const password = String(fd.get('password') || '');
-      const res = await fetch('/api/login', {
+      const res = await fetch('/v1/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -407,48 +447,38 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       }
       setIsAuth(true);
       await loadOverrides();
-    } catch {}
+      // notify other parts of the app (e.g., Hub)
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
+    } catch { /* ignore */ }
   };
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      await fetch('/v1/logout', { method: 'POST', credentials: 'include' });
     } finally {
       setIsAuth(false);
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
     }
   };
 
-  const saveOverrides = async () => {
-    try {
-      const res = await fetch('/api/overrides', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(overrides),
-      });
-      if (!res.ok) {
-        alert('Nie udało się zapisać zmian.');
-        return;
-      }
-      alert('Zapisano zmiany.');
-    } catch {
-      alert('Błąd zapisu.');
-    }
-  };
+  // saving overrides is handled in AdminPanel via props
 
   // ==========================================
   // RENDER (ciemny motyw)
   // ==========================================
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
+    <div className="relative min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
+      {/* Animated backdrop – desktop only, sits behind all content */}
+      <AnimatedBackdrop text={activeDisplayName} variant={(activeKind ?? null) as 'class' | 'teacher' | 'room' | null} />
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
       <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
         <div className="mx-auto max-w-7xl px-4 py-2 flex items-center gap-3">
           {!isMobile && <CalendarDays className="w-5 h-5 text-zinc-200" />}
+          {!isMobile && <div className="text-sm font-semibold text-zinc-200">Plan lekcji</div>}
           {/* Mobile: nazwa planu + nawigacja po dniach w top barze */}
           {isMobile && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="text-base font-semibold truncate">{activeName || '—'}</div>
+              <div className="text-base font-semibold truncate">{activeDisplayName || '—'}</div>
               {daysInData.length > 0 && (
                 <div className="flex items-center gap-1 ml-2">
                   <button
@@ -511,7 +541,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="relative z-10 mx-auto max-w-7xl px-4 py-6">
         <div className="print:hidden">
         {/* Pasek statusu/metadanych */}
         {!isMobile && (
@@ -565,7 +595,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {data && !isMobile && (
           <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 shadow-sm print:hidden ${isMobile ? 'p-3' : 'p-4'}`}>
             <EntityPicker
-              entityTab={entityTab as any}
+              entityTab={entityTab}
               setEntityTab={(t) => setEntityTab(t)}
               query={query}
               setQuery={setQuery}
@@ -596,7 +626,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
               <div>
                 {!isMobile && (
                   <h2 className="text-xl font-semibold tracking-tight">
-                    {prettyKind(activeKind)}: {activeName}
+                    {prettyKind(activeKind)}: {activeDisplayName}
                   </h2>
                 )}
                 {/* Przeniesiono wybór dnia do top bar (mobile). Tutaj nic nie renderujemy. */}
@@ -617,7 +647,6 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 />
               ) : (
                 <ListView
-                  daysInData={daysInData}
                   selectedDays={selectedDays}
                   lessonsByDay={lessonsByDay}
                   isMobile={isMobile}
@@ -713,7 +742,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 aria-label="Typ planu"
                 className="px-3 py-2 border border-zinc-700 rounded-lg bg-zinc-900 text-zinc-100"
                 value={entityTab}
-                onChange={(e) => setEntityTab(e.target.value as any)}
+                onChange={(e) => setEntityTab(e.target.value as 'teachers'|'classes'|'rooms')}
               >
                 <option value="teachers">Nauczyciele</option>
                 <option value="classes">Klasy</option>

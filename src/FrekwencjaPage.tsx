@@ -44,6 +44,44 @@ function getPolishDayName(d: Date) {
   return WEEKDAY_PL[d.getDay()];
 }
 
+// Disambiguation helpers for plan names and date formatting
+function buildPlanNameMap(plans: Plan[]): Record<string, string> {
+  const byName: Record<string, Plan[]> = {};
+  for (const p of plans) {
+    (byName[p.name] ||= []).push(p);
+  }
+  const map: Record<string, string> = {};
+  for (const [base, list] of Object.entries(byName)) {
+    if (list.length === 1) {
+      map[list[0].id] = base;
+    } else {
+      // stable order by createdAt then id
+      const sorted = list.slice().sort((a,b)=> (a.createdAt||0)-(b.createdAt||0) || a.id.localeCompare(b.id));
+      sorted.forEach((p, idx) => {
+        map[p.id] = idx === 0 ? base : `${base} (${idx})`;
+      });
+    }
+  }
+  return map;
+}
+function ensureUniquePlanName(existing: Plan[], desired: string): string {
+  const used = new Set(existing.map(p=>p.name));
+  if (!used.has(desired)) return desired;
+  let n = 1;
+  while (used.has(`${desired} (${n})`)) n++;
+  return `${desired} (${n})`;
+}
+function formatCreatedAt(ts?: number) {
+  if (!ts || !Number.isFinite(ts)) return '—';
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2,'0');
+  const min = String(d.getMinutes()).padStart(2,'0');
+  return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+}
+
 function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatch<Action> }){
   const [targetPct, setTargetPct] = useState<number>(85);
   const [mode, setMode] = useState<'day'|'months'|'range'>('day');
@@ -54,19 +92,21 @@ function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatc
   const [rangeStartDate, setRangeStartDate] = useState<string>(todayISO);
   const [rangeEndDate, setRangeEndDate] = useState<string>(todayISO);
   const [planId, setPlanId] = useState<string>(state.plans[0]?.id || '');
+  const nameMap = useMemo(()=>buildPlanNameMap(state.plans), [state.plans]);
 
   useEffect(()=>{ if (!state.plans.some(p=>p.id===planId)) setPlanId(state.plans[0]?.id || ''); }, [state.plans, planId]);
 
   function clearAllData(){
-    try { localStorage.removeItem('frekwencja/v1'); } catch {}
+    try { localStorage.removeItem('frekwencja/v1'); } catch { void 0 }
     window.location.reload();
   }
 
+  type SimEntry = { dateISO: string; dayName: string; slot: string; key: string; label: string }
   function randomize(){
     const plan = state.plans.find(p=>p.id===planId);
     if (!plan) return;
 
-    const entries: any[] = [];
+    const entries: SimEntry[] = [];
     if (mode === 'day') {
       const d = parseISODateLocal(singleDate);
       if (!Number.isFinite(d.getTime())) return;
@@ -132,12 +172,12 @@ function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatc
       }
     }
 
-    const byDate: Record<string, any[]> = {};
+    const byDate: Record<string, AttendanceEntry[]> = {};
     for (let i=0;i<entries.length;i++){
       const e = entries[i];
       const present = presentSet.has(i);
       const id = `${e.dateISO}#${e.slot}`;
-      const entry = { id, date: e.dateISO, dayName: e.dayName, slot: e.slot, subjectKey: e.key, subjectLabel: e.label, present };
+      const entry: AttendanceEntry = { id, date: e.dateISO, dayName: e.dayName, slot: e.slot, subjectKey: e.key, subjectLabel: e.label, present };
       (byDate[e.dateISO] ||= []).push(entry);
     }
     for (const k of Object.keys(byDate)){
@@ -147,7 +187,7 @@ function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatc
         if (an!==bn) return an-bn; return String(a.subjectLabel).localeCompare(String(b.subjectLabel),'pl');
       });
     }
-    dispatch({ type: 'LOAD_STATE', payload: { subjects: state.subjects, plans: state.plans, byDate } as any });
+    dispatch({ type: 'LOAD_STATE', payload: { subjects: state.subjects, plans: state.plans, byDate } as State });
   }
 
   return (
@@ -164,7 +204,7 @@ function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatc
             <label className="block text-xs uppercase tracking-wide opacity-70">Plan do symulacji</label>
             <select className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none" value={planId} onChange={e=>setPlanId(e.target.value)}>
               {state.plans.length===0 && <option value="">Brak planów</option>}
-              {state.plans.map(p=>(<option key={p.id} value={p.id}>{p.name}</option>))}
+              {state.plans.map(p=>(<option key={p.id} value={p.id}>{nameMap[p.id]||p.name}</option>))}
             </select>
           </div>
           <div className="space-y-2">
@@ -174,7 +214,7 @@ function ManageTools({ state, dispatch }:{ state: State; dispatch: React.Dispatc
           </div>
           <div className="space-y-2">
             <label className="block text-xs uppercase tracking-wide opacity-70">Tryb zakresu</label>
-            <select value={mode} onChange={e=>setMode(e.target.value as any)} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none">
+            <select value={mode} onChange={e=>setMode(e.target.value as 'day'|'months'|'range')} className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 outline-none">
               <option value="day">Pojedynczy dzień</option>
               <option value="months">Zakres miesięcy</option>
               <option value="range">Od daty do daty</option>
@@ -276,7 +316,7 @@ function normalizeSubjectKey(s: string) {
 // extractGroupMarker provided by shared lib (alias of extractHalfMark)
 function normalizeTimeRange(time: string) {
   // "8:00- 8:45" -> "8:00-8:45"
-  return (time||"").replace(/\-\s+/, "-").trim();
+  return (time||"").replace(/-\s+/, "-").trim();
 }
 function safeParseInt(s: string) {
   const n = parseInt(s, 10);
@@ -310,7 +350,7 @@ type Lesson = ScheduleLesson;
 
 async function fetchSchoolData(): Promise<TimetableData> {
   // plik w /public, Vite serwuje go z /timetable_data.json
-  const base = (import.meta as any)?.env?.BASE_URL ?? "/";
+  const base = (import.meta as unknown as { env?: { BASE_URL?: string } })?.env?.BASE_URL ?? "/";
   const res = await fetch(`${base}timetable_data.json?t=${Date.now()}`);
   if (!res.ok) throw new Error("Nie udało się pobrać planu szkoły");
   const data = await res.json();
@@ -335,8 +375,9 @@ function SchoolImportDialog({ onPlanReady, onClose }: SchoolImportProps) {
       try {
         const d = await fetchSchoolData();
         setData(d);
-      } catch (e:any) {
-        setError(e?.message || "Błąd pobierania");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg || "Błąd pobierania");
       } finally {
         setLoading(false);
       }
@@ -401,7 +442,8 @@ function SchoolImportDialog({ onPlanReady, onClose }: SchoolImportProps) {
     const id = `plan:${classId}:${selectedGroup||"all"}:${Date.now()}`;
     const p: Plan = {
       id,
-      name: selectedGroup ? `${className} (gr. ${selectedGroup}) – z planu` : `${className} – z planu`,
+      // nazwa bez dopisku „– z planu”; źródło prezentujemy osobnym tagiem
+      name: selectedGroup ? `${className} (gr. ${selectedGroup})` : `${className}`,
       days,
       createdAt: Date.now(),
       source: { kind: "school", classId, className, group: selectedGroup, meta: data.metadata }
@@ -451,8 +493,6 @@ function SchoolImportDialog({ onPlanReady, onClose }: SchoolImportProps) {
         {data.metadata && (
           <div className="text-xs opacity-70">
             <span className="inline-block mr-3">Źródło planu: {data.metadata.source || "—"}</span>
-            <span className="inline-block mr-3">Na stronie: {data.metadata.generation_date_from_page || "—"}</span>
-            <span className="inline-block">Pobrano: {data.metadata.scraped_on || "—"}</span>
           </div>
         )}
 
@@ -586,25 +626,7 @@ function PlansManager({ subjects, plans, dispatch }:{
     }));
   }
 
-  function savePlan() {
-    const id = `plan:custom:${Date.now()}`;
-    const plan: Plan = {
-      id,
-      name: name.trim() || "Mój plan",
-      days: editing,
-      createdAt: Date.now()
-    };
-    dispatch({ type: "UPSERT_PLAN", plan });
-    setName("");
-    setEditing({
-      "Poniedziałek": { items: [] },
-      "Wtorek": { items: [] },
-      "Środa": { items: [] },
-      "Czwartek": { items: [] },
-      "Piątek": { items: [] },
-    });
-    setOpenDays(prev => ({ ...prev, "Poniedziałek": true }));
-  }
+  // zapisywanie/edycja obsługiwane przyciskami powyżej
 
   function clearDay(day: string) {
     setEditing(ed => ({ ...ed, [day]: { items: [] } }));
@@ -623,6 +645,33 @@ function PlansManager({ subjects, plans, dispatch }:{
   }
 
   const [showImport, setShowImport] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const nameMap = useMemo(()=>buildPlanNameMap(plans), [plans]);
+
+  function beginEdit(p: Plan) {
+    setEditId(p.id);
+    setName(p.name);
+    // deep copy days
+    const cp: Record<string, PlanDay> = {};
+    Object.keys(DAY_ORDER).slice(0,5).forEach(d => {
+      const it = p.days[d]?.items || [];
+      cp[d] = { items: it.map(x=>({ ...x })) };
+    });
+    setEditing(cp);
+    setOpenDays(prev => ({ ...prev, "Poniedziałek": true }));
+  }
+
+  function cancelEdit() {
+    setEditId(null);
+    setName("");
+    setEditing({
+      "Poniedziałek": { items: [] },
+      "Wtorek": { items: [] },
+      "Środa": { items: [] },
+      "Czwartek": { items: [] },
+      "Piątek": { items: [] },
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -633,10 +682,52 @@ function PlansManager({ subjects, plans, dispatch }:{
                 className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition flex items-center gap-2">
           <School className="w-4 h-4"/>Dodaj ze szkoły…
         </button>
-        <button onClick={savePlan}
-                className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
-          <FilePlus2 className="w-4 h-4"/>Zapisz plan
-        </button>
+        {editId ? (
+          <>
+            <button onClick={()=>{
+              const original = plans.find(p=>p.id===editId);
+              if (!original) return;
+              const updated: Plan = {
+                ...original,
+                id: original.id,
+                name: name.trim() || original.name,
+                days: editing,
+              };
+              dispatch({ type: "UPSERT_PLAN", plan: updated });
+              cancelEdit();
+            }}
+                    className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
+              <Save className="w-4 h-4"/>Zaktualizuj plan
+            </button>
+            <button onClick={cancelEdit}
+                    className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition flex items-center gap-2">
+              <XCircle className="w-4 h-4"/>Anuluj
+            </button>
+          </>
+        ) : (
+          <button onClick={()=>{
+                    const id = `plan:custom:${Date.now()}`;
+                    const plan: Plan = {
+                      id,
+                      name: ensureUniquePlanName(plans, name.trim() || "Mój plan"),
+                      days: editing,
+                      createdAt: Date.now()
+                    };
+                    dispatch({ type: "UPSERT_PLAN", plan });
+                    setName("");
+                    setEditing({
+                      "Poniedziałek": { items: [] },
+                      "Wtorek": { items: [] },
+                      "Środa": { items: [] },
+                      "Czwartek": { items: [] },
+                      "Piątek": { items: [] },
+                    });
+                    setOpenDays(prev => ({ ...prev, "Poniedziałek": true }));
+                  }}
+                  className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
+            <FilePlus2 className="w-4 h-4"/>Zapisz plan
+          </button>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -718,22 +809,33 @@ function PlansManager({ subjects, plans, dispatch }:{
             <div key={p.id} className="bg-neutral-900 border border-neutral-800 rounded p-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="font-semibold break-words leading-tight">{p.name}</div>
+                  <div className="font-semibold break-words leading-tight">{nameMap[p.id] || p.name}</div>
                   <div className="text-xs opacity-70">
                     {p.source?.kind === "school" ? <Pill>z planu szkolnego</Pill> : <Pill>własny</Pill>}
                   </div>
                 </div>
-                <button aria-label="Usuń plan" onClick={()=>dispatch({type:"DELETE_PLAN", id: p.id})}
-                        className="p-1.5 rounded bg-red-600 hover:bg-red-500"><Trash2 className="w-4 h-4"/></button>
-              </div>
-              {p.source?.meta && (
-                <div className="mt-2 text-xs opacity-70">
-                  Na stronie: {p.source.meta.generation_date_from_page || "—"} • Pobrano: {p.source.meta.scraped_on || "—"}
+                <div className="flex items-center gap-1">
+                  <button aria-label="Edytuj plan" onClick={()=>beginEdit(p)}
+                          className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><Edit3 className="w-4 h-4"/></button>
+                  <button aria-label="Klonuj plan" onClick={()=>{
+                            const clone: Plan = {
+                              ...p,
+                              id: `plan:custom:${Date.now()}`,
+                              name: ensureUniquePlanName(plans, p.name),
+                              createdAt: Date.now(),
+                              days: Object.fromEntries(Object.keys(DAY_ORDER).slice(0,5).map(d=>[d,{ items: (p.days[d]?.items||[]).map(x=>({...x})) }]))
+                            };
+                            dispatch({ type: 'UPSERT_PLAN', plan: clone });
+                          }}
+                          className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700"><Layers className="w-4 h-4"/></button>
+                  <button aria-label="Usuń plan" onClick={()=>dispatch({type:"DELETE_PLAN", id: p.id})}
+                          className="p-1.5 rounded bg-red-600 hover:bg-red-500"><Trash2 className="w-4 h-4"/></button>
                 </div>
-              )}
+              </div>
               <div className="mt-2 text-xs opacity-70">
                 Dni: {Object.keys(p.days).filter(d=>DAY_ORDER[d]<=5).length}/5
               </div>
+              <div className="mt-1 text-xs opacity-70">Utworzono: {formatCreatedAt(p.createdAt)}</div>
             </div>
           ))}
         </div>
@@ -742,7 +844,10 @@ function PlansManager({ subjects, plans, dispatch }:{
       <AnimatePresence>
         {showImport && (
           <SchoolImportDialog
-            onPlanReady={(plan)=>dispatch({type:"UPSERT_PLAN", plan})}
+            onPlanReady={(plan)=>{
+              const adjusted = { ...plan, name: ensureUniquePlanName(plans, plan.name) };
+              dispatch({type:"UPSERT_PLAN", plan: adjusted});
+            }}
             onClose={()=>setShowImport(false)}
           />
         )}
@@ -1145,11 +1250,13 @@ export default function FrekwencjaPage() {
           icon={<CalendarX className="w-5 h-5"/>}
           right={
             <div className="flex items-center gap-2">
-              <select value={plannerPlanId || ''} onChange={e=>setPlannerPlanId(e.target.value || null)}
-                      className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm min-w-[12rem]">
-                {state.plans.length === 0 && <option value="">Brak planów</option>}
-                {state.plans.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}
-              </select>
+              {(() => { const nm = buildPlanNameMap(state.plans); return (
+                <select value={plannerPlanId || ''} onChange={e=>setPlannerPlanId(e.target.value || null)}
+                        className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm min-w-[12rem]">
+                  {state.plans.length === 0 && <option value="">Brak planów</option>}
+                  {state.plans.map(p => <option value={p.id} key={p.id}>{nm[p.id] || p.name}</option>)}
+                </select>
+              ); })()}
             </div>
           }
         >
@@ -1214,7 +1321,7 @@ function PlanFillMenu({
               <ul className="space-y-1">
                 {plans.map(p => (
                   <li key={p.id} className="bg-neutral-900 border border-neutral-800 rounded">
-                    <div className="px-3 py-2 text-sm font-medium">{p.name}</div>
+                    <div className="px-3 py-2 text-sm font-medium">{(buildPlanNameMap(plans)[p.id]) || p.name}</div>
                     <div className="px-2 pb-2 flex items-center gap-2">
                       <button onClick={()=>{ onFillDay(p.id); setOpen(false); }}
                               className="flex-1 px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm">Uzupełnij <b>dzień</b></button>

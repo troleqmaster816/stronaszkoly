@@ -1,0 +1,859 @@
+openapi: 3.1.0
+info:
+  title: School Timetable & Attendance API
+  version: 1.0.0-draft
+  description: |
+    Draft of a developer-friendly API for timetable browsing, attendance tracking,
+    remote approvals, and admin overrides. Uses resource-oriented endpoints,
+    standard HTTP semantics, and consistent error handling.
+servers:
+  - url: https://api.example.com
+  - url: http://localhost:8787
+security:
+  - BearerAuth: []
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API-Key
+  parameters:
+    FromDate:
+      name: from
+      in: query
+      description: Inclusive ISO date (YYYY-MM-DD)
+      required: false
+      schema: { type: string, format: date }
+    ToDate:
+      name: to
+      in: query
+      description: Inclusive ISO date (YYYY-MM-DD)
+      required: false
+      schema: { type: string, format: date }
+    Cursor:
+      name: cursor
+      in: query
+      description: Cursor for keyset pagination
+      required: false
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      description: Page size (max 200)
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+  headers:
+    XRequestId:
+      description: Stable request id for tracing.
+      schema: { type: string }
+    RateLimitLimit:
+      description: Maximum number of requests allowed in the current window.
+      schema: { type: integer }
+    RateLimitRemaining:
+      description: Remaining requests in the current window.
+      schema: { type: integer }
+    RateLimitReset:
+      description: Seconds until the rate-limit window resets.
+      schema: { type: integer }
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807-like problem details.
+      properties:
+        type: { type: string, description: Unique error identifier URI or code }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string, description: Domain-specific, machine-readable code }
+        fields:
+          type: array
+          description: Field-level validation errors
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              message: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+    Ref:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+      required: [id, name]
+    Lesson:
+      type: object
+      properties:
+        day: { type: string }
+        lesson_num: { type: string }
+        time: { type: string }
+        subject: { type: string }
+        teacher: { anyOf: [ { $ref: '#/components/schemas/Ref' }, { type: 'null' } ] }
+        group:   { anyOf: [ { $ref: '#/components/schemas/Ref' }, { type: 'null' } ] }
+        room:    { anyOf: [ { $ref: '#/components/schemas/Ref' }, { type: 'null' } ] }
+      required: [day, lesson_num, time, subject]
+    AttendanceEntry:
+      type: object
+      properties:
+        id: { type: string, description: Stable entry id }
+        date: { type: string, format: date }
+        dayName: { type: string }
+        slot: { type: string }
+        subjectKey: { type: string }
+        subjectLabel: { type: string }
+        present: { type: boolean }
+        teacherId: { type: string, nullable: true }
+        classId: { type: string, nullable: true }
+        roomId: { type: string, nullable: true }
+      required: [id, date, subjectKey, subjectLabel, present]
+    AttendanceSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        present: { type: integer }
+        percent: { type: number }
+        needToReach50: { type: integer }
+        canSkipAndKeep50: { type: integer }
+    Overrides:
+      type: object
+      properties:
+        subjectOverrides:
+          type: object
+          additionalProperties: { type: string }
+        teacherNameOverrides:
+          type: object
+          additionalProperties: { type: string }
+      required: [subjectOverrides, teacherNameOverrides]
+    ApprovalToken:
+      type: object
+      properties:
+        token: { type: string }
+        url: { type: string }
+        expiresAt: { type: string, format: date-time }
+      required: [token, url, expiresAt]
+
+    BackupEntry:
+      type: object
+      properties:
+        filename: { type: string }
+        size: { type: integer }
+        mtime: { type: string, format: date-time }
+      required: [filename, size, mtime]
+
+    OkResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+
+    AttendanceState:
+      type: object
+      description: Full per-user attendance state (used by GET/PUT /v1/attendance)
+      properties:
+        subjects:
+          type: array
+          items: { type: object, properties: { key: { type: string }, label: { type: string } }, required: [key, label] }
+        plans:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              days:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          slotHint: { type: string, nullable: true }
+                          subjectKey: { type: string }
+                          subjectLabel: { type: string }
+            required: [id, name, days]
+        byDate:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                id: { type: string }
+                date: { type: string, format: date }
+                dayName: { type: string }
+                slot: { type: string }
+                subjectKey: { type: string }
+                subjectLabel: { type: string }
+                present: { type: boolean }
+              required: [id, date, subjectKey, subjectLabel, present]
+        version: { type: integer, nullable: true }
+        updatedAt: { type: integer, nullable: true }
+
+paths:
+  /v1/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } }, required: [ok] }
+
+  /v1/users/me:
+    get:
+      security: []
+      summary: Returns the current user if authenticated
+      responses:
+        '200':
+          description: Current user
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/XRequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  authenticated: { type: boolean }
+                  user: { anyOf: [ { $ref: '#/components/schemas/User' }, { type: 'null' } ] }
+                required: [ok, authenticated]
+
+  /v1/login:
+    post:
+      summary: Log in and set a session cookie (for web panel)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+              required: [username, password]
+      responses:
+        '200': { description: Logged in }
+
+  /v1/logout:
+    post:
+      summary: Log out and clear the session cookie
+      responses:
+        '200': { description: Logged out }
+
+  /v1/register:
+    post:
+      summary: Register a new user and create a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+              required: [username, password]
+      responses:
+        '200': { description: Registered }
+  /v1/teachers:
+    get:
+      summary: List teachers
+      responses:
+        '200':
+          description: Map of teacher id to label
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: string }
+
+  /v1/classes:
+    get:
+      summary: List classes
+      responses:
+        '200':
+          description: Map of class id to label
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: string }
+
+  /v1/rooms:
+    get:
+      summary: List rooms
+      responses:
+        '200':
+          description: Map of room id to label
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: string }
+
+  /v1/teachers/{id}/timetable:
+    get:
+      summary: Get a teacher's timetable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, description: Canonical id (e.g., n12) or alias (e.g., initials like RM). Aliases may be ambiguous (409). }
+      responses:
+        '200':
+          description: Lessons for the teacher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Lesson' }
+                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                required: [data]
+
+  /v1/classes/{id}/timetable:
+    get:
+      summary: Get a class timetable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, description: Canonical id (e.g., o5) or alias (e.g., 4TAI). Aliases may be ambiguous (409). }
+        - name: group
+          in: query
+          required: false
+          description: Group id or name (e.g., "2/2"). When provided, returns lessons for the whole class and that specific group, excluding other groups.
+          schema: { type: string }
+        - name: includeWhole
+          in: query
+          required: false
+          description: Include whole-class lessons when filtering by group (default true)
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Lessons for the class
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Lesson' }
+                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                required: [data]
+
+  /v1/rooms/{id}/timetable:
+    get:
+      summary: Get a room timetable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, description: Canonical id (e.g., s36) or alias (e.g., room number 407). Aliases may be ambiguous (409). }
+      responses:
+        '200':
+          description: Lessons for the room
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Lesson' }
+                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                required: [data]
+
+  /v1/attendance/entries:
+    get:
+      summary: List attendance entries for the current user
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: subjectKey
+          in: query
+          required: false
+          schema: { type: string }
+        - name: classId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: teacherId
+          in: query
+          required: false
+          schema: { type: string }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of entries
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/XRequestId' }
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AttendanceEntry' }
+                  nextCursor:
+                    type: string
+                    nullable: true
+                required: [data]
+    patch:
+      summary: Bulk update entries by id (set present true/false)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                updates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      present: { type: boolean }
+                      ifMatch: { type: string, description: Optional ETag to guard against lost updates }
+                    required: [id, present]
+              required: [updates]
+      responses:
+        '200':
+          description: Update results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  updated: { type: integer }
+                required: [ok, updated]
+        '409':
+          description: Version mismatch
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/attendance:
+    get:
+      summary: Get full attendance state for the current user
+      responses:
+        '200':
+          description: Current state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/AttendanceState' }
+                required: [ok, data]
+    put:
+      summary: Replace full attendance state for the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceState' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+
+  /v1/attendance/summary:
+    get:
+      summary: Summary stats for the current user
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: subjectKey
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AttendanceSummary' }
+                required: [data]
+
+  /v1/attendance/days/{dateISO}/present:
+    post:
+      summary: Set presence for all entries on a given day
+      parameters:
+        - name: dateISO
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                present: { type: boolean }
+              required: [present]
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  updated: { type: integer }
+                required: [ok, updated]
+
+  /v1/attendance/plans:
+    get:
+      summary: List user lesson plans (FrekwencjaPage)
+      responses:
+        '200':
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        days:
+                          type: object
+                          additionalProperties:
+                            type: object
+                            properties:
+                              items:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    slotHint: { type: string, nullable: true }
+                                    subjectKey: { type: string }
+                                    subjectLabel: { type: string }
+      
+  /v1/attendance/days/{dateISO}/apply-plan:
+    post:
+      summary: Fill a day from a saved plan and optionally set presence
+      parameters:
+        - name: dateISO
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planId: { type: string }
+                overwrite: { type: boolean, default: false }
+                setPresent: { type: boolean, nullable: true, description: When provided, sets presence on created entries }
+              required: [planId]
+      responses:
+        '200':
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  created: { type: integer }
+                  overwritten: { type: boolean }
+                required: [ok, created, overwritten]
+
+  /v1/approvals:
+    post:
+      summary: Create a one-time approval token to update an entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [toggle, set]
+                dateISO:
+                  type: string
+                  format: date
+                entryId: { type: string }
+                present:
+                  type: boolean
+                  description: Required when action = set
+              required: [action, dateISO, entryId]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/ApprovalToken' }
+                required: [ok, data]
+
+  /v1/approvals/{token}:
+    get:
+      summary: Get approval status
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Approval status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [pending, accepted, denied, expired] }
+                      createdAt: { type: string, format: date-time }
+                      expiresAt: { type: string, format: date-time }
+                    required: [status]
+                required: [ok]
+    post:
+      summary: Submit a decision for an approval token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision: { type: string, enum: [accept, deny] }
+              required: [decision]
+      responses:
+        '200':
+          description: Decision accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                required: [ok]
+        '409':
+          description: Already decided
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/overrides:
+    get:
+      summary: Read subject and teacher name overrides
+      responses:
+        '200':
+          description: Overrides
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Overrides' }
+                required: [data]
+    put:
+      summary: Replace overrides (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Overrides' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } }, required: [ok] }
+
+  /v1/jobs/timetable-scrape:
+    post:
+      summary: Start an async job to refresh timetable data (admin-only)
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string }
+                  statusUrl: { type: string }
+                required: [jobId, statusUrl]
+  /v1/jobs/articles-scrape:
+    post:
+      summary: Start an async job to refresh articles (admin-only)
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string }
+                  statusUrl: { type: string }
+                required: [jobId, statusUrl]
+  /v1/jobs/{jobId}:
+    get:
+      summary: Get job status
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, enum: [queued, running, succeeded, failed] }
+                  startedAt: { type: string, format: date-time, nullable: true }
+                  finishedAt: { type: string, format: date-time, nullable: true }
+                  error: { type: string, nullable: true }
+                required: [id, status]
+
+  /v1/refresh:
+    post:
+      summary: Synchronously refresh timetable data using the scraper (admin-only)
+      responses:
+        '200':
+          description: Scrape finished successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '409':
+          description: Scraper already running
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          description: Error during scraping
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/timetable/backups:
+    get:
+      summary: List available timetable backups (admin-only)
+      responses:
+        '200':
+          description: Backups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BackupEntry' }
+                required: [data]
+
+  /v1/timetable/restore:
+    post:
+      summary: Restore timetable_data.json from a selected backup (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename: { type: string }
+              required: [filename]
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '400':
+          description: Invalid filename
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: Backup not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/apikey:
+    get:
+      summary: Get current user's API key (or admin API key)
+      responses:
+        '200':
+          description: API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  apiKey: { type: string }
+                required: [ok, apiKey]
+
+  /v1/apikey/regenerate:
+    post:
+      summary: Regenerate the API key for the current user (or admin)
+      responses:
+        '200':
+          description: New key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  apiKey: { type: string }
+                required: [ok, apiKey]
+
+

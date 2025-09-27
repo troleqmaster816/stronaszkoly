@@ -51,7 +51,7 @@ export function prettyKind(kind: ReturnType<typeof idToKind>) {
 // Extracts group mark such as 1/2, 2/3 present at end or after dash/space
 export function extractHalfMark(subject?: string | null): string | null {
   if (!subject) return null;
-  const m = subject.match(/(?:^|\b|\-)(\d+\/\d+)(?=$|\b)/i);
+  const m = subject.match(/(?:^|\b|-)(\d+\/\d+)(?=$|\b)/i);
   if (!m) return null;
   return m[1].replace(/\s+/g, "");
 }
@@ -60,9 +60,8 @@ export function extractHalfMark(subject?: string | null): string | null {
 export function normalizeSubjectKey(subject?: string | null): string {
   if (!subject) return "";
   let s = subject.toLowerCase().trim();
-  s = s.replace(/(?:\s|\-)*(\d+\/\d+)(?=$|\b)/gi, "");
-  s = s.replace(/[\s\-]+$/g, "").replace(/\s{2,}/g, " ");
+  s = s.replace(/(?:\s|-)*(\d+\/\d+)(?=$|\b)/gi, "");
+  s = s.replace(/[\s-]+$/g, "").replace(/\s{2,}/g, " ");
   return s;
 }
-
 

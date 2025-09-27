@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { CalendarDays, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
@@ -8,6 +8,143 @@ type HubProps = {
 };
 
 export default function Hub({ navigate }: HubProps) {
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [isAuth, setIsAuth] = useState(false);
+  const [me, setMe] = useState<{ id: string; username: string } | null>(null);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
+  const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
+  const [articlesJob, setArticlesJob] = useState<{ id: string; status: string } | null>(null);
+  const [articlesBusy, setArticlesBusy] = useState(false);
+  const [ttBusy, setTtBusy] = useState(false);
+  const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
+
+  const refreshMe = async () => {
+    try {
+      const res = await fetch('/v1/users/me', { credentials: 'include' });
+      const j = await res.json();
+      if (j?.ok && j.authenticated) {
+        setIsAuth(true);
+        setMe(j.user);
+      } else {
+        setIsAuth(false);
+        setMe(null);
+      }
+    } catch { /* ignore */ }
+  };
+  useEffect(() => { refreshMe(); }, []);
+  useEffect(() => {
+    const onAuth = () => { refreshMe(); };
+    window.addEventListener('auth:changed', onAuth as EventListener);
+    return () => window.removeEventListener('auth:changed', onAuth as EventListener);
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/v1/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(loginForm) });
+      if (!res.ok) { alert('Logowanie nieudane'); return; }
+      setLoginForm({ username: '', password: '' });
+      await refreshMe();
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
+      await loadSingleKey();
+    } catch { /* ignore */ }
+  };
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/v1/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(registerForm) });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Rejestracja nieudana'); return; }
+      setRegisterForm({ username: '', password: '' });
+      await refreshMe();
+      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
+      await loadSingleKey();
+    } catch { /* ignore */ }
+  };
+  const handleLogout = async () => {
+    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ } }
+  };
+  const loadSingleKey = async () => {
+    try {
+      const res = await fetch('/v1/apikey', { credentials: 'include' });
+      const j = await res.json();
+      if (j?.ok) setSingleApiKey(j.apiKey);
+    } catch { /* ignore */ }
+  };
+  const regenSingleKey = async () => {
+    try {
+      const res = await fetch('/v1/apikey/regenerate', { method: 'POST', credentials: 'include' });
+      const j = await res.json();
+      if (j?.ok) setSingleApiKey(j.apiKey);
+    } catch { /* ignore */ }
+  };
+
+  const refreshTimetable = async () => {
+    try {
+      setTtBusy(true);
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/refresh', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić odświeżania'); return; }
+      alert('Plan został odświeżony.');
+    } finally {
+      setTtBusy(false);
+    }
+  };
+
+  const loadBackups = async () => {
+    try {
+      const res = await fetch('/v1/timetable/backups', { credentials: 'include' });
+      const j = await res.json();
+      setBackups(Array.isArray(j?.data) ? j.data : []);
+    } catch { /* ignore */ }
+  };
+
+  const restoreBackup = async (filename: string) => {
+    try {
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, credentials: 'include', body: JSON.stringify({ filename }) });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się przywrócić kopii'); return; }
+      alert('Przywrócono wybrany plan.');
+    } catch { /* ignore */ }
+  };
+
+  const startArticlesScrape = async () => {
+    try {
+      setArticlesBusy(true);
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
+      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić zadania'); setArticlesBusy(false); return; }
+      const j = await res.json();
+      const jobId = j?.jobId;
+      if (!jobId) { setArticlesBusy(false); return; }
+      setArticlesJob({ id: jobId, status: 'queued' });
+      // Poll co 2s do zakończenia
+      const poll = async () => {
+        try {
+          const st = await fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' });
+          const jj = await st.json();
+          setArticlesJob({ id: jobId, status: jj?.status || 'unknown' });
+          if (jj?.status === 'succeeded' || jj?.status === 'failed') {
+            setArticlesBusy(false);
+            if (jj?.status === 'succeeded') {
+              // Odśwież newsy po zakończeniu (proste przeładowanie pliku statycznego)
+              try { await fetch('/articles.json', { cache: 'no-store' }); } catch { /* ignore */ }
+            } else if (jj?.error) {
+              console.error('Articles job error:', jj.error);
+            }
+            return;
+          }
+          setTimeout(poll, 2000);
+        } catch {
+          setTimeout(poll, 2000);
+        }
+      };
+      setTimeout(poll, 1500);
+    } catch {
+      setArticlesBusy(false);
+    }
+  };
+
   return (
     <div className="relative min-h-[100svh] w-full">
       {/* Background image */}
@@ -23,6 +160,15 @@ export default function Hub({ navigate }: HubProps) {
 
       {/* Content */}
       <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col items-center px-4 pt-14 pb-20 sm:py-10 text-white">
+        {/* Profile button */}
+        <div className="absolute right-4 top-4">
+          <button
+            onClick={() => { setProfileOpen(true); if (isAuth) loadSingleKey(); }}
+            className="px-3 py-1.5 rounded-lg border border-white/30 bg-black/40 hover:bg-black/60 backdrop-blur"
+          >
+            {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
+          </button>
+        </div>
         <header className="w-full">
           <div className="relative mx-auto max-w-5xl text-center">
             {/* dekoracyjna poświata pod tytułem (elektroniczny klimat) */}
@@ -86,6 +232,103 @@ export default function Hub({ navigate }: HubProps) {
           © {new Date().getFullYear()} ZSE Zduńska Wola
         </footer>
       </div>
+
+      {/* Profile modal */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={()=>setProfileOpen(false)} />
+          <div className="relative z-10 w-[92vw] max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
+              <button onClick={()=>setProfileOpen(false)} className="px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800">Zamknij</button>
+            </div>
+            {!isAuth ? (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Logowanie</div>
+                  <input className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Nazwa użytkownika"
+                         value={loginForm.username} onChange={e=>setLoginForm(s=>({ ...s, username: e.target.value }))} />
+                  <input type="password" className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Hasło"
+                         value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
+                  <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500" type="submit">Zaloguj</button>
+                </form>
+                <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Rejestracja</div>
+                  <input className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Nazwa użytkownika"
+                         value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
+                  <input type="password" className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Hasło (min. 6)"
+                         value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
+                  <button className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500" type="submit">Zarejestruj</button>
+                </form>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div>
+                    <div className="text-sm">Zalogowano jako</div>
+                    <div className="text-lg font-semibold">{me?.username}</div>
+                  </div>
+                  <button onClick={handleLogout} className="px-3 py-2 rounded bg-red-600 hover:bg-red-500">Wyloguj</button>
+                </div>
+                <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Klucz API (test)</div>
+                  <div className="text-xs opacity-80 mb-2">Pojedynczy klucz do wszystkich endpointów. Na czas testów widoczny w panelu cały czas.</div>
+                  <div className="flex items-center gap-2">
+                    <input readOnly value={singleApiKey || ''} className="flex-1 px-3 py-2 rounded bg-zinc-900 border border-zinc-700 font-mono" />
+                    <button onClick={()=>{ navigator.clipboard.writeText(singleApiKey || ''); }} className="px-3 py-2 rounded border border-zinc-700 hover:bg-zinc-800">Kopiuj</button>
+                    <button onClick={regenSingleKey} className="px-3 py-2 rounded bg-amber-600 hover:bg-amber-500">Regeneruj</button>
+                  </div>
+                </section>
+                {me?.username === 'admin' ? (
+                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                    <div className="text-sm font-medium mb-2">Aktualności</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={startArticlesScrape}
+                        disabled={articlesBusy}
+                        className={`px-3 py-2 rounded ${articlesBusy ? 'bg-zinc-700' : 'bg-emerald-600 hover:bg-emerald-500'}`}
+                      >
+                        {articlesBusy ? 'Aktualizuję…' : 'Aktualizuj artykuły'}
+                      </button>
+                      {articlesJob ? (
+                        <span className="text-xs opacity-80">Status: {articlesJob.status}</span>
+                      ) : null}
+                    </div>
+                    <div className="text-[11px] mt-2 opacity-70">Po zakończeniu zadania nowe artykuły pojawią się w sekcji aktualności.</div>
+                  </section>
+                ) : null}
+                {me?.username === 'admin' ? (
+                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                    <div className="text-sm font-medium mb-2">Plan lekcji</div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <button onClick={refreshTimetable} disabled={ttBusy} className={`px-3 py-2 rounded ${ttBusy ? 'bg-zinc-700' : 'bg-blue-600 hover:bg-blue-500'}`}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</button>
+                      <button onClick={loadBackups} className="px-3 py-2 rounded border border-zinc-700 hover:bg-zinc-800">Pokaż kopie zapasowe</button>
+                    </div>
+                    {Array.isArray(backups) ? (
+                      backups.length === 0 ? (
+                        <div className="text-xs text-zinc-400">Brak kopii zapasowych.</div>
+                      ) : (
+                        <div className="max-h-40 overflow-y-auto text-xs">
+                          {backups.map((b) => (
+                            <div key={b.filename} className="flex items-center justify-between py-1 border-b border-zinc-800 last:border-b-0">
+                              <div className="truncate pr-2">{b.filename}</div>
+                              <div className="flex items-center gap-2">
+                                <span className="opacity-70">{new Date(b.mtime).toLocaleString()}</span>
+                                <button onClick={() => restoreBackup(b.filename)} className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500">Przywróć</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : null}
+                    <div className="text-[11px] mt-2 opacity-70">Przechowujemy 5 ostatnich różnych wersji planu.</div>
+                  </section>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -130,5 +373,3 @@ function HubTile({
     </motion.button>
   );
 }
-
-

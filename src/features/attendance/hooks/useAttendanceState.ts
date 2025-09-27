@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import { reducer, type State } from '@/features/attendance/state/attendanceReducer';
 
 const LS_KEY = 'frekwencja/v1';
@@ -7,7 +7,7 @@ function loadInitial(): State {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { /* ignore */ }
   return {
     subjects: [
       { key: 'matematyka', label: 'Matematyka' },
@@ -20,16 +20,59 @@ function loadInitial(): State {
 }
 
 export function useAttendanceState() {
-  const [state, dispatch] = useReducer(reducer, undefined as any, loadInitial);
+  const [state, dispatch] = useReducer(reducer, undefined as unknown as State, loadInitial);
+  const remoteEnabled = useRef(false);
+  const putInFlight = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Detect auth and load remote state if available
   useEffect(() => {
-    const timer = setTimeout(() => {
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
-    }, 150);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await fetch('/v1/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null);
+        const authed = !!(me && me.ok && me.authenticated);
+        if (cancelled) return;
+        if (authed) {
+          const res = await fetch('/v1/attendance', { credentials: 'include', cache: 'no-store' });
+          if (res.ok) {
+            const j = await res.json();
+            if (j && j.ok && j.data) {
+              remoteEnabled.current = true;
+              dispatch({ type: 'LOAD_STATE', payload: {
+                subjects: Array.isArray(j.data.subjects) ? j.data.subjects : [],
+                plans: Array.isArray(j.data.plans) ? j.data.plans : [],
+                byDate: (j.data.byDate && typeof j.data.byDate === 'object') ? j.data.byDate : {},
+              } as State });
+              return;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Persist to local storage or remote API
+  useEffect(() => {
+    const doPersist = async () => {
+      if (remoteEnabled.current) {
+        try {
+          const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+          await fetch('/v1/attendance', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+            credentials: 'include',
+            body: JSON.stringify({ ...state, version: 1 }),
+          });
+        } catch { /* ignore */ }
+        return;
+      }
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+    };
+    if (putInFlight.current) clearTimeout(putInFlight.current);
+    putInFlight.current = setTimeout(doPersist, 200);
+    return () => { if (putInFlight.current) clearTimeout(putInFlight.current); };
   }, [state]);
 
   return [state, dispatch] as const;
 }
-
-
