@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { CalendarDays, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
+import { useAuth } from "./features/auth/useAuth";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -9,8 +10,6 @@ type HubProps = {
 
 export default function Hub({ navigate }: HubProps) {
   const [profileOpen, setProfileOpen] = useState(false);
-  const [isAuth, setIsAuth] = useState(false);
-  const [me, setMe] = useState<{ id: string; username: string } | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
   const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
@@ -18,51 +17,31 @@ export default function Hub({ navigate }: HubProps) {
   const [articlesBusy, setArticlesBusy] = useState(false);
   const [ttBusy, setTtBusy] = useState(false);
   const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
-
-  const refreshMe = async () => {
-    try {
-      const res = await fetch('/v1/users/me', { credentials: 'include' });
-      const j = await res.json();
-      if (j?.ok && j.authenticated) {
-        setIsAuth(true);
-        setMe(j.user);
-      } else {
-        setIsAuth(false);
-        setMe(null);
-      }
-    } catch { /* ignore */ }
-  };
-  useEffect(() => { refreshMe(); }, []);
-  useEffect(() => {
-    const onAuth = () => { refreshMe(); };
-    window.addEventListener('auth:changed', onAuth as EventListener);
-    return () => window.removeEventListener('auth:changed', onAuth as EventListener);
-  }, []);
+  const { isAuth, me, login, register, logout } = useAuth()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const res = await fetch('/v1/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(loginForm) });
-      if (!res.ok) { alert('Logowanie nieudane'); return; }
-      setLoginForm({ username: '', password: '' });
-      await refreshMe();
-      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
-      await loadSingleKey();
-    } catch { /* ignore */ }
+    const result = await login(loginForm.username, loginForm.password)
+    if (!result.ok) {
+      alert(result.error || 'Logowanie nieudane')
+      return
+    }
+    setLoginForm({ username: '', password: '' })
+    await loadSingleKey()
   };
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const res = await fetch('/v1/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(registerForm) });
-      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Rejestracja nieudana'); return; }
-      setRegisterForm({ username: '', password: '' });
-      await refreshMe();
-      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
-      await loadSingleKey();
-    } catch { /* ignore */ }
+    const result = await register(registerForm.username, registerForm.password)
+    if (!result.ok) {
+      alert(result.error || 'Rejestracja nieudana')
+      return
+    }
+    setRegisterForm({ username: '', password: '' })
+    await loadSingleKey()
   };
   const handleLogout = async () => {
-    try { await fetch('/v1/logout', { method: 'POST', credentials: 'include' }); } finally { setIsAuth(false); setMe(null); try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ } }
+    await logout()
+    setSingleApiKey(null)
   };
   const loadSingleKey = async () => {
     try {

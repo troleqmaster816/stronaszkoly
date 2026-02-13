@@ -12,6 +12,7 @@ import { EntityPicker } from '@/features/timetable/components/EntityPicker';
 import { FiltersBar } from '@/features/timetable/components/FiltersBar';
 import { AdminPanel } from '@/features/timetable/components/AdminPanel';
 import { AnimatedBackdrop } from '@/features/timetable/components/AnimatedBackdrop';
+import { useAuth } from '@/features/auth/useAuth';
 
 
 // ==========================================
@@ -24,8 +25,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [refreshing, setRefreshing] = useState(false);
   const [hashId, setHashId] = useHashId();
   const [adminOpen, setAdminOpen] = useState(false);
-  const [isAuth, setIsAuth] = useState(false);
   const [overrides, setOverrides] = useState<Overrides>({ subjectOverrides: {}, teacherNameOverrides: {} });
+  const { isAuth, login, logout } = useAuth()
   // loginForm removed; handle form values from event target
   const [subjectFilter, setSubjectFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
@@ -87,34 +88,10 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     } catch { /* ignore */ }
   };
 
-  // Load initial data and current auth state
+  // Load initial data
   useEffect(() => {
-    const refreshAuth = async () => {
-      try {
-        const res = await fetch('/v1/users/me', { credentials: 'include' })
-        const j = await res.json().catch(() => ({}))
-        setIsAuth(!!(j && j.ok && j.authenticated))
-      } catch { setIsAuth(false) }
-    }
     setLoading(true)
-    Promise.all([loadData(), loadOverrides(), refreshAuth()]).finally(() => setLoading(false))
-  }, [])
-
-  // React to global auth changes (e.g., login/logout in Hub)
-  useEffect(() => {
-    const onAuth = () => {
-      ;(async () => {
-        try {
-          const res = await fetch('/v1/users/me', { credentials: 'include' })
-          const j = await res.json().catch(() => ({}))
-          setIsAuth(!!(j && j.ok && j.authenticated))
-          // Also refresh overrides when auth changes
-          await loadOverrides()
-        } catch { /* ignore */ }
-      })()
-    }
-    window.addEventListener('auth:changed', onAuth as EventListener)
-    return () => window.removeEventListener('auth:changed', onAuth as EventListener)
+    Promise.all([loadData(), loadOverrides()]).finally(() => setLoading(false))
   }, [])
 
   // Load persisted UI prefs - moved to lazy initializers above
@@ -441,35 +418,20 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    try {
-      const form = e.currentTarget;
-      const fd = new FormData(form);
-      const username = String(fd.get('username') || '');
-      const password = String(fd.get('password') || '');
-      const res = await fetch('/v1/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ username, password }),
-      });
-      if (!res.ok) {
-        alert('Logowanie nieudane');
-        return;
-      }
-      setIsAuth(true);
-      await loadOverrides();
-      // notify other parts of the app (e.g., Hub)
-      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
-    } catch { /* ignore */ }
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const username = String(fd.get('username') || '');
+    const password = String(fd.get('password') || '');
+    const result = await login(username, password)
+    if (!result.ok) {
+      alert(result.error || 'Logowanie nieudane')
+      return
+    }
+    await loadOverrides();
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch('/v1/logout', { method: 'POST', credentials: 'include' });
-    } finally {
-      setIsAuth(false);
-      try { window.dispatchEvent(new Event('auth:changed')) } catch { /* ignore */ }
-    }
+    await logout()
   };
 
   // saving overrides is handled in AdminPanel via props

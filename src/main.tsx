@@ -7,6 +7,7 @@ import '@fontsource/space-grotesk/600.css'
 import '@fontsource/space-grotesk/700.css'
 import './styles/print.css'
 import HomeFab from './HomeFab'
+import { AuthProvider } from './features/auth/AuthContext'
 
 const Hub = React.lazy(() => import('./Hub'))
 const TimetableViewer = React.lazy(() => import('./TimetableViewer'))
@@ -40,16 +41,18 @@ export function AppRouter() {
   const [, setOverlayActive] = useState(false)
   return (
     <BrowserRouter>
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/" element={<HubRoute />} />
-          <Route path="/docs" element={<Docs />} />
-          <Route path="/plan" element={<TimetableRoute setOverlayActive={setOverlayActive} />} />
-          <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
-          <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
-          <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />
-        </Routes>
-      </Suspense>
+      <AuthProvider>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<HubRoute />} />
+            <Route path="/docs" element={<Docs />} />
+            <Route path="/plan" element={<TimetableRoute setOverlayActive={setOverlayActive} />} />
+            <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
+            <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
+            <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />
+          </Routes>
+        </Suspense>
+      </AuthProvider>
     </BrowserRouter>
   )
 }
