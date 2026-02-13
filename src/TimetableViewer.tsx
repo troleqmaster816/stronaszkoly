@@ -140,9 +140,12 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   // Zbuduj listy do wyszukiwania
   const pickList = useMemo(() => {
     if (!data) return [] as { id: string; label: string; type: "teachers" | "classes" | "rooms" }[];
+    const isMainClass = (label: string) => /^\d/.test((label || '').trim());
     const entries = Object.entries({
       teachers: data.teachers ?? {},
-      classes: data.classes ?? {},
+      classes: Object.fromEntries(
+        Object.entries(data.classes ?? {}).filter(([, label]) => isMainClass(String(label)))
+      ),
       rooms: data.rooms ?? {},
     }) as ["teachers" | "classes" | "rooms", RefTables][];
     const list = entries.flatMap(([type, table]) =>
@@ -159,6 +162,14 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       .filter((x) => x.label.toLowerCase().includes(q) || x.id.toLowerCase().includes(q))
       .slice(0, 1000);
   }, [pickList, entityTab, deferredQuery]);
+
+  const prettyPlanId = (id: string): string => {
+    try {
+      return decodeURIComponent(id);
+    } catch {
+      return id;
+    }
+  };
 
   // Aktualnie wybrany plan
   const activeId = hashId && data?.timetables?.[hashId] ? hashId : null;
@@ -769,7 +780,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 >
                   <option value="">— Wybierz —</option>
                   {filtered.map((x) => (
-                    <option key={x.id} value={x.id}>{x.label} ({x.id})</option>
+                    <option key={x.id} value={x.id}>{x.label} ({prettyPlanId(x.id)})</option>
                   ))}
                 </select>
               </div>
