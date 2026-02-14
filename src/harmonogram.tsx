@@ -1,7 +1,8 @@
-import { useMemo, useState, useDeferredValue, useEffect, useRef, Fragment } from "react";
+import { useMemo, useState, useDeferredValue, useEffect, useRef, Fragment, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CalendarDays, Filter, Search, Clock, X, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -163,6 +164,7 @@ export default function SchedulePage() {
   const [activeCats, setActiveCats] = useState<Category[]>(ALL_CATEGORIES);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [onlyMonth, setOnlyMonth] = useState<string | null>(null);
+  const [hideEarlierMonths, setHideEarlierMonths] = useState(true);
   const [expandedPastMonths, setExpandedPastMonths] = useState<Set<string>>(new Set());
 
   // Daty referencyjne (początek dnia lokalnie)
@@ -175,24 +177,24 @@ export default function SchedulePage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   }, []);
 
-  const toDayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const isEventPast = (e: EventItem) => {
+  const toDayStart = useCallback((d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()), []);
+  const isEventPast = useCallback((e: EventItem) => {
     const s = toDayStart(createLocalDate(e.start));
     const ed = e.end ? toDayStart(createLocalDate(e.end)) : undefined;
     if (ed) return ed < todayStart;
     return s < todayStart;
-  };
-  const isEventOngoing = (e: EventItem) => {
+  }, [toDayStart, todayStart]);
+  const isEventOngoing = useCallback((e: EventItem) => {
     const s = toDayStart(createLocalDate(e.start));
     const ed = e.end ? toDayStart(createLocalDate(e.end)) : undefined;
     if (!ed) return s.getTime() === todayStart.getTime();
     return s <= todayStart && todayStart <= ed;
-  };
-  const isEventUpcomingOrOngoing = (e: EventItem) => {
+  }, [toDayStart, todayStart]);
+  const isEventUpcomingOrOngoing = useCallback((e: EventItem) => {
     if (isEventOngoing(e)) return true;
     const s = toDayStart(createLocalDate(e.start));
     return s >= todayStart;
-  };
+  }, [isEventOngoing, toDayStart, todayStart]);
   const months = useMemo(() => {
     const keySet = new Set<string>();
     for (const e of EVENTS) {
@@ -234,6 +236,17 @@ export default function SchedulePage() {
     return counts;
   }, [filteredEvents]);
 
+  const visibleMonths = useMemo(
+    () => months.filter((m) => !hideEarlierMonths || m >= currentMonthKey),
+    [months, hideEarlierMonths, currentMonthKey]
+  );
+
+  useEffect(() => {
+    if (hideEarlierMonths && onlyMonth && onlyMonth < currentMonthKey) {
+      setOnlyMonth(null);
+    }
+  }, [hideEarlierMonths, onlyMonth, currentMonthKey]);
+
   // Pierwsze nadchodzące/aktywne wydarzenie (do auto-przewinięcia i markera "Dziś")
   const firstUpcomingId = useMemo(() => {
     const sorted = [...filteredEvents].sort(
@@ -241,7 +254,7 @@ export default function SchedulePage() {
     );
     const found = sorted.find((e) => isEventUpcomingOrOngoing(e));
     return found?.id ?? null;
-  }, [filteredEvents]);
+  }, [filteredEvents, isEventUpcomingOrOngoing]);
 
   const firstUpcomingRef = useRef<HTMLLIElement | null>(null);
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
@@ -280,15 +293,15 @@ export default function SchedulePage() {
           <CalendarDays className="w-5 h-5 text-zinc-200" />
           <div className="font-semibold">Harmonogram - Rok szkolny 2025/2026</div>
           <div className="ml-auto">
-            <button
+            <Button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 shadow-sm"
+              className="rounded-xl border-zinc-700 bg-zinc-900 text-zinc-100 shadow-sm"
               aria-label="Pokaż/ukryj filtry"
               aria-expanded={filtersOpen}
             >
               <Filter className="h-4 w-4" /> Filtry
-            </button>
+            </Button>
           </div>
         </div>
       </header>
@@ -320,9 +333,10 @@ export default function SchedulePage() {
                   <div className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Kategorie</div>
                   <div className="flex flex-wrap gap-2">
                     {ALL_CATEGORIES.map((cat) => (
-                      <button
+                      <Button
                         key={cat}
                         onClick={() => toggleCat(cat)}
+                        size="sm"
                         className={`border px-3 py-1.5 text-sm rounded-full transition ${
                           activeCats.includes(cat)
                             ? CATEGORY_STYLES[cat] + " ring-1 ring-black/0"
@@ -330,7 +344,7 @@ export default function SchedulePage() {
                         }`}
                       >
                         {cat}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -338,24 +352,41 @@ export default function SchedulePage() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Miesiące</div>
-                  <button
-                    type="button"
-                    onClick={() => setOnlyMonth(null)}
-                    className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
-                  >
-                    Pokaż wszystkie
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => setHideEarlierMonths((v) => !v)}
+                      size="sm"
+                      className={`rounded-full border text-xs transition ${
+                        hideEarlierMonths
+                          ? "border-emerald-700 bg-emerald-900/30 text-emerald-200"
+                          : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                      }`}
+                      title="Ukryj wcześniejsze miesiące i pokaż bieżący oraz kolejne"
+                    >
+                      Ukryj wcześniejsze
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setOnlyMonth(null)}
+                      size="sm"
+                      className="rounded-full border-zinc-700 bg-zinc-900 text-xs text-zinc-300 hover:bg-zinc-800"
+                    >
+                      Pokaż wszystkie
+                    </Button>
+                  </div>
                 </div>
                 {/* Mobile: siatka 2-kolumnowa dla czytelności */}
                 <div className="grid grid-cols-2 gap-2 sm:hidden">
-                  {months.map((m) => {
+                  {visibleMonths.map((m) => {
                     const active = onlyMonth === m;
                     const isNow = !onlyMonth && m === currentMonthKey;
                     const count = monthEventCounts[m] ?? 0;
                     return (
-                      <button
+                      <Button
                         key={`m-mobile-${m}`}
                         type="button"
+                        size="sm"
                         onClick={() => setOnlyMonth((cur) => (cur === m ? null : m))}
                         className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition ${
                           active
@@ -368,20 +399,21 @@ export default function SchedulePage() {
                       >
                         <span className="truncate text-left">{monthLabel(m)}</span>
                         <span className="ml-2 rounded-full border border-zinc-700 bg-black/20 px-1.5 py-0.5 text-xs text-zinc-300">{count}</span>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
                 {/* Desktop: układ chipów zwijający się w wiersze */}
                 <div className="hidden sm:flex sm:flex-wrap sm:gap-2">
-                  {months.map((m) => {
+                  {visibleMonths.map((m) => {
                     const active = onlyMonth === m;
                     const isNow = !onlyMonth && m === currentMonthKey;
                     const count = monthEventCounts[m] ?? 0;
                     return (
-                      <button
+                      <Button
                         key={`m-desktop-${m}`}
                         type="button"
+                        size="sm"
                         onClick={() => setOnlyMonth((cur) => (cur === m ? null : m))}
                         className={`rounded-full border px-3 py-1.5 text-sm transition ${
                           active
@@ -394,7 +426,7 @@ export default function SchedulePage() {
                       >
                         {monthLabel(m)}
                         <span className="ml-2 rounded-full border border-zinc-700 bg-black/20 px-1.5 py-0.5 text-xs text-zinc-300">{count}</span>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -410,18 +442,19 @@ export default function SchedulePage() {
             <Badge variant="secondary" className="rounded-full bg-zinc-800 text-zinc-200 border-zinc-700">
               {monthLabel(onlyMonth)}
             </Badge>
-            <button
+            <Button
               type="button"
               onClick={() => setOnlyMonth(null)}
-              className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
+              size="sm"
+              className="rounded-lg border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
             >
               <span className="inline-flex items-center gap-1"><X className="h-4 w-4"/>Wyczyść</span>
-            </button>
+            </Button>
           </div>
         )}
 
         <section className="mt-6 space-y-6">
-          {months.map((m) => {
+          {visibleMonths.map((m) => {
             if (onlyMonth && onlyMonth !== m) return null;
             const visibleForMonth = filteredEvents
               .filter(
@@ -456,13 +489,14 @@ export default function SchedulePage() {
                     {/* Przeszłe – zwijane */}
                     {hasPast && !isPastExpanded && (
                       <li className="mb-4 ml-4">
-                        <button
+                        <Button
                           type="button"
                           onClick={togglePast}
-                          className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                          size="sm"
+                          className="rounded-full border-zinc-700 bg-zinc-900 text-xs text-zinc-300 hover:bg-zinc-800"
                         >
                           <ChevronDown className="h-4 w-4"/> Pokaż wcześniejsze ({past.length})
-                        </button>
+                        </Button>
                       </li>
                     )}
                     {isPastExpanded && past.map((ev) => (
@@ -493,13 +527,14 @@ export default function SchedulePage() {
                     ))}
                     {isPastExpanded && hasPast && (
                       <li className="mb-4 ml-4">
-                        <button
+                        <Button
                           type="button"
                           onClick={togglePast}
-                          className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                          size="sm"
+                          className="rounded-full border-zinc-700 bg-zinc-900 text-xs text-zinc-300 hover:bg-zinc-800"
                         >
                           <ChevronUp className="h-4 w-4"/> Ukryj wcześniejsze
-                        </button>
+                        </Button>
                       </li>
                     )}
 

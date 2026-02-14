@@ -1,18 +1,165 @@
-import React, { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { CalendarDays, Printer, Share2, Upload, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Overrides, Lesson, RefTables } from '@/types/schedule';
 import type { DataFile } from '@/lib/api';
-import { cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey } from '@/lib/schedule';
+import { cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey, stripHalfMark } from '@/lib/schedule';
 import { DataFileSchema, OverridesSchema, fetchJsonValidated } from '@/lib/api';
 import { useHashId } from '@/features/timetable/hooks/useHashId';
 import { GridView } from '@/features/timetable/components/GridView';
+import type { TimetableDensity } from '@/features/timetable/components/GridView';
 import { ListView } from '@/features/timetable/components/ListView';
 import { EntityPicker } from '@/features/timetable/components/EntityPicker';
 import { FiltersBar } from '@/features/timetable/components/FiltersBar';
-import { AdminPanel } from '@/features/timetable/components/AdminPanel';
 import { AnimatedBackdrop } from '@/features/timetable/components/AnimatedBackdrop';
+import { extractRoomCode, formatRoomDisplay } from '@/features/timetable/lib/roomDisplay';
 import { useAuth } from '@/features/auth/useAuth';
+
+const AdminPanel = React.lazy(() => import('@/features/timetable/components/AdminPanel'))
+
+function compactTeacherLabel(label: string): string {
+  const trimmed = (label || '').trim()
+  if (!trimmed) return trimmed
+  if (trimmed.length <= 6) return trimmed
+  const parts = trimmed.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    const initials = parts.map((p) => p[0]).join('').toUpperCase()
+    if (initials.length >= 2 && initials.length <= 6) return initials
+  }
+  return trimmed.slice(0, 6).toUpperCase()
+}
+
+function compactRoomLabel(label: string): string {
+  const trimmed = (label || '').trim()
+  const base = extractRoomCode(trimmed) || trimmed
+  return base.length > 8 ? base.slice(0, 8) : base
+}
+
+function compactGroupLabel(label: string): string {
+  const cleaned = (label || '').replace(/\s*\(?\d+\/\d+\)?\s*$/i, '').trim()
+  return cleaned || (label || '').trim()
+}
+
+type ChipLayoutMode = 'inline' | 'stacked'
+type LabelMode = 'full' | 'compact'
+
+type AdaptiveLayoutProfile = {
+  density: TimetableDensity
+  chipLayoutMode: ChipLayoutMode
+  labelMode: LabelMode
+  shellMaxWidth: number
+  cellMinPx: number
+}
+
+function getAvailableShellWidth(viewportWidth: number): number {
+  const outerGutter = viewportWidth >= 1920 ? 56 : viewportWidth >= 1440 ? 44 : 32
+  return Math.max(1024, viewportWidth - outerGutter)
+}
+
+let textMeasureCanvas: HTMLCanvasElement | null = null
+
+function measureTextPx(text: string, sizePx: number, weight = 600): number {
+  const value = (text || '').trim()
+  if (!value) return 0
+  if (typeof document === 'undefined') return Math.ceil(value.length * sizePx * 0.58)
+  if (!textMeasureCanvas) textMeasureCanvas = document.createElement('canvas')
+  const ctx = textMeasureCanvas.getContext('2d')
+  if (!ctx) return Math.ceil(value.length * sizePx * 0.58)
+  ctx.font = `${weight} ${sizePx}px "Space Grotesk", system-ui, sans-serif`
+  return Math.ceil(ctx.measureText(value).width)
+}
+
+function chipWidthPx(label: string, sizePx: number, padX: number): number {
+  return measureTextPx(label, sizePx, 600) + padX * 2 + 14
+}
+
+function computeAdaptiveLayoutProfile(args: {
+  viewportWidth: number
+  dayCount: number
+  lessons: Lesson[]
+  teacherNameOverrides: Record<string, string>
+}): AdaptiveLayoutProfile {
+  const { viewportWidth, dayCount, lessons, teacherNameOverrides } = args
+  const available = getAvailableShellWidth(viewportWidth)
+  const safeDays = Math.max(1, dayCount)
+  const minShell = safeDays <= 3 ? 980 : safeDays === 4 ? 1120 : 1240
+
+  const options: Array<{
+    density: TimetableDensity
+    chipLayoutMode: ChipLayoutMode
+    labelMode: LabelMode
+    chipFontPx: number
+    chipPadX: number
+    subjectFontPx: number
+    cardPadX: number
+  }> = [
+    { density: 'comfortable', chipLayoutMode: 'inline', labelMode: 'full', chipFontPx: 11, chipPadX: 8, subjectFontPx: 15, cardPadX: 10 },
+    { density: 'compact', chipLayoutMode: 'inline', labelMode: 'compact', chipFontPx: 11, chipPadX: 7, subjectFontPx: 14, cardPadX: 8 },
+    { density: 'tight', chipLayoutMode: 'stacked', labelMode: 'compact', chipFontPx: 11, chipPadX: 6, subjectFontPx: 14, cardPadX: 8 },
+  ]
+
+  let fallback: AdaptiveLayoutProfile | null = null
+  for (const opt of options) {
+    let maxCard = 232
+    for (const l of lessons) {
+      const classFull = l.group?.name ?? ''
+      const classLabel = compactGroupLabel(classFull)
+      const teacherFullBase = l.teacher?.name ?? ''
+      const teacherFull = teacherNameOverrides[teacherFullBase] ?? teacherFullBase
+      const roomRaw = l.room?.name ?? ''
+      const roomBase = extractRoomCode(roomRaw) || roomRaw.replace(/^(?:Sala|S)\.?\s*/i, '').trim() || roomRaw
+      const teacherLabel = opt.labelMode === 'compact' ? compactTeacherLabel(teacherFull) : teacherFull
+      const roomLabel = opt.labelMode === 'compact' ? compactRoomLabel(roomBase) : roomBase
+
+      const classW = l.group ? chipWidthPx(classLabel, opt.chipFontPx, opt.chipPadX) : 0
+      const teacherW = l.teacher ? chipWidthPx(teacherLabel, opt.chipFontPx, opt.chipPadX) : 0
+      const roomW = l.room ? chipWidthPx(roomLabel, opt.chipFontPx, opt.chipPadX) : 0
+
+      const chips = [classW, teacherW, roomW].filter((w) => w > 0)
+      const gap = 6
+      let chipsRowWidth = 0
+      if (opt.chipLayoutMode === 'inline') {
+        chipsRowWidth = chips.length ? chips.reduce((a, b) => a + b, 0) + Math.max(0, chips.length - 1) * gap : 0
+      } else {
+        const top = classW
+        const bottomParts = [teacherW, roomW].filter((w) => w > 0)
+        const bottom = bottomParts.length ? bottomParts.reduce((a, b) => a + b, 0) + Math.max(0, bottomParts.length - 1) * gap : 0
+        chipsRowWidth = Math.max(top, bottom)
+      }
+
+      const subject = stripHalfMark(l.subject) || l.subject || ''
+      const subjectW = measureTextPx(subject, opt.subjectFontPx, 700) + (extractHalfMark(l.subject) ? 38 : 0)
+      const timeW = measureTextPx(l.time || '', 11, 500)
+      const rightMin = Math.max(136, subjectW, timeW, chipsRowWidth)
+      const cardW = opt.cardPadX * 2 + 32 + 10 + rightMin
+      if (cardW > maxCard) maxCard = cardW
+    }
+
+    const required = Math.ceil(maxCard * safeDays + 34)
+    const shell = Math.min(available, Math.max(minShell, required))
+    const fits = required <= available
+    const fittedCellMin = fits
+      ? Math.ceil(maxCard)
+      : Math.max(200, Math.floor((available - 34) / safeDays))
+    const profile: AdaptiveLayoutProfile = {
+      density: opt.density,
+      chipLayoutMode: opt.chipLayoutMode,
+      labelMode: opt.labelMode,
+      shellMaxWidth: shell,
+      cellMinPx: Math.max(200, fittedCellMin),
+    }
+    fallback = profile
+    if (fits) return profile
+  }
+
+  return fallback ?? {
+    density: 'tight',
+    chipLayoutMode: 'stacked',
+    labelMode: 'compact',
+    shellMaxWidth: available,
+    cellMinPx: Math.max(220, Math.floor((available - 34) / safeDays)),
+  }
+}
 
 
 // ==========================================
@@ -42,12 +189,20 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [viewportWidth, setViewportWidth] = useState<number>(() => window.innerWidth);
   const [selectedDays, setSelectedDays] = useState<string[]>(["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek"]);
   const [groupHalf, setGroupHalf] = useState<string>(() => {
     try {
       return localStorage.getItem('timetable.groupHalf') || 'all';
     } catch {
       return 'all';
+    }
+  });
+  const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('timetable.animationsEnabled') === '1';
+    } catch {
+      return false;
     }
   });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -57,9 +212,10 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   // const [showMobileFilters, setShowMobileFilters] = useState(false); // deprecated small filters toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // swipeStart removed; swipe gestures not used currently
+  const shellClassName = 'mx-auto px-4'
 
   // wczytaj JSON
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setError(null);
       const json = await fetchJsonValidated(`/timetable_data.json?t=${Date.now()}`, DataFileSchema);
@@ -74,9 +230,9 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     } catch {
       setError("Nie udało się pobrać pliku /timetable_data.json. Możesz wczytać go ręcznie poniżej.");
     }
-  };
+  }, [setHashId]);
 
-  const loadOverrides = async () => {
+  const loadOverrides = useCallback(async () => {
     try {
       const res = await fetch(`/v1/overrides`, { cache: "no-store", credentials: 'include' });
       if (!res.ok) return;
@@ -86,13 +242,13 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         if (parsed.success) setOverrides(parsed.data)
       }
     } catch { /* ignore */ }
-  };
+  }, []);
 
   // Load initial data
   useEffect(() => {
     setLoading(true)
     Promise.all([loadData(), loadOverrides()]).finally(() => setLoading(false))
-  }, [])
+  }, [loadData, loadOverrides])
 
   // Load persisted UI prefs - moved to lazy initializers above
 
@@ -140,31 +296,12 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       .slice(0, 1000);
   }, [pickList, entityTab, deferredQuery]);
 
-  const prettyPlanId = (id: string): string => {
-    try {
-      return decodeURIComponent(id);
-    } catch {
-      return id;
-    }
-  };
-
   // Aktualnie wybrany plan
   const activeId = hashId && data?.timetables?.[hashId] ? hashId : null;
   const activeKind = idToKind(activeId ?? undefined);
   const activeName = activeId ?
     (activeKind === "class" ? refs.classes[activeId] : activeKind === "teacher" ? refs.teachers[activeId] : refs.rooms[activeId]) : "";
 
-  // Specjalny format dla sal: pokaż "Sala <KOD>" jeżeli nazwa zaczyna się od kodu (np. 003, GIM3)
-  const extractRoomCode = (label: string): string | null => {
-    const first = (label || "").trim().split(/\s+/)[0] || "";
-    if (/^\d{1,4}$/.test(first)) return first; // 003, 111, 9
-    if (/^[A-Za-zĄĆĘŁŃÓŚŻŹ]{2,6}\d{1,4}$/i.test(first)) return first.toUpperCase(); // GIM3, S1, A12
-    return null;
-  };
-  const formatRoomDisplay = (label: string): string => {
-    const code = extractRoomCode(label);
-    return code ? `Sala ${code}` : label;
-  };
   const activeDisplayName = activeKind === 'room' ? formatRoomDisplay(activeName) : activeName;
 
   // Filtry: dni + grupa (1/2, 2/2, wszystkie)
@@ -231,7 +368,35 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     return byDay;
   }, [activeLessons]);
 
-  const goTo = (id: string) => setHashId(id);
+  const visibleDayCount = useMemo(
+    () => Math.max(1, daysInData.filter((d) => selectedDays.includes(d)).length),
+    [daysInData, selectedDays]
+  )
+
+  const layoutProfile = useMemo(() => {
+    if (isMobile) {
+      return {
+        density: 'comfortable' as TimetableDensity,
+        chipLayoutMode: 'inline' as ChipLayoutMode,
+        labelMode: 'full' as LabelMode,
+        shellMaxWidth: getAvailableShellWidth(viewportWidth),
+        cellMinPx: 220,
+      }
+    }
+    return computeAdaptiveLayoutProfile({
+      viewportWidth,
+      dayCount: visibleDayCount,
+      lessons: activeLessons,
+      teacherNameOverrides: overrides.teacherNameOverrides,
+    })
+  }, [activeLessons, isMobile, overrides.teacherNameOverrides, viewportWidth, visibleDayCount])
+
+  const shellStyle = useMemo(
+    () => (isMobile ? undefined : { maxWidth: `${Math.round(layoutProfile.shellMaxWidth)}px` }),
+    [isMobile, layoutProfile.shellMaxWidth]
+  )
+
+  const goTo = useCallback((id: string) => setHashId(id), [setHashId])
 
   // Mobile detection and single-day navigation
   useEffect(() => {
@@ -241,6 +406,12 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     mql.addEventListener("change", update);
     return () => mql.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     if (daysInData.length === 0) return;
@@ -261,30 +432,36 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   // Force list view on mobile and restore previous view when leaving mobile
   useEffect(() => {
     if (isMobile) {
-      prevDesktopView.current = view;
-      if (view !== "list") setView("list");
-    } else {
+      if (view !== "list") {
+        prevDesktopView.current = view;
+        setView("list");
+      }
+      return;
+    }
+    if (view === "list" && prevDesktopView.current !== "list") {
       setView(prevDesktopView.current);
     }
-  }, [isMobile]);
+  }, [isMobile, view]);
 
   // Inform parent (router) whether an overlay/drawer is open, so it can hide FABs
   useEffect(() => {
     onOverlayActiveChange?.(isMobile && mobileMenuOpen);
+    return () => onOverlayActiveChange?.(false)
   }, [isMobile, mobileMenuOpen, onOverlayActiveChange]);
 
-  const goPrevDay = () => {
+  const goPrevDay = useCallback(() => {
     if (!mobileDay || daysInData.length === 0) return;
     const cur = daysInData.indexOf(mobileDay);
     const prev = (cur - 1 + daysInData.length) % daysInData.length;
     setMobileDay(daysInData[prev]);
-  };
-  const goNextDay = () => {
+  }, [mobileDay, daysInData])
+
+  const goNextDay = useCallback(() => {
     if (!mobileDay || daysInData.length === 0) return;
     const cur = daysInData.indexOf(mobileDay);
     const next = (cur + 1) % daysInData.length;
     setMobileDay(daysInData[next]);
-  };
+  }, [mobileDay, daysInData])
 
   // Persist key selections
   useEffect(() => {
@@ -299,83 +476,141 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   useEffect(() => {
     if (mobileDay) localStorage.setItem('timetable.lastDay', mobileDay);
   }, [mobileDay]);
+  useEffect(() => {
+    localStorage.setItem('timetable.animationsEnabled', animationsEnabled ? '1' : '0');
+  }, [animationsEnabled]);
 
-  const renderLessonCard = (l: Lesson, key: React.Key) => {
-    const parts: string[] = [];
+  const renderLessonCard = useCallback((l: Lesson, key: React.Key) => {
     const normalizedKey = normalizeSubjectKey(l.subject);
-    const subjectDisplay = overrides.subjectOverrides[normalizedKey] ?? l.subject;
+    const subjectRaw = overrides.subjectOverrides[normalizedKey] ?? l.subject;
+    const subjectDisplay = stripHalfMark(subjectRaw) || subjectRaw;
     const teacherName = l.teacher?.name ?? null;
     const teacherDisplay = teacherName ? (overrides.teacherNameOverrides[teacherName] ?? teacherName) : null;
-    if (activeKind !== "class" && l.group) parts.push(`Klasa: ${l.group.name}`);
-    if (activeKind !== "teacher" && teacherDisplay) parts.push(`Nauczyciel: ${teacherDisplay}`);
-    if (activeKind !== "room" && l.room) parts.push(`Sala: ${formatRoomDisplay(l.room.name)}`);
     const half = extractHalfMark(l.subject);
 
-    const crossLinks = (
-      <div className="mt-1 flex flex-wrap gap-1">
-        {l.group ? (
-          <button
-            className="text-xs px-2 py-0.5 rounded-full bg-blue-900/40 hover:bg-blue-900/60 text-blue-200 border border-blue-800"
-            title={`Przejdź do planu klasy ${l.group.name}`}
-            onClick={() => goTo(l.group!.id)}
-          >
-            {l.group.name}
-          </button>
-        ) : null}
-        {l.teacher ? (
-          <button
-            className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-200 border border-emerald-800"
-            title={`Przejdź do planu nauczyciela ${l.teacher.name}`}
-            onClick={() => goTo(l.teacher!.id)}
-          >
-            {l.teacher.name}
-          </button>
-        ) : null}
-        {l.room ? (
-          <button
-            className="text-xs px-2 py-0.5 rounded-full bg-violet-900/40 hover:bg-violet-900/60 text-violet-200 border border-violet-800"
-            title={`Przejdź do planu sali ${formatRoomDisplay(l.room.name)}`}
-            onClick={() => goTo(l.room!.id)}
-          >
-            {formatRoomDisplay(l.room.name)}
-          </button>
-        ) : null}
-      </div>
-    );
+    const cardPadding = layoutProfile.density === 'comfortable' ? 'p-2.5' : 'p-2'
+    const lessonBadgeSize = 'h-8 w-8 text-base'
+    const subjectTextSize = layoutProfile.density === 'comfortable' ? 'text-[15px]' : 'text-[14px]'
+    const timeTextSize = 'text-[11px]'
+    const chipTextSize = 'text-[11px]'
+    const chipPadding = layoutProfile.density === 'tight' ? 'px-1.5 py-0.5' : 'px-2 py-0.5'
+
+    const classFull = l.group?.name ?? ''
+    const teacherFull = teacherDisplay || l.teacher?.name || ''
+    const roomFull = l.room?.name ?? ''
+    const roomBase = extractRoomCode(roomFull) || roomFull.replace(/^(?:Sala|S)\.?\s*/i, '').trim() || roomFull
+    const classLabel = compactGroupLabel(classFull)
+    const teacherLabel = layoutProfile.labelMode === 'compact' ? compactTeacherLabel(teacherFull) : teacherFull
+    const roomLabel = layoutProfile.labelMode === 'compact' ? compactRoomLabel(roomBase) : roomBase
+
+    const renderChip = (
+      kind: 'class' | 'teacher' | 'room',
+      text: string,
+      fullText: string,
+      onClick: () => void
+    ) => {
+      const theme =
+        kind === 'class'
+          ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-200 border-blue-800'
+          : kind === 'teacher'
+            ? 'bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-200 border-emerald-800'
+            : 'bg-violet-900/40 hover:bg-violet-900/60 text-violet-200 border-violet-800'
+
+      return (
+        <button
+          type="button"
+          className={`inline-flex min-w-0 items-center justify-center rounded-lg border ${chipPadding} ${chipTextSize} leading-none whitespace-nowrap transition ${theme}`}
+          title={fullText}
+          aria-label={fullText}
+          onClick={onClick}
+        >
+          <span className="block min-w-0 truncate">{text}</span>
+        </button>
+      )
+    }
 
     return (
-      <div key={key} className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 shadow-sm hover:shadow transition-shadow">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0">
-            <div className="w-8 h-8 rounded-lg border border-zinc-700 bg-zinc-800 flex items-center justify-center text-sm font-semibold text-zinc-200">
-              {l.lesson_num || "?"}
-            </div>
+      <article key={key} className={`rounded-lg border border-zinc-800 bg-zinc-900/95 ${cardPadding} shadow-sm transition-shadow hover:shadow`}>
+        <div className="flex items-start gap-2.5">
+          <div className={`flex shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 font-semibold text-zinc-200 ${lessonBadgeSize}`}>
+            {l.lesson_num || '?'}
           </div>
+
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <div className="text-sm font-medium text-zinc-50 truncate">
+              <div className={`min-w-0 font-semibold leading-tight text-zinc-50 ${subjectTextSize}`}>
                 {subjectDisplay || <span className="text-zinc-500">(brak nazwy)</span>}
               </div>
               {half && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-200 border border-amber-800 whitespace-nowrap" title="Lekcja w grupie">
+                <span
+                  className="shrink-0 rounded-lg border border-amber-800 bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200"
+                  title="Lekcja w grupie"
+                >
                   {half}
                 </span>
               )}
             </div>
-            <div className="text-xs text-zinc-400 mt-0.5">
-              {l.time || "(czas nieznany)"}
+
+            <div className={`mt-0.5 text-zinc-400 ${timeTextSize}`}>
+              {l.time || '(czas nieznany)'}
             </div>
-            {crossLinks}
+
+            {layoutProfile.chipLayoutMode === 'inline' ? (
+              <div className="mt-1 hidden gap-1.5 md:grid [grid-template-columns:minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                {l.group ? (
+                  renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id))
+                ) : (
+                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
+                )}
+                {l.teacher ? (
+                  renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id))
+                ) : (
+                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
+                )}
+                {l.room ? (
+                  renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id))
+                ) : (
+                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
+                )}
+              </div>
+            ) : (
+              <div className="mt-1 hidden gap-1.5 md:grid md:grid-cols-2">
+                {l.group ? (
+                  <div className="col-span-2">
+                    {renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id))}
+                  </div>
+                ) : (
+                  <span className="col-span-2 h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
+                )}
+                {l.teacher ? (
+                  renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id))
+                ) : (
+                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
+                )}
+                {l.room ? (
+                  renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id))
+                ) : (
+                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
+                )}
+              </div>
+            )}
+
+            <div className="mt-1 flex flex-wrap gap-1 md:hidden">
+              {l.group ? renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id)) : null}
+              {l.teacher ? renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id)) : null}
+              {l.room ? renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id)) : null}
+            </div>
           </div>
         </div>
-      </div>
+      </article>
     );
-  };
+  }, [goTo, layoutProfile.chipLayoutMode, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides, overrides.teacherNameOverrides])
 
   // Compact formatter for print cells
-  const formatPrintCell = (l: Lesson): string => {
+  const formatPrintCell = useCallback((l: Lesson): string => {
     const normalizedKey = normalizeSubjectKey(l.subject);
-    const subjectDisplay = overrides.subjectOverrides[normalizedKey] ?? l.subject;
+    const subjectRaw = overrides.subjectOverrides[normalizedKey] ?? l.subject;
+    const subjectDisplay = stripHalfMark(subjectRaw) || subjectRaw;
     const half = extractHalfMark(l.subject);
     const extraParts: string[] = [];
     const teacherName = l.teacher?.name ?? '';
@@ -385,7 +620,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const groupText = activeKind === 'class' ? (l.group?.name ?? half ?? '') : (l.group?.name ?? '');
     const subjectWithGroup = groupText ? `${subjectDisplay} ${groupText}` : subjectDisplay;
     return extraParts.length > 0 ? `${subjectWithGroup} (${extraParts.join(', ')})` : subjectWithGroup;
-  };
+  }, [activeKind, overrides.subjectOverrides]);
 
   const handlePrint = () => window.print();
   const handleShare = async () => {
@@ -434,18 +669,34 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     await logout()
   };
 
+  const subjectKeys = useMemo(
+    () => Array.from(new Set((data?.timetables ? Object.values(data.timetables).flat().map(l => normalizeSubjectKey(l.subject)) : []).filter(Boolean))) as string[],
+    [data]
+  )
+
   // saving overrides is handled in AdminPanel via props
 
   // ==========================================
   // RENDER (ciemny motyw)
   // ==========================================
   return (
-    <div className="relative min-h-dvh bg-gradient-to-b from-zinc-950 to-black text-zinc-100 overflow-x-hidden">
-      {/* Animated backdrop – desktop only, sits behind all content */}
-      <AnimatedBackdrop text={activeDisplayName} variant={(activeKind ?? null) as 'class' | 'teacher' | 'room' | null} />
+    <div className={`relative min-h-dvh text-zinc-100 overflow-x-hidden ${animationsEnabled ? 'bg-gradient-to-b from-zinc-950 to-black' : 'bg-gradient-to-b from-zinc-900 via-zinc-950 to-black'}`}>
+      {/* Desktop backdrop: animated on demand, otherwise static to reduce GPU usage */}
+      {animationsEnabled ? (
+        <AnimatedBackdrop text={activeDisplayName} variant={(activeKind ?? null) as 'class' | 'teacher' | 'room' | null} />
+      ) : (
+        <div
+          aria-hidden
+          className="hidden md:block pointer-events-none fixed inset-0 z-0"
+          style={{
+            background:
+              'radial-gradient(1200px 520px at 15% 10%, rgba(82,82,91,0.20), transparent 60%), radial-gradient(1000px 520px at 85% 90%, rgba(63,63,70,0.18), transparent 60%)',
+          }}
+        />
+      )}
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
       <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
-        <div className="mx-auto max-w-7xl px-4 py-2 flex items-center gap-3">
+        <div className={`${shellClassName} py-2 flex items-center gap-3`} style={shellStyle}>
           {!isMobile && <CalendarDays className="w-5 h-5 text-zinc-200" />}
           {!isMobile && <div className="text-sm font-semibold text-zinc-200">Plan lekcji</div>}
           {/* Mobile: nazwa planu + nawigacja po dniach w top barze */}
@@ -487,6 +738,23 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           <div className="ml-auto flex items-center gap-2 print:hidden">
             {!isMobile && (
               <>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={animationsEnabled}
+                  onClick={() => setAnimationsEnabled((prev) => !prev)}
+                  title={animationsEnabled ? 'Wyłącz animacje tła' : 'Włącz animacje tła'}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 transition ${
+                    animationsEnabled
+                      ? 'border-emerald-700 bg-emerald-900/40 text-emerald-100 hover:bg-emerald-900/55'
+                      : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                >
+                  <span className={`relative h-5 w-9 rounded-full border ${animationsEnabled ? 'border-emerald-500/70 bg-emerald-500/30' : 'border-zinc-600 bg-zinc-700/70'}`}>
+                    <span className={`absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform ${animationsEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </span>
+                  <span className="text-sm font-medium">Animacje: {animationsEnabled ? 'WŁ.' : 'WYŁ.'}</span>
+                </button>
                 <button onClick={handlePrint} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800">
                   <Printer className="w-4 h-4" /> Drukuj / PDF
                 </button>
@@ -514,31 +782,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-7xl px-4 py-6">
+      <main className={`relative z-10 ${shellClassName} py-6`} style={shellStyle}>
         <div className="print:hidden">
-        {/* Pasek statusu/metadanych */}
-        {!isMobile && (
-        <section className="mb-4">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {meta?.generation_date_from_page && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-900/40 text-emerald-200 border border-emerald-800">
-                <Info className="w-3.5 h-3.5" /> Aktualność planu (VULCAN): <strong className="ml-1">{meta.generation_date_from_page}</strong>
-              </span>
-            )}
-            {meta?.scraped_on && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-900/40 text-blue-200 border border-blue-800">
-                <RefreshCw className="w-3.5 h-3.5" /> Zebrano: <strong className="ml-1">{meta.scraped_on}</strong>
-              </span>
-            )}
-            {meta?.source && (
-              <a href={meta.source} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-900/40 text-violet-200 border border-violet-800 hover:underline">
-                Źródło planu
-              </a>
-            )}
-          </div>
-        </section>
-        )}
-
         {/* Loader / błąd / upload lokalny */}
         {loading && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
@@ -597,7 +842,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           <section className="mt-1">
               <div className="mb-3 flex items-end justify-between gap-2">
               <div>
-                {!isMobile && (
+                {!isMobile && activeKind !== 'class' && (
                   <h2 className="text-xl font-semibold tracking-tight">
                     {prettyKind(activeKind)}: {activeDisplayName}
                   </h2>
@@ -614,6 +859,9 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                   periods={periods}
                   activeLessons={activeLessons}
                   isMobile={isMobile}
+                  density={layoutProfile.density}
+                  dayCount={visibleDayCount}
+                  cellMinPx={layoutProfile.cellMinPx}
                   onSwipePrev={goPrevDay}
                   onSwipeNext={goNextDay}
                   onRenderLesson={renderLessonCard}
@@ -699,7 +947,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 rounded-t-2xl p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto max-w-7xl grid gap-3">
+            <div className={`${shellClassName} grid gap-3`} style={shellStyle}>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-zinc-400">Ustawienia planu</div>
                 <button
@@ -742,7 +990,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 >
                   <option value="">— Wybierz —</option>
                   {filtered.map((x) => (
-                    <option key={x.id} value={x.id}>{x.label} ({prettyPlanId(x.id)})</option>
+                    <option key={x.id} value={x.id}>{x.label}</option>
                   ))}
                 </select>
               </div>
@@ -775,52 +1023,52 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
       {/* Panel admina */}
       {adminOpen && (
-        <AdminPanel
-          isAuth={isAuth}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          overrides={overrides}
-          setOverrides={setOverrides}
-          subjectKeys={Array.from(new Set((data?.timetables ? Object.values(data.timetables).flat().map(l => normalizeSubjectKey(l.subject)) : []).filter(Boolean))) as string[]}
-          subjectFilter={subjectFilter}
-          setSubjectFilter={setSubjectFilter}
-          teacherShortNames={Object.values(data?.teachers ?? {})}
-          teacherFilter={teacherFilter}
-          setTeacherFilter={setTeacherFilter}
-          onClose={() => setAdminOpen(false)}
-        />
+        <React.Suspense fallback={null}>
+          <AdminPanel
+            isAuth={isAuth}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            overrides={overrides}
+            setOverrides={setOverrides}
+            subjectKeys={subjectKeys}
+            subjectFilter={subjectFilter}
+            setSubjectFilter={setSubjectFilter}
+            teacherShortNames={Object.values(data?.teachers ?? {})}
+            teacherFilter={teacherFilter}
+            setTeacherFilter={setTeacherFilter}
+            onClose={() => setAdminOpen(false)}
+          />
+        </React.Suspense>
       )}
       {/* Stopka – ukryta w trybie druku, żeby nie wymuszać drugiej strony */}
-      <footer className={`${isMobile ? 'block' : 'hidden'} print:hidden mx-auto max-w-7xl px-4 py-8 text-xs text-zinc-500`}>
-        {isMobile && (
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            {meta?.generation_date_from_page && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-900/40 text-emerald-200 border border-emerald-800">
-                <Info className="w-3.5 h-3.5" /> Aktualność planu (VULCAN): <strong className="ml-1">{meta.generation_date_from_page}</strong>
-              </span>
-            )}
-            {meta?.scraped_on && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-900/40 text-blue-200 border border-blue-800">
-                <RefreshCw className="w-3.5 h-3.5" /> Zebrano: <strong className="ml-1">{meta.scraped_on}</strong>
-              </span>
-            )}
-            {meta?.source && (
-              <a href={meta.source} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-900/40 text-violet-200 border border-violet-800 hover:underline">
-                Źródło planu
-              </a>
-            )}
-          </div>
-        )}
-        {meta?.source && (
+      <footer className={`relative z-10 block print:hidden ${shellClassName} py-8 text-xs text-zinc-400`} style={shellStyle}>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {meta?.generation_date_from_page && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-700 bg-emerald-900/70 px-2 py-1 text-emerald-100 shadow-sm shadow-emerald-950/60">
+              <Info className="w-3.5 h-3.5" /> Aktualność planu (VULCAN): <strong className="ml-1">{meta.generation_date_from_page}</strong>
+            </span>
+          )}
+          {meta?.scraped_on && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-blue-700 bg-blue-900/70 px-2 py-1 text-blue-100 shadow-sm shadow-blue-950/60">
+              <RefreshCw className="w-3.5 h-3.5" /> Zebrano: <strong className="ml-1">{meta.scraped_on}</strong>
+            </span>
+          )}
+          {meta?.source && (
+            <a href={meta.source} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-violet-700 bg-violet-900/70 px-2 py-1 text-violet-100 shadow-sm shadow-violet-950/60 hover:underline">
+              Źródło planu
+            </a>
+          )}
+        </div>
+        {isMobile && meta?.source && (
           <div>
             Źródło oryginalne: <span className="underline break-all">{meta.source}</span>
           </div>
         )}
-        <div className="mt-1">
+        {isMobile && <div className="mt-1">
           Wygenerowano z interaktywnej przeglądarki planu.
-        </div>
+        </div>}
       </footer>
 
       {/* Style do druku przeniesione do src/styles/print.css */}

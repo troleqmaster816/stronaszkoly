@@ -56,6 +56,15 @@ export function extractHalfMark(subject?: string | null): string | null {
   return m[1].replace(/\s+/g, "");
 }
 
+// Removes trailing subgroup marker from lesson name, e.g. "wf - 1/3" -> "wf"
+export function stripHalfMark(subject?: string | null): string {
+  if (!subject) return "";
+  let s = subject.trim();
+  s = s.replace(/\s*(?:[-–]\s*)?\(?\d+\/\d+\)?\s*$/i, "").trim();
+  s = s.replace(/\s*[-–]\s*$/g, "").trim();
+  return s;
+}
+
 // Normalizes subject key: removes group marks (e.g., 1/2), trims dashes/spaces, lowercases
 export function normalizeSubjectKey(subject?: string | null): string {
   if (!subject) return "";
@@ -64,4 +73,3 @@ export function normalizeSubjectKey(subject?: string | null): string {
   s = s.replace(/[\s-]+$/g, "").replace(/\s{2,}/g, " ");
   return s;
 }
-

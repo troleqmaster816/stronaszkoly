@@ -1,8 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CalendarDays, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
 import { useAuth } from "./features/auth/useAuth";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -17,7 +20,16 @@ export default function Hub({ navigate }: HubProps) {
   const [articlesBusy, setArticlesBusy] = useState(false);
   const [ttBusy, setTtBusy] = useState(false);
   const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
   const { isAuth, me, login, register, logout } = useAuth()
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +100,10 @@ export default function Hub({ navigate }: HubProps) {
   };
 
   const startArticlesScrape = async () => {
+    const schedulePoll = (fn: () => void, delayMs: number) => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = setTimeout(fn, delayMs);
+    };
     try {
       setArticlesBusy(true);
       const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
@@ -99,12 +115,15 @@ export default function Hub({ navigate }: HubProps) {
       setArticlesJob({ id: jobId, status: 'queued' });
       // Poll co 2s do zakończenia
       const poll = async () => {
+        if (!mountedRef.current) return;
         try {
           const st = await fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' });
           const jj = await st.json();
+          if (!mountedRef.current) return;
           setArticlesJob({ id: jobId, status: jj?.status || 'unknown' });
           if (jj?.status === 'succeeded' || jj?.status === 'failed') {
             setArticlesBusy(false);
+            if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
             if (jj?.status === 'succeeded') {
               // Odśwież newsy po zakończeniu (proste przeładowanie pliku statycznego)
               try { await fetch('/articles.json', { cache: 'no-store' }); } catch { /* ignore */ }
@@ -113,12 +132,12 @@ export default function Hub({ navigate }: HubProps) {
             }
             return;
           }
-          setTimeout(poll, 2000);
+          schedulePoll(poll, 2000);
         } catch {
-          setTimeout(poll, 2000);
+          schedulePoll(poll, 2000);
         }
       };
-      setTimeout(poll, 1500);
+      schedulePoll(poll, 1500);
     } catch {
       setArticlesBusy(false);
     }
@@ -137,43 +156,26 @@ export default function Hub({ navigate }: HubProps) {
       {/* Subtle grid overlay to reinforce tech theme */}
       <div className="hidden sm:block pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
 
-      {/* Content */}
-      <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col items-center px-4 pt-14 pb-20 sm:py-10 text-white">
-        {/* Profile button */}
-        <div className="absolute right-4 top-4">
-          <button
-            onClick={() => { setProfileOpen(true); if (isAuth) loadSingleKey(); }}
-            className="px-3 py-1.5 rounded-lg border border-white/30 bg-black/40 hover:bg-black/60 backdrop-blur"
-          >
-            {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
-          </button>
-        </div>
-        <header className="w-full">
-          <div className="relative mx-auto max-w-5xl text-center">
-            {/* dekoracyjna poświata pod tytułem (elektroniczny klimat) */}
-            <div className="pointer-events-none absolute -inset-x-20 -top-8 -bottom-8 opacity-60 blur-2xl">
-              <div className="mx-auto h-full w-full max-w-4xl rounded-full bg-gradient-to-r from-cyan-400/25 via-emerald-300/20 to-violet-400/25" />
-            </div>
-
-            {/* usunięto ikonę nad tytułem */}
-
-            <h1 className="relative mx-auto max-w-5xl text-center text-3xl font-extrabold leading-tight tracking-tight font-space-grotesk neon-title sm:text-4xl md:text-5xl">
-              <span className="block uppercase tracking-tight sm:text-5xl md:text-6xl shimmer">
-                Zespół Szkół Elektronicznych
-              </span>
-              <span className="block mt-1 leading-tight">
-                <span className="opacity-90">im.</span>{' '}
-                <span className="uppercase shimmer">Stanisława Staszica</span>
-              </span>
-              <span className="neon-underline block mt-1 uppercase tracking-wider sm:text-4xl md:text-5xl">
-                W Zduńskiej Woli
-              </span>
-            </h1>
-            <div className="relative mx-auto mt-3 h-1 w-40 rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-violet-400 shadow-[0_0_24px_rgba(59,130,246,0.35)]" />
+      <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
+        <div className="relative z-10 mx-auto max-w-6xl px-4 py-2 flex items-center gap-3 text-white">
+          <CalendarDays className="w-5 h-5 text-zinc-200" />
+          <div className="text-sm font-semibold text-zinc-100">ZSE Zduńska Wola</div>
+          <div className="ml-auto">
+            <Button
+              onClick={() => { setProfileOpen(true); if (isAuth) loadSingleKey(); }}
+              variant="outline"
+              className="border-white/30 bg-black/40 text-white hover:bg-black/60 backdrop-blur"
+            >
+              {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
+            </Button>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <main className="mt-8 sm:mt-10 w-full">
+      {/* Content */}
+      <div className="relative z-10 mx-auto flex min-h-[calc(100svh-48px)] max-w-6xl flex-col items-center px-4 py-8 sm:py-10 text-white">
+
+        <main className="w-full">
           {/* Symmetrical 2x2 grid on desktop, stacked on mobile */}
           <div className="mx-auto max-w-3xl grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
             <HubTile
@@ -214,30 +216,31 @@ export default function Hub({ navigate }: HubProps) {
 
       {/* Profile modal */}
       {profileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={()=>setProfileOpen(false)} />
-          <div className="relative z-10 w-[92vw] max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl">
+        <Modal
+          onClose={() => setProfileOpen(false)}
+          panelClassName="w-[92vw] max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl"
+        >
             <div className="flex items-center justify-between mb-3">
               <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
-              <button onClick={()=>setProfileOpen(false)} className="px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800">Zamknij</button>
+              <Button onClick={()=>setProfileOpen(false)} variant="outline" size="sm">Zamknij</Button>
             </div>
             {!isAuth ? (
               <div className="grid sm:grid-cols-2 gap-3">
                 <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                   <div className="text-sm font-medium mb-2">Logowanie</div>
-                  <input className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Nazwa użytkownika"
+                  <Input className="mb-2" placeholder="Nazwa użytkownika"
                          value={loginForm.username} onChange={e=>setLoginForm(s=>({ ...s, username: e.target.value }))} />
-                  <input type="password" className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Hasło"
+                  <Input type="password" className="mb-2" placeholder="Hasło"
                          value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
-                  <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500" type="submit">Zaloguj</button>
+                  <Button variant="success" type="submit">Zaloguj</Button>
                 </form>
                 <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                   <div className="text-sm font-medium mb-2">Rejestracja</div>
-                  <input className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Nazwa użytkownika"
+                  <Input className="mb-2" placeholder="Nazwa użytkownika"
                          value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
-                  <input type="password" className="w-full mb-2 px-3 py-2 rounded bg-zinc-900 border border-zinc-700" placeholder="Hasło (min. 6)"
+                  <Input type="password" className="mb-2" placeholder="Hasło (min. 6)"
                          value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
-                  <button className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500" type="submit">Zarejestruj</button>
+                  <Button variant="primary" type="submit">Zarejestruj</Button>
                 </form>
               </div>
             ) : (
@@ -247,28 +250,28 @@ export default function Hub({ navigate }: HubProps) {
                     <div className="text-sm">Zalogowano jako</div>
                     <div className="text-lg font-semibold">{me?.username}</div>
                   </div>
-                  <button onClick={handleLogout} className="px-3 py-2 rounded bg-red-600 hover:bg-red-500">Wyloguj</button>
+                  <Button onClick={handleLogout} variant="danger">Wyloguj</Button>
                 </div>
                 <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                   <div className="text-sm font-medium mb-2">Klucz API (test)</div>
                   <div className="text-xs opacity-80 mb-2">Pojedynczy klucz do wszystkich endpointów. Na czas testów widoczny w panelu cały czas.</div>
                   <div className="flex items-center gap-2">
-                    <input readOnly value={singleApiKey || ''} className="flex-1 px-3 py-2 rounded bg-zinc-900 border border-zinc-700 font-mono" />
-                    <button onClick={()=>{ navigator.clipboard.writeText(singleApiKey || ''); }} className="px-3 py-2 rounded border border-zinc-700 hover:bg-zinc-800">Kopiuj</button>
-                    <button onClick={regenSingleKey} className="px-3 py-2 rounded bg-amber-600 hover:bg-amber-500">Regeneruj</button>
+                    <Input readOnly value={singleApiKey || ''} className="flex-1 font-mono" />
+                    <Button onClick={()=>{ navigator.clipboard.writeText(singleApiKey || ''); }} variant="outline">Kopiuj</Button>
+                    <Button onClick={regenSingleKey} variant="warning">Regeneruj</Button>
                   </div>
                 </section>
                 {me?.username === 'admin' ? (
                   <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                     <div className="text-sm font-medium mb-2">Aktualności</div>
                     <div className="flex items-center gap-2">
-                      <button
+                      <Button
                         onClick={startArticlesScrape}
                         disabled={articlesBusy}
-                        className={`px-3 py-2 rounded ${articlesBusy ? 'bg-zinc-700' : 'bg-emerald-600 hover:bg-emerald-500'}`}
+                        variant={articlesBusy ? 'neutral' : 'success'}
                       >
                         {articlesBusy ? 'Aktualizuję…' : 'Aktualizuj artykuły'}
-                      </button>
+                      </Button>
                       {articlesJob ? (
                         <span className="text-xs opacity-80">Status: {articlesJob.status}</span>
                       ) : null}
@@ -280,8 +283,8 @@ export default function Hub({ navigate }: HubProps) {
                   <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                     <div className="text-sm font-medium mb-2">Plan lekcji</div>
                     <div className="flex items-center gap-2 mb-2">
-                      <button onClick={refreshTimetable} disabled={ttBusy} className={`px-3 py-2 rounded ${ttBusy ? 'bg-zinc-700' : 'bg-blue-600 hover:bg-blue-500'}`}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</button>
-                      <button onClick={loadBackups} className="px-3 py-2 rounded border border-zinc-700 hover:bg-zinc-800">Pokaż kopie zapasowe</button>
+                      <Button onClick={refreshTimetable} disabled={ttBusy} variant={ttBusy ? 'neutral' : 'primary'}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</Button>
+                      <Button onClick={loadBackups} variant="outline">Pokaż kopie zapasowe</Button>
                     </div>
                     {Array.isArray(backups) ? (
                       backups.length === 0 ? (
@@ -293,7 +296,7 @@ export default function Hub({ navigate }: HubProps) {
                               <div className="truncate pr-2">{b.filename}</div>
                               <div className="flex items-center gap-2">
                                 <span className="opacity-70">{new Date(b.mtime).toLocaleString()}</span>
-                                <button onClick={() => restoreBackup(b.filename)} className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500">Przywróć</button>
+                                <Button onClick={() => restoreBackup(b.filename)} variant="success" size="sm">Przywróć</Button>
                               </div>
                             </div>
                           ))}
@@ -305,8 +308,7 @@ export default function Hub({ navigate }: HubProps) {
                 ) : null}
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

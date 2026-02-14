@@ -3,7 +3,7 @@ import { Search, Columns3, Rows3 } from 'lucide-react'
 
 export type EntityTab = 'teachers' | 'classes' | 'rooms'
 
-export function EntityPicker({
+function EntityPickerImpl({
   entityTab,
   setEntityTab,
   query,
@@ -24,14 +24,6 @@ export function EntityPicker({
   view: 'grid' | 'list'
   setView: (v: 'grid' | 'list') => void
 }) {
-  const prettyId = (id: string) => {
-    try {
-      return decodeURIComponent(id)
-    } catch {
-      return id
-    }
-  }
-
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="inline-flex rounded-lg bg-zinc-800 p-1">
@@ -79,7 +71,7 @@ export function EntityPicker({
           <option value="">— Wybierz —</option>
           {options.map((x) => (
             <option key={x.id} value={x.id}>
-              {x.label} ({prettyId(x.id)})
+              {x.label}
             </option>
           ))}
         </select>
@@ -109,3 +101,4 @@ export function EntityPicker({
   )
 }
 
+export const EntityPicker = React.memo(EntityPickerImpl)

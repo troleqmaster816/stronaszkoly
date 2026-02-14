@@ -1,7 +1,7 @@
 import React from 'react'
 import { cmpDay } from '@/lib/schedule'
 
-export function FiltersBar({
+function FiltersBarImpl({
   days,
   selectedDays,
   onToggleDay,
@@ -16,16 +16,19 @@ export function FiltersBar({
   groupHalf: string
   setGroupHalf: (v: string) => void
 }) {
+  const sortedDays = React.useMemo(() => [...days].sort(cmpDay), [days])
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
       <div className="flex flex-wrap gap-2">
-        {[...days].sort(cmpDay).map((d) => {
+        {sortedDays.map((d) => {
           const on = selectedDays.includes(d);
           return (
             <button
               key={d}
               className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                on ? 'bg-zinc-200 text-zinc-900 border-zinc-300' : 'bg-zinc-900 text-zinc-200 border-zinc-700 hover:bg-zinc-800'
+                on
+                  ? 'bg-zinc-800 text-zinc-100 border-zinc-600 shadow'
+                  : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100'
               }`}
               onClick={() => onToggleDay(d)}
             >
@@ -59,4 +62,4 @@ export function FiltersBar({
   )
 }
 
-
+export const FiltersBar = React.memo(FiltersBarImpl)
