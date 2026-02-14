@@ -19,7 +19,9 @@ USER_AGENT = os.environ.get(
 
 # Resolve output path next to this script for atomic writes
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_FILE = os.path.join(SCRIPT_DIR, "articles.json")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+PUBLIC_DIR = os.path.join(PROJECT_ROOT, "public")
+OUTPUT_FILE = os.path.join(PUBLIC_DIR, "articles.json")
 
 def clean_html_content(soup_tag):
     """

@@ -41,7 +41,7 @@ Python venv for scrapers:
 sudo -u szkola bash -lc '
 python3 -m venv /opt/szkola/venv
 /opt/szkola/venv/bin/python -m pip install --upgrade pip
-/opt/szkola/venv/bin/python -m pip install -r /opt/szkola/stronaszkoly/public/requirements.txt
+/opt/szkola/venv/bin/python -m pip install -r /opt/szkola/stronaszkoly/server/scripts/requirements.txt
 '
 ```
 
@@ -182,4 +182,3 @@ sudo chown -R szkola:szkola /opt/szkola
 - Firewall: ensure ports 80/443 are open; internal app listens on 8787.
 - Cookies are `Secure` in production; use HTTPS.
 - CORS is restricted to `ALLOWED_ORIGINS`; add more if required.
-

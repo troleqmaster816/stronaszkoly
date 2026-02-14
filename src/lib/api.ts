@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import type {
+  DataFile as ScheduleDataFile,
+  Lesson as ScheduleLesson,
+  Overrides as ScheduleOverrides,
+} from '@/types/schedule'
 
 export const RefTables = z.record(z.string())
 export const Meta = z.object({
@@ -30,8 +35,9 @@ export const OverridesSchema = z.object({
   teacherNameOverrides: z.record(z.string()),
 })
 
-export type DataFile = z.infer<typeof DataFileSchema>
-export type Overrides = z.infer<typeof OverridesSchema>
+export type DataFile = ScheduleDataFile
+export type Lesson = ScheduleLesson
+export type Overrides = ScheduleOverrides
 
 export async function fetchJsonValidated<T>(url: string, schema: z.ZodSchema<T>, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, cache: 'no-store' })
@@ -43,5 +49,3 @@ export async function fetchJsonValidated<T>(url: string, schema: z.ZodSchema<T>,
   }
   return parsed.data
 }
-
-

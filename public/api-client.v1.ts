@@ -71,8 +71,6 @@ export type AttendanceState = {
 
 export type BackupEntry = { filename: string; size: number; mtime: string };
 
-type FetchOptions = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
-
 export class ApiClient {
   readonly baseUrl: string;
   readonly apiKey?: string;
@@ -91,7 +89,7 @@ export class ApiClient {
   private async handle<T>(res: Response): Promise<T> {
     if (!res.ok) {
       let problem: Problem | undefined;
-      try { problem = await res.json(); } catch {}
+      try { problem = await res.json(); } catch (error) { void error }
       const err = new Error(problem?.title || `HTTP ${res.status}`) as Error & { problem?: Problem };
       if (problem) err.problem = problem;
       throw err;
@@ -187,7 +185,7 @@ export class ApiClient {
     }).then(r => this.handle<{ ok: boolean; data: { token: string; url: string; expiresAt: string } }>(r));
   }
   getApproval(token: string) {
-    return fetch(`${this.baseUrl}/v1/approvals/${encodeURIComponent(token)}`, { headers: this.headers() }).then(r => this.handle<{ ok: boolean; data: any }>(r));
+    return fetch(`${this.baseUrl}/v1/approvals/${encodeURIComponent(token)}`, { headers: this.headers() }).then(r => this.handle<{ ok: boolean; data: unknown }>(r));
   }
   decideApproval(token: string, decision: "accept" | "deny") {
     return fetch(`${this.baseUrl}/v1/approvals/${encodeURIComponent(token)}`, {
@@ -235,5 +233,3 @@ export class ApiClient {
     }).then(r => this.handle<{ ok: boolean }>(r));
   }
 }
-
-

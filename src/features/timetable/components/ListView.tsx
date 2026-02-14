@@ -12,7 +12,7 @@ type Lesson = {
   room: { id: string; name: string } | null
 }
 
-export function ListView({
+function ListViewImpl({
   selectedDays,
   lessonsByDay,
   isMobile,
@@ -28,6 +28,10 @@ export function ListView({
   onRenderLesson: (l: Lesson, key: React.Key) => React.ReactNode
 }) {
   const swipeStart = React.useRef<{ x: number; y: number } | null>(null)
+  const visibleDays = React.useMemo(
+    () => Array.from(lessonsByDay.keys()).filter((d) => selectedDays.includes(d)).sort(cmpDay),
+    [lessonsByDay, selectedDays]
+  )
   return (
     <motion.div
       key="list"
@@ -46,13 +50,10 @@ export function ListView({
         }
       }}
     >
-      {Array.from(lessonsByDay.keys())
-        .filter((d) => selectedDays.includes(d))
-        .sort(cmpDay)
-        .map((d) => (
+      {visibleDays.map((d) => (
           <div key={d} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-sm">
             {!isMobile && <div className="text-sm font-semibold mb-3 text-zinc-200">{d}</div>}
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
               {lessonsByDay.get(d)!.map((l, i) => onRenderLesson(l, `${d}|${i}`))}
             </div>
           </div>
@@ -61,3 +62,4 @@ export function ListView({
   )
 }
 
+export const ListView = React.memo(ListViewImpl)

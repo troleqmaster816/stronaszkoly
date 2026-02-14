@@ -21,11 +21,17 @@ export function HubRoute() {
   return <Hub navigate={(to: string) => navigate(to)} />
 }
 
-export function TimetableRoute({ setOverlayActive }: { setOverlayActive: (v: boolean) => void }) {
+export function TimetableRoute({
+  overlayActive,
+  setOverlayActive,
+}: {
+  overlayActive: boolean
+  setOverlayActive: (v: boolean) => void
+}) {
   const navigate = useNavigate()
   return <>
     <TimetableViewer onOverlayActiveChange={setOverlayActive} />
-    <HomeFab onClick={() => navigate('/')} />
+    {!overlayActive && <HomeFab onClick={() => navigate('/')} />}
   </>
 }
 
@@ -38,7 +44,7 @@ export function PageWithFab({ children }: { children: React.ReactNode }) {
 }
 
 export function AppRouter() {
-  const [, setOverlayActive] = useState(false)
+  const [overlayActive, setOverlayActive] = useState(false)
   return (
     <BrowserRouter>
       <AuthProvider>
@@ -46,7 +52,7 @@ export function AppRouter() {
           <Routes>
             <Route path="/" element={<HubRoute />} />
             <Route path="/docs" element={<Docs />} />
-            <Route path="/plan" element={<TimetableRoute setOverlayActive={setOverlayActive} />} />
+            <Route path="/plan" element={<TimetableRoute overlayActive={overlayActive} setOverlayActive={setOverlayActive} />} />
             <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
             <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
             <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />

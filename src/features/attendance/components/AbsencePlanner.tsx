@@ -1,7 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, ShieldCheck, CalendarX } from 'lucide-react';
 import { DateBadge as DateBadgeComp } from './DateBadge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import type { State } from '../state/attendanceReducer';
+import {
+  addDays,
+  getPolishDayName,
+  isWeekend,
+  normalizeSubjectKey,
+  parseISODateLocal,
+  startOfWeekMonday,
+  toISODate,
+} from '@/lib/attendance';
 
 // Polityka przedmiotów i stany commitów planera
 export type SubjectPolicy = 'ABSOLUTE' | 'PREFERRED' | 'NEUTRAL' | 'TOLERATED';
@@ -11,54 +22,6 @@ type Stat = { present: number; total: number };
 
 // Ustawienia planera per-przedmiot
 interface SubjectSetting { priority: SubjectPolicy; margin: number; targetPct: number }
-
-// Pomocnicze funkcje
-function getPolishDayName(d: Date) {
-  const WEEKDAY_PL = ["Niedziela","Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota"];
-  return WEEKDAY_PL[d.getDay()];
-}
-
-function toISODate(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function parseISODateLocal(dateISO: string): Date {
-  const [y, m, d] = dateISO.split("-").map(n => parseInt(n, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return new Date(NaN);
-  return new Date(y, m - 1, d, 0, 0, 0, 0);
-}
-
-function startOfWeekMonday(d: Date) {
-  const copy = new Date(d);
-  const day = copy.getDay(); // 0..6, 0 = Sunday
-  const diff = (day === 0 ? -6 : 1 - day); // poniedziałek jako start
-  copy.setDate(copy.getDate() + diff);
-  copy.setHours(0,0,0,0);
-  return copy;
-}
-
-function addDays(base: Date, days: number) {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function isWeekend(d: Date) {
-  const g = d.getDay();
-  return g === 0 || g === 6;
-}
-
-function normalizeSubjectKey(s: string) {
-  const base = (s || "").toLowerCase().trim()
-    .replace(/(?:\s|-)*(\d+\/\d+)(?=$|\b)/gi, "") // usuń "1/2", "2/2", "1/3" itp.
-    .replace(/[\s-]+$/g, "")
-    .replace(/\s{2,}/g, " ");
-  if (base === "r_matematyka") return "matematyka";
-  return base;
-}
 
 function pluralLekcja(n: number) {
   const abs = Math.abs(n);
@@ -351,10 +314,8 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
   }
 
   const [detailByDate, setDetailByDate] = useState<Record<string, string | ''>>({});
-  const rows: RowResult[] = useMemo(() => {
-    // Naturalna kolejność: dni w porządku chronologicznym bez dodatkowego sortowania
-    return days.map(d => evaluateSkipFor(d));
-  }, [days, plan, baseStats, commits, subjectPolicy, subjectSettings]);
+  // days contains at most one school week; memoization is unnecessary here.
+  const rows: RowResult[] = days.map(d => evaluateSkipFor(d));
 
   return (
     <div className="space-y-2">
@@ -367,7 +328,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
         <div className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-3">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">Ustawienia planera nieobecności</div>
-            <button onClick={()=>setSettingsOpen(o=>!o)} className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-xs">{settingsOpen ? 'Ukryj' : 'Pokaż'}</button>
+            <Button onClick={()=>setSettingsOpen(o=>!o)} size="sm" className="rounded bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-xs">{settingsOpen ? 'Ukryj' : 'Pokaż'}</Button>
           </div>
           {settingsOpen && (
             <div className="space-y-2">
@@ -403,10 +364,10 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                             </select>
                           </td>
                           <td className="p-2">
-                            <input type="number" min={0} max={100} value={cur.targetPct} onChange={e=>{ const val = Math.max(0, Math.min(100, parseInt(e.target.value || '0', 10))); setSubjectSettings(s=>({ ...s, [key]: { priority: (s[key]?.priority ?? cur.priority), margin: (s[key]?.margin ?? cur.margin), targetPct: val } })); }} className="w-24 bg-neutral-950 border border-neutral-800 rounded px-2 py-1"/>
+                            <Input type="number" min={0} max={100} value={cur.targetPct} onChange={e=>{ const val = Math.max(0, Math.min(100, parseInt(e.target.value || '0', 10))); setSubjectSettings(s=>({ ...s, [key]: { priority: (s[key]?.priority ?? cur.priority), margin: (s[key]?.margin ?? cur.margin), targetPct: val } })); }} className="w-24 bg-neutral-950 border-neutral-800 rounded px-2 py-1 text-xs"/>
                           </td>
                           <td className="p-2">
-                            <input type="number" min={0} max={10} value={cur.margin} onChange={e=>{ const val = Math.max(0, Math.min(10, parseInt(e.target.value || '0', 10))); setSubjectSettings(s=>({ ...s, [key]: { priority: (s[key]?.priority ?? cur.priority), margin: val, targetPct: (s[key]?.targetPct ?? cur.targetPct) } })); }} className="w-20 bg-neutral-950 border border-neutral-800 rounded px-2 py-1"/>
+                            <Input type="number" min={0} max={10} value={cur.margin} onChange={e=>{ const val = Math.max(0, Math.min(10, parseInt(e.target.value || '0', 10))); setSubjectSettings(s=>({ ...s, [key]: { priority: (s[key]?.priority ?? cur.priority), margin: val, targetPct: (s[key]?.targetPct ?? cur.targetPct) } })); }} className="w-20 bg-neutral-950 border-neutral-800 rounded px-2 py-1 text-xs"/>
                           </td>
                         </tr>
                       );
@@ -449,28 +410,30 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="flex gap-2">
-                    <button
+                    <Button
                       onClick={()=>toggleCommit(r.dateISO, 'absent')}
                       disabled={commits[r.dateISO]==='attend'}
-                      className={`px-2 py-1 rounded border text-sm transition ${
+                      size="sm"
+                      className={`rounded border text-sm transition ${
                         commits[r.dateISO] === 'absent'
                           ? 'bg-red-900/40 border-red-700 text-red-200'
                           : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700'
                       } disabled:opacity-50`}
                     >
                       Nie idę
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={()=>toggleCommit(r.dateISO, 'attend')}
                       disabled={commits[r.dateISO]==='absent'}
-                      className={`px-2 py-1 rounded border text-sm transition ${
+                      size="sm"
+                      className={`rounded border text-sm transition ${
                         commits[r.dateISO] === 'attend'
                           ? 'bg-emerald-900/40 border-emerald-700 text-emerald-200'
                           : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700'
                       } disabled:opacity-50`}
                     >
                       Idę
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

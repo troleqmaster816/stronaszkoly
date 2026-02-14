@@ -12,12 +12,17 @@ type Lesson = {
   room: { id: string; name: string } | null
 }
 
-export function GridView({
+export type TimetableDensity = 'comfortable' | 'compact' | 'tight'
+
+function GridViewImpl({
   daysInData,
   selectedDays,
   periods,
   activeLessons,
   isMobile,
+  density,
+  dayCount,
+  cellMinPx,
   onSwipePrev,
   onSwipeNext,
   onRenderLesson,
@@ -27,18 +32,51 @@ export function GridView({
   periods: { lesson_num: string; time: string }[]
   activeLessons: Lesson[]
   isMobile: boolean
+  density: TimetableDensity
+  dayCount: number
+  cellMinPx: number
   onSwipePrev: () => void
   onSwipeNext: () => void
   onRenderLesson: (l: Lesson, key: React.Key) => React.ReactNode
 }) {
   const swipeStart = React.useRef<{ x: number; y: number } | null>(null)
+  const visibleDays = React.useMemo(
+    () => daysInData.filter((d) => selectedDays.includes(d)).sort(cmpDay),
+    [daysInData, selectedDays]
+  )
+
+  const lessonsByCell = React.useMemo(() => {
+    const map = new Map<string, Lesson[]>()
+    for (const lesson of activeLessons) {
+      const key = `${lesson.day}|${lesson.lesson_num}|${lesson.time}`
+      const bucket = map.get(key)
+      if (bucket) {
+        bucket.push(lesson)
+      } else {
+        map.set(key, [lesson])
+      }
+    }
+    return map
+  }, [activeLessons])
+
+  const cols = Math.max(1, Math.min(dayCount || 1, visibleDays.length || 1))
+  const gridTemplateColumns = React.useMemo(() => {
+    const minCell = Math.max(0, Math.round(cellMinPx || 0))
+    if (minCell > 0) return `repeat(${cols}, minmax(${minCell}px, 1fr))`
+    return `repeat(${cols}, minmax(0, 1fr))`
+  }, [cellMinPx, cols])
+  const cellPadding = density === 'comfortable' ? 'p-2' : density === 'compact' ? 'p-1.5' : 'p-1'
+  const stackGap = density === 'comfortable' ? 'gap-2' : 'gap-1.5'
+  const placeholderPad = density === 'tight' ? 'p-1.5' : 'p-2'
+  const headerPad = density === 'tight' ? 'px-2 py-1.5' : 'px-2.5 py-2'
+
   return (
     <motion.div
       key="grid"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-sm"
+      className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-sm"
       onTouchStart={(e) => { swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
       onTouchEnd={(e) => {
         const st = swipeStart.current; swipeStart.current = null;
@@ -50,54 +88,51 @@ export function GridView({
         }
       }}
     >
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr className="bg-zinc-800/70 border-b border-zinc-800">
-            {daysInData
-              .filter((d) => selectedDays.includes(d))
-              .sort(cmpDay)
-              .map((d) => (
-                <th key={d} className="p-3 text-left min-w-[220px] font-medium text-zinc-200">{d}</th>
-              ))}
-          </tr>
-        </thead>
-        <tbody>
-          {periods.length === 0 && (
-            <tr>
-              <td className="p-4 text-zinc-400" colSpan={99}>
-                Brak danych do wyświetlenia dla wybranych filtrów.
-              </td>
-            </tr>
-          )}
-          {periods.map((p) => (
-            <tr key={`${p.lesson_num}|${p.time}`} className="border-b border-zinc-800 last:border-b-0">
-              {daysInData
-                .filter((d) => selectedDays.includes(d))
-                .sort(cmpDay)
-                .map((d) => {
-                  const inCell = activeLessons.filter(
-                    (l) => l.day === d && l.lesson_num === p.lesson_num && l.time === p.time
-                  );
+      {periods.length === 0 ? (
+        <div className="p-4 text-zinc-400">Brak danych do wyświetlenia dla wybranych filtrów.</div>
+      ) : (
+        <>
+          <div
+            className="grid border-b border-zinc-800 bg-zinc-800/70"
+            style={{ gridTemplateColumns }}
+          >
+            {visibleDays.map((d) => (
+              <div key={d} className={`${headerPad} text-left text-[13px] font-medium text-zinc-200`}>
+                {d}
+              </div>
+            ))}
+          </div>
+
+          <div className="divide-y divide-zinc-800">
+            {periods.map((p) => (
+              <div
+                key={`${p.lesson_num}|${p.time}`}
+                className="grid"
+                style={{ gridTemplateColumns }}
+              >
+                {visibleDays.map((d) => {
+                  const inCell = lessonsByCell.get(`${d}|${p.lesson_num}|${p.time}`) ?? []
                   return (
-                    <td key={`${d}|${p.lesson_num}`} className="p-2 align-top">
+                    <div key={`${d}|${p.lesson_num}`} className={cellPadding}>
                       {inCell.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-zinc-800 p-3 text-center text-xs text-zinc-600">
+                        <div className={`rounded-lg border border-dashed border-zinc-800 text-center text-[11px] text-zinc-600 ${placeholderPad}`}>
                           —
                         </div>
                       ) : (
-                        <div className="grid gap-2">
+                        <div className={`grid auto-rows-max ${stackGap}`}>
                           {inCell.map((l, idx) => onRenderLesson(l, `${d}|${p.lesson_num}|${idx}`))}
                         </div>
                       )}
-                    </td>
-                  );
+                    </div>
+                  )
                 })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </motion.div>
   )
 }
 
-
+export const GridView = React.memo(GridViewImpl)

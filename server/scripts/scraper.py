@@ -10,7 +10,9 @@ from bs4 import BeautifulSoup
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_FILE = os.path.join(SCRIPT_DIR, "timetable_data.json")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+PUBLIC_DIR = os.path.join(PROJECT_ROOT, "public")
+OUTPUT_FILE = os.path.join(PUBLIC_DIR, "timetable_data.json")
 
 # Strona WordPress osadzająca iframe z właściwym planem
 TIMETABLE_LANDING_URL = os.environ.get(

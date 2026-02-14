@@ -10,7 +10,7 @@ Krótki opis: Aplikacja do przeglądania planu lekcji i materiałów szkolnych.
 
 ## Wymagania
 - Node.js 18+
-- Python 3 (dla skryptów w katalogu `public/`)
+- Python 3 (dla skryptów w katalogu `server/scripts/`)
 
 ## Szybki start
 
@@ -47,6 +47,11 @@ Repozytorium: https://github.com/troleqmaster816/stronaszkoly
 ## Dokumentacja API
 
 Szczegółowa dokumentacja REST API znajduje się w `docs/API.md`.
+
+## Standardy projektu
+
+- Konwencje UI: `docs/UI_CONVENTIONS.md`
+- Checklista PR: `docs/PR_CHECKLIST.md`
 
 ## Produkcja – szkola.tkch.eu
 
@@ -112,4 +117,4 @@ server {
 
 ### Aktualizacja planu / skrypty Python
 
-Backend uruchamia skrypty Pythona z katalogu `public/`. Zapewnij Pythona 3 na serwerze. Opcjonalnie ustaw `PYTHON_PATH`.
+Backend uruchamia skrypty Pythona z katalogu `server/scripts/`. Zapewnij Pythona 3 na serwerze. Opcjonalnie ustaw `PYTHON_PATH`.

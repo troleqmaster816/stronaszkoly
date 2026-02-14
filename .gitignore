@@ -22,7 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-\n# Archives / bundles
+# Archives / bundles
 print-bundle.zip
 
 # Exports
@@ -31,3 +31,15 @@ exports/
 # Runtime data written by the dev server
 server/data.json
 public/overrides.json
+
+# Local notes / agent metadata
+AGENTS.md
+gdziessh.md
+
+# Runtime artifacts from timetable scraper/admin refresh
+public/.pip_installed_*.txt
+public/__pycache__/
+public/backups/
+public/scraper.py.bak-*
+public/harmonogram_nowy.pdf
+server/scripts/__pycache__/

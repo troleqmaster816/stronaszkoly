@@ -1,5 +1,8 @@
 import React from 'react'
 import { RefreshCw } from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 export function AdminPanel({
   isAuth,
@@ -33,24 +36,27 @@ export function AdminPanel({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+    <Modal
+      onClose={onClose}
+      overlayClassName="bg-black/70"
+      panelClassName="w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 m-4"
+    >
         <div className="flex items-center justify-between mb-3">
           <div className="text-lg font-semibold">Panel administratora</div>
           <div className="flex items-center gap-2">
             {isAuth && (
-              <button onClick={onLogout} className="text-sm px-2 py-1 border border-zinc-700 rounded-md bg-zinc-800">Wyloguj</button>
+              <Button onClick={onLogout} variant="outline" size="sm">Wyloguj</Button>
             )}
-            <button onClick={onClose} className="text-sm px-2 py-1 border border-zinc-700 rounded-md bg-zinc-800">Zamknij</button>
+            <Button onClick={onClose} variant="outline" size="sm">Zamknij</Button>
           </div>
         </div>
 
         {!isAuth ? (
           <form onSubmit={onLogin} className="grid gap-2">
             <div className="text-sm text-zinc-400">Zaloguj się, aby zarządzać danymi.</div>
-            <input name="username" className="px-3 py-2 rounded-md bg-zinc-800 border border-zinc-700" placeholder="Nazwa użytkownika" />
-            <input name="password" type="password" className="px-3 py-2 rounded-md bg-zinc-800 border border-zinc-700" placeholder="Hasło" />
-            <button className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-500">Zaloguj</button>
+            <Input name="username" placeholder="Nazwa użytkownika" />
+            <Input name="password" type="password" placeholder="Hasło" />
+            <Button variant="primary" type="submit">Zaloguj</Button>
             <div className="text-xs text-zinc-500">Przykładowe konto: admin / admin123</div>
           </form>
         ) : (
@@ -58,14 +64,15 @@ export function AdminPanel({
             <div className="rounded-xl border border-zinc-800 p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-medium">Odświeżenie planu</div>
-                <button
+                <Button
                   onClick={onRefresh}
                   disabled={refreshing}
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 ${refreshing ? 'opacity-60 cursor-not-allowed' : 'hover:bg-zinc-700'}`}
+                  variant="outline"
+                  className={`inline-flex items-center gap-2 ${refreshing ? 'opacity-60 cursor-not-allowed' : ''}`}
                   title="Uruchom scraper i uaktualnij plik timetable_data.json"
                 >
                   <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? 'Odświeżanie…' : 'Odśwież teraz'}
-                </button>
+                </Button>
               </div>
               <div className="text-xs text-zinc-400">Po zakończeniu plan zostanie ponownie wczytany.</div>
             </div>
@@ -77,8 +84,8 @@ export function AdminPanel({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-sm">Przedmioty (oryginał → wyświetlana)</div>
-                    <input
-                      className="text-xs px-2 py-1 rounded-md bg-zinc-800 border border-zinc-700 w-48"
+                    <Input
+                      className="text-xs px-2 py-1 w-48"
                       placeholder="Szukaj przedmiotu"
                       value={subjectFilter}
                       onChange={(e) => setSubjectFilter(e.target.value)}
@@ -92,20 +99,21 @@ export function AdminPanel({
                       .map((key) => (
                         <div key={key} className="flex items-center gap-2 p-2 border-b border-zinc-800 last:border-b-0">
                           <div className="text-xs text-zinc-400 min-w-0 flex-1 truncate" title={key}>{key}</div>
-                          <input
-                            className="text-sm px-2 py-1 rounded-md bg-zinc-800 border border-zinc-700 w-48"
+                          <Input
+                            className="text-sm px-2 py-1 w-48"
                             placeholder="Wyświetlana nazwa"
                             value={overrides.subjectOverrides[key] ?? ''}
                             onChange={(e) => setOverrides((s) => ({ ...s, subjectOverrides: { ...s.subjectOverrides, [key]: e.target.value } }))}
                           />
-                          <button
-                            className="text-xs px-2 py-1 rounded-md border border-zinc-700 hover:bg-zinc-800"
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => setOverrides((s) => {
                               const copy = { ...s.subjectOverrides };
                               delete copy[key];
                               return { ...s, subjectOverrides: copy };
                             })}
-                          >Wyczyść</button>
+                          >Wyczyść</Button>
                         </div>
                       ))}
                   </div>
@@ -113,8 +121,8 @@ export function AdminPanel({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-sm">Nauczyciele (skrót → pełna nazwa)</div>
-                    <input
-                      className="text-xs px-2 py-1 rounded-md bg-zinc-800 border border-zinc-700 w-48"
+                    <Input
+                      className="text-xs px-2 py-1 w-48"
                       placeholder="Szukaj nauczyciela"
                       value={teacherFilter}
                       onChange={(e) => setTeacherFilter(e.target.value)}
@@ -128,35 +136,35 @@ export function AdminPanel({
                       .map((shortName) => (
                         <div key={shortName} className="flex items-center gap-2 p-2 border-b border-zinc-800 last:border-b-0">
                           <div className="text-xs text-zinc-400 min-w-0 flex-1 truncate" title={shortName}>{shortName}</div>
-                          <input
-                            className="text-sm px-2 py-1 rounded-md bg-zinc-800 border border-zinc-700 w-48"
+                          <Input
+                            className="text-sm px-2 py-1 w-48"
                             placeholder="Pełna nazwa"
                             value={overrides.teacherNameOverrides[shortName] ?? ''}
                             onChange={(e) => setOverrides((s) => ({ ...s, teacherNameOverrides: { ...s.teacherNameOverrides, [shortName]: e.target.value } }))}
                           />
-                          <button
-                            className="text-xs px-2 py-1 rounded-md border border-zinc-700 hover:bg-zinc-800"
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => setOverrides((s) => {
                               const copy = { ...s.teacherNameOverrides };
                               delete copy[shortName];
                               return { ...s, teacherNameOverrides: copy };
                             })}
-                          >Wyczyść</button>
+                          >Wyczyść</Button>
                         </div>
                       ))}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => (document.getElementById('save-overrides') as HTMLButtonElement)?.click()} className="px-3 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500">Zapisz nadpisania</button>
-                <button onClick={() => { setOverrides({ subjectOverrides: {}, teacherNameOverrides: {} }); }} className="px-3 py-2 rounded-md border border-zinc-700 hover:bg-zinc-800">Wyczyść wszystko</button>
+                <Button onClick={() => (document.getElementById('save-overrides') as HTMLButtonElement)?.click()} variant="success">Zapisz nadpisania</Button>
+                <Button onClick={() => { setOverrides({ subjectOverrides: {}, teacherNameOverrides: {} }); }} variant="outline">Wyczyść wszystko</Button>
               </div>
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }
 
-
+export default AdminPanel

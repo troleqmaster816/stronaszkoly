@@ -15,6 +15,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = dirname(__dirname);
 const publicDir = join(projectRoot, 'public');
+const scriptsDir = join(__dirname, 'scripts');
+const requirementsPath = join(scriptsDir, 'requirements.txt');
+const timetableScraperScript = join(scriptsDir, 'scraper.py');
+const articlesScraperScript = join(scriptsDir, 'article_scraper.py');
 const distDir = join(projectRoot, 'dist');
 const timetableFilePath = join(publicDir, 'timetable_data.json');
 const timetableBackupsDir = join(publicDir, 'backups', 'timetables');
@@ -152,8 +156,12 @@ app.use((req, res, next) => {
 let isRunning = false;
 // token -> userId
 const TOKENS = new Map();
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
+const ADMIN_USER = String(process.env.ADMIN_USER || '').trim().toLowerCase();
+const ADMIN_PASS = String(process.env.ADMIN_PASS || '');
+const ADMIN_LOGIN_ENABLED = ADMIN_USER.length > 0 && ADMIN_PASS.length > 0;
+if (!ADMIN_LOGIN_ENABLED) {
+  console.warn('[auth] Admin password login disabled: set ADMIN_USER and ADMIN_PASS to enable it.');
+}
 const overridesPath = join(publicDir, 'overrides.json');
 const dbPath = join(__dirname, 'data.json');
 
@@ -341,9 +349,8 @@ async function runCommand(cmd, args, options = {}) {
 // Python deps caching – skip pip install if requirements.txt unchanged
 function getRequirementsHash() {
   try {
-    const reqPath = join(publicDir, 'requirements.txt');
-    if (!existsSync(reqPath)) return null;
-    const content = readFileSync(reqPath, 'utf8');
+    if (!existsSync(requirementsPath)) return null;
+    const content = readFileSync(requirementsPath, 'utf8');
     return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
   } catch { return null; }
 }
@@ -352,8 +359,9 @@ async function ensurePythonDepsInstalled(pythonCmd) {
   const markerName = hash ? `.pip_installed_${hash}.txt` : `.pip_installed.txt`;
   const markerPath = join(publicDir, markerName);
   if (existsSync(markerPath)) return { skipped: true };
-  const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', 'requirements.txt'];
-  const pip = await runCommand(pythonCmd, pipArgs, { cwd: publicDir, env: process.env });
+  if (!existsSync(requirementsPath)) return { skipped: true };
+  const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', requirementsPath];
+  const pip = await runCommand(pythonCmd, pipArgs, { cwd: scriptsDir, env: process.env });
   if (pip.code !== 0) return { error: pip.stderr.slice(-4000) };
   try { writeFileSync(markerPath, String(Date.now()), 'utf8'); } catch {}
   return { skipped: false };
@@ -499,7 +507,7 @@ v1.get('/users/me', (req, res) => {
     const db = loadDb();
     const userId = TOKENS.get(cookieToken);
     const hit = db.users.find(u => u.id === userId);
-    user = hit ? { id: hit.id, username: hit.username } : { id: 'admin', username: ADMIN_USER };
+    user = hit ? { id: hit.id, username: hit.username } : { id: 'admin', username: ADMIN_USER || 'admin' };
   }
   res.json({ ok: true, authenticated: !!hasCookie, user });
 });
@@ -517,7 +525,7 @@ v1.post('/login', loginLimiter, (req, res) => {
     res.cookie('auth', token, AUTH_COOKIE_OPTS);
     return res.json({ ok: true });
   }
-  if (userIn === ADMIN_USER && passIn === ADMIN_PASS) {
+  if (ADMIN_LOGIN_ENABLED && userIn === ADMIN_USER && passIn === ADMIN_PASS) {
     const token = crypto.randomBytes(32).toString('base64url');
     TOKENS.set(token, 'admin');
     res.cookie('auth', token, AUTH_COOKIE_OPTS);
@@ -638,8 +646,8 @@ v1.post('/refresh', requireAuth, requireCsrfIfCookieAuth, refreshLimiter, async 
     }
 
     // Run scraper
-    const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'scraper.py'] : ['scraper.py'];
-    const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
+    const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', timetableScraperScript] : [timetableScraperScript];
+    const run = await runCommand(pythonCmd, script, { cwd: scriptsDir, env: process.env });
     isRunning = false;
     if (run.code !== 0) {
       return res.status(500).json({ ok: false, step: 'scraper', error: run.stderr.slice(-4000), output: run.stdout.slice(-4000) });
@@ -1100,8 +1108,8 @@ v1.post('/jobs/timetable-scrape', requireAuth, requireCsrfIfCookieAuth, async (r
       const deps = await ensurePythonDepsInstalled(pythonCmd);
       if (deps && deps.error) throw new Error(deps.error);
       // Run scraper
-      const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'scraper.py'] : ['scraper.py'];
-      const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
+      const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', timetableScraperScript] : [timetableScraperScript];
+      const run = await runCommand(pythonCmd, script, { cwd: scriptsDir, env: process.env });
       if (run.code !== 0) throw new Error(run.stderr.slice(-4000));
       job.status = 'succeeded';
       job.finishedAt = new Date().toISOString();
@@ -1141,8 +1149,8 @@ v1.post('/jobs/articles-scrape', requireAuth, requireCsrfIfCookieAuth, async (re
         if (!pythonCmd) throw new Error('Brak interpretera Pythona');
         const deps = await ensurePythonDepsInstalled(pythonCmd);
         if (deps && deps.error) throw new Error(deps.error);
-        const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', 'article_scraper.py'] : ['article_scraper.py'];
-        const run = await runCommand(pythonCmd, script, { cwd: publicDir, env: process.env });
+        const script = process.platform === 'win32' && pythonCmd === 'py' ? ['-3', articlesScraperScript] : [articlesScraperScript];
+        const run = await runCommand(pythonCmd, script, { cwd: scriptsDir, env: process.env });
         if (run.code !== 0) throw new Error(run.stderr.slice(-4000));
         job.status = 'succeeded';
         job.finishedAt = new Date().toISOString();

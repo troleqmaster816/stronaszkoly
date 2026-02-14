@@ -1,4 +1,10 @@
-// no imports needed
+import {
+  addDays,
+  getPolishDayName,
+  normalizeSubjectKey,
+  parseISODateLocal,
+  toISODate,
+} from '@/lib/attendance'
 
 // Types co-located with reducer for clarity and testability
 export type AttendanceEntry = {
@@ -28,6 +34,18 @@ export type State = {
   plans: Plan[];
   byDate: Record<string, AttendanceEntry[]>;
 };
+
+export function createDefaultAttendanceState(): State {
+  return {
+    subjects: [
+      { key: 'matematyka', label: 'Matematyka' },
+      { key: 'j.polski', label: 'Język polski' },
+      { key: 'informatyka', label: 'Informatyka' },
+    ],
+    plans: [],
+    byDate: {},
+  }
+}
 
 export type Action =
   | { type: 'ADD_SUBJECT'; label: string }
@@ -148,37 +166,9 @@ function uniqueByKey(arr: {key:string;label:string}[]) {
   for (const it of arr) if (!seen.has(it.key)) { seen.add(it.key); out.push(it); }
   return out;
 }
-function getPolishDayName(d: Date) {
-  const WEEKDAY_PL = ['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];
-  return WEEKDAY_PL[d.getDay()];
-}
-function parseISODateLocal(dateISO: string): Date {
-  const [y, m, d] = dateISO.split('-').map(n => parseInt(n, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return new Date(NaN);
-  return new Date(y, m - 1, d, 0, 0, 0, 0);
-}
-function addDays(base: Date, days: number) {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-function toISODate(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 function safeParseInt(s: string) {
   const n = parseInt(s, 10);
   return Number.isFinite(n) ? n : 0;
-}
-function normalizeSubjectKey(s: string) {
-  const base = (s || '').toLowerCase().trim()
-    .replace(/(?:\s|-)*(\d+\/\d+)(?=$|\b)/gi, '')
-    .replace(/[\s-]+$/g, '')
-    .replace(/\s{2,}/g, ' ');
-  if (base === 'r_matematyka') return 'matematyka';
-  return base;
 }
 
 

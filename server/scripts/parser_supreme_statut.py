@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from bs4 import BeautifulSoup
 
@@ -148,8 +149,10 @@ def parse_html_statut(filepath):
 
 # ---- Uruchomienie skryptu ----
 if __name__ == "__main__":
-    input_file = 'statut-szkolny.html'
-    output_file = 'statut.json'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(script_dir))
+    input_file = os.environ.get('STATUT_INPUT_FILE', os.path.join(project_root, 'docs', 'sources', 'statut-szkolny.html'))
+    output_file = os.environ.get('STATUT_OUTPUT_FILE', os.path.join(project_root, 'public', 'statut.json'))
     try:
         parsed_data = parse_html_statut(input_file)
         if parsed_data and parsed_data.get("chapters"):
