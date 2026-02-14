@@ -304,6 +304,12 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const activeDisplayName = activeKind === 'room' ? formatRoomDisplay(activeName) : activeName;
 
+  useEffect(() => {
+    const appTitle = 'ZSE Zduńska Wola'
+    const pageTitle = activeDisplayName ? `Plan lekcji - ${activeDisplayName}` : 'Plan lekcji'
+    document.title = `${pageTitle} | ${appTitle}`
+  }, [activeDisplayName])
+
   // Filtry: dni + grupa (1/2, 2/2, wszystkie)
   const activeLessons: Lesson[] = useMemo(() => {
     const arr: Lesson[] = (activeId && data?.timetables?.[activeId]) || [];
@@ -396,7 +402,13 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     [isMobile, layoutProfile.shellMaxWidth]
   )
 
-  const goTo = useCallback((id: string) => setHashId(id), [setHashId])
+  const goTo = useCallback((id: string) => {
+    const nextKind = idToKind(id)
+    if (nextKind === 'class') setEntityTab('classes')
+    if (nextKind === 'teacher') setEntityTab('teachers')
+    if (nextKind === 'room') setEntityTab('rooms')
+    setHashId(id)
+  }, [setHashId])
 
   // Mobile detection and single-day navigation
   useEffect(() => {
@@ -428,6 +440,12 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       setSelectedDays([mobileDay]);
     }
   }, [isMobile, mobileDay]);
+
+  useEffect(() => {
+    if (!activeKind) return
+    const targetTab = activeKind === 'class' ? 'classes' : activeKind === 'teacher' ? 'teachers' : 'rooms'
+    setEntityTab((prev) => (prev === targetTab ? prev : targetTab))
+  }, [activeKind])
 
   // Force list view on mobile and restore previous view when leaving mobile
   useEffect(() => {
@@ -840,17 +858,6 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {/* Zawartość – wybrany plan */}
         {data && activeId && (
           <section className="mt-1">
-              <div className="mb-3 flex items-end justify-between gap-2">
-              <div>
-                {!isMobile && activeKind !== 'class' && (
-                  <h2 className="text-xl font-semibold tracking-tight">
-                    {prettyKind(activeKind)}: {activeDisplayName}
-                  </h2>
-                )}
-                {/* Przeniesiono wybór dnia do top bar (mobile). Tutaj nic nie renderujemy. */}
-              </div>
-            </div>
-
             <AnimatePresence mode="popLayout">
               {view === "grid" ? (
                 <GridView

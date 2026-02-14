@@ -1,6 +1,6 @@
-import React, { Suspense, useState } from 'react'
+import React, { Suspense, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import './index.css'
 import '@fontsource/space-grotesk/400.css'
 import '@fontsource/space-grotesk/600.css'
@@ -15,6 +15,27 @@ const Harmonogram = React.lazy(() => import('./harmonogram'))
 const StatutSzkolnyViewer = React.lazy(() => import('./statut'))
 const FrekwencjaPage = React.lazy(() => import('./FrekwencjaPage'))
 const Docs = React.lazy(() => import('./Docs'))
+const APP_TITLE = 'ZSE Zduńska Wola'
+
+function resolvePageTitle(pathname: string): string {
+  if (pathname === '/') return `Hub | ${APP_TITLE}`
+  if (pathname === '/plan') return `Plan lekcji | ${APP_TITLE}`
+  if (pathname === '/frekwencja') return `Frekwencja | ${APP_TITLE}`
+  if (pathname === '/harmonogram') return `Harmonogram | ${APP_TITLE}`
+  if (pathname === '/statut') return `Statut szkoły | ${APP_TITLE}`
+  if (pathname === '/docs') return `Dokumentacja API | ${APP_TITLE}`
+  return APP_TITLE
+}
+
+function DocumentTitleManager() {
+  const location = useLocation()
+
+  useEffect(() => {
+    document.title = resolvePageTitle(location.pathname)
+  }, [location.pathname])
+
+  return null
+}
 
 export function HubRoute() {
   const navigate = useNavigate()
@@ -49,6 +70,7 @@ export function AppRouter() {
     <BrowserRouter>
       <AuthProvider>
         <Suspense fallback={null}>
+          <DocumentTitleManager />
           <Routes>
             <Route path="/" element={<HubRoute />} />
             <Route path="/docs" element={<Docs />} />
