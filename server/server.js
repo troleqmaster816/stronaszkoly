@@ -1058,8 +1058,8 @@ v1.post('/approvals/:token', requireCsrfIfCookieAuth, async (req, res) => {
   }
 });
 
-// Overrides (secured in v1)
-v1.get('/overrides', requireAuth, (_req, res) => {
+// Overrides (public read, secured write in v1)
+v1.get('/overrides', (_req, res) => {
   try {
     const data = loadOverrides();
     res.json({ data });

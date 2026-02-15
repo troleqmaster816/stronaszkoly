@@ -686,6 +686,7 @@ paths:
   /v1/overrides:
     get:
       summary: Read subject and teacher name overrides
+      security: []
       responses:
         '200':
           description: Overrides
@@ -855,5 +856,4 @@ paths:
                   ok: { type: boolean }
                   apiKey: { type: string }
                 required: [ok, apiKey]
-
 

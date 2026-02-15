@@ -100,7 +100,7 @@ function NewsCard({ article, index, onOpen }: { article: Article; index: number;
           </div>
         ) : null}
         <CardHeader className="p-3 sm:p-4">
-          <CardTitle className="text-base sm:text-lg line-clamp-2">{article.title}</CardTitle>
+          <CardTitle className="text-base sm:text-lg line-clamp-2 text-slate-900">{article.title}</CardTitle>
         </CardHeader>
         <CardContent className="p-3 pt-0 sm:p-4 sm:pt-0 flex-1 flex flex-col">
           {pdf ? (
@@ -285,5 +285,4 @@ export default function NewsSection() {
     </section>
   );
 }
-
 

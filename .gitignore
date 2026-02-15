@@ -27,6 +27,7 @@ print-bundle.zip
 
 # Exports
 exports/
+screeny/
  
 # Runtime data written by the dev server
 server/data.json

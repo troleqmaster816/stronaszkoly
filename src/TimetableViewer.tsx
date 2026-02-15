@@ -77,9 +77,8 @@ function computeAdaptiveLayoutProfile(args: {
   viewportWidth: number
   dayCount: number
   lessons: Lesson[]
-  teacherNameOverrides: Record<string, string>
 }): AdaptiveLayoutProfile {
-  const { viewportWidth, dayCount, lessons, teacherNameOverrides } = args
+  const { viewportWidth, dayCount, lessons } = args
   const available = getAvailableShellWidth(viewportWidth)
   const safeDays = Math.max(1, dayCount)
   const minShell = safeDays <= 3 ? 980 : safeDays === 4 ? 1120 : 1240
@@ -104,8 +103,7 @@ function computeAdaptiveLayoutProfile(args: {
     for (const l of lessons) {
       const classFull = l.group?.name ?? ''
       const classLabel = compactGroupLabel(classFull)
-      const teacherFullBase = l.teacher?.name ?? ''
-      const teacherFull = teacherNameOverrides[teacherFullBase] ?? teacherFullBase
+      const teacherFull = l.teacher?.name ?? ''
       const roomRaw = l.room?.name ?? ''
       const roomBase = extractRoomCode(roomRaw) || roomRaw.replace(/^(?:Sala|S)\.?\s*/i, '').trim() || roomRaw
       const teacherLabel = opt.labelMode === 'compact' ? compactTeacherLabel(teacherFull) : teacherFull
@@ -209,6 +207,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [isMobile, setIsMobile] = useState(false);
   const [mobileDay, setMobileDay] = useState<string | null>(null);
   const prevDesktopView = useRef<"grid" | "list">("grid");
+  const wasMobileRef = useRef(false);
   // const [showMobileFilters, setShowMobileFilters] = useState(false); // deprecated small filters toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // swipeStart removed; swipe gestures not used currently
@@ -237,7 +236,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       const res = await fetch(`/v1/overrides`, { cache: "no-store", credentials: 'include' });
       if (!res.ok) return;
       const j = await res.json();
-      if (j?.ok && j.data) {
+      if (j?.data) {
         const parsed = OverridesSchema.safeParse(j.data)
         if (parsed.success) setOverrides(parsed.data)
       }
@@ -275,7 +274,13 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     if (!data) return [] as { id: string; label: string; type: "teachers" | "classes" | "rooms" }[];
     const isMainClass = (label: string) => /^\d/.test((label || '').trim());
     const entries = Object.entries({
-      teachers: data.teachers ?? {},
+      teachers: Object.fromEntries(
+        Object.entries(data.teachers ?? {}).map(([id, label]) => {
+          const shortName = String(label)
+          const displayName = overrides.teacherNameOverrides[shortName] ?? shortName
+          return [id, displayName]
+        })
+      ),
       classes: Object.fromEntries(
         Object.entries(data.classes ?? {}).filter(([, label]) => isMainClass(String(label)))
       ),
@@ -285,7 +290,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       Object.entries(table).map(([id, label]) => ({ id, label, type }))
     );
     return list;
-  }, [data]);
+  }, [data, overrides.teacherNameOverrides]);
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
@@ -393,9 +398,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       viewportWidth,
       dayCount: visibleDayCount,
       lessons: activeLessons,
-      teacherNameOverrides: overrides.teacherNameOverrides,
     })
-  }, [activeLessons, isMobile, overrides.teacherNameOverrides, viewportWidth, visibleDayCount])
+  }, [activeLessons, isMobile, viewportWidth, visibleDayCount])
 
   const shellStyle = useMemo(
     () => (isMobile ? undefined : { maxWidth: `${Math.round(layoutProfile.shellMaxWidth)}px` }),
@@ -449,16 +453,22 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   // Force list view on mobile and restore previous view when leaving mobile
   useEffect(() => {
+    const wasMobile = wasMobileRef.current
+
     if (isMobile) {
       if (view !== "list") {
         prevDesktopView.current = view;
         setView("list");
       }
+      wasMobileRef.current = true
       return;
     }
-    if (view === "list" && prevDesktopView.current !== "list") {
+
+    if (wasMobile && view === "list" && prevDesktopView.current !== "list") {
       setView(prevDesktopView.current);
     }
+
+    wasMobileRef.current = false
   }, [isMobile, view]);
 
   // Inform parent (router) whether an overlay/drawer is open, so it can hide FABs
@@ -502,8 +512,6 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const normalizedKey = normalizeSubjectKey(l.subject);
     const subjectRaw = overrides.subjectOverrides[normalizedKey] ?? l.subject;
     const subjectDisplay = stripHalfMark(subjectRaw) || subjectRaw;
-    const teacherName = l.teacher?.name ?? null;
-    const teacherDisplay = teacherName ? (overrides.teacherNameOverrides[teacherName] ?? teacherName) : null;
     const half = extractHalfMark(l.subject);
 
     const cardPadding = layoutProfile.density === 'comfortable' ? 'p-2.5' : 'p-2'
@@ -514,7 +522,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const chipPadding = layoutProfile.density === 'tight' ? 'px-1.5 py-0.5' : 'px-2 py-0.5'
 
     const classFull = l.group?.name ?? ''
-    const teacherFull = teacherDisplay || l.teacher?.name || ''
+    const teacherFull = l.teacher?.name || ''
     const roomFull = l.room?.name ?? ''
     const roomBase = extractRoomCode(roomFull) || roomFull.replace(/^(?:Sala|S)\.?\s*/i, '').trim() || roomFull
     const classLabel = compactGroupLabel(classFull)
@@ -622,7 +630,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </div>
       </article>
     );
-  }, [goTo, layoutProfile.chipLayoutMode, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides, overrides.teacherNameOverrides])
+  }, [goTo, layoutProfile.chipLayoutMode, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
 
   // Compact formatter for print cells
   const formatPrintCell = useCallback((l: Lesson): string => {

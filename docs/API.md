@@ -163,7 +163,7 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 
 ## Overrides (nauczyciele/przedmioty)
 
-- Odczyt (wymaga auth): `GET /v1/overrides` → `{ data: { subjectOverrides, teacherNameOverrides } }`
+- Odczyt (publiczny): `GET /v1/overrides` → `{ data: { subjectOverrides, teacherNameOverrides } }`
 - Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
 
 ## Zadania i utrzymanie planu
@@ -230,4 +230,3 @@ Rate limiting (obecnie):
 
 - `version` w stanie frekwencji = 1 (na razie bez ETag / If-Match).
 - Ten dokument dotyczy gałęzi `api-testing` i może różnić się od `main`.
-
