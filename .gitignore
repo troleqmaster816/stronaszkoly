@@ -28,6 +28,7 @@ print-bundle.zip
 # Exports
 exports/
 screeny/
+.playwright-mcp/
  
 # Runtime data written by the dev server
 server/data.json
