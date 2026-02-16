@@ -3,7 +3,7 @@ import json
 import os
 import re
 from collections import defaultdict
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -68,6 +68,45 @@ def extract_hash_id(href):
         return None
     rid = href[1:].strip()
     return rid or None
+
+
+def extract_file_id_from_href(href):
+    if not href:
+        return None
+    m = re.search(r"([nso][^/?#.]*)\.html(?:$|[?#])", str(href), flags=re.IGNORECASE)
+    if not m:
+        return None
+    return normalize_text(m.group(1))
+
+
+def token_from_label(label):
+    token = normalize_text(label).replace(" ", "+")
+    return quote(token, safe="+-._~")
+
+
+def extract_room_code(label):
+    text = normalize_text(label)
+    if not text:
+        return ""
+    m = re.match(r"^([0-9]{3}[A-Za-z]?|GIM[0-9]+)\b", text, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    if " " not in text:
+        return text
+    return ""
+
+
+def legacy_raw_id(domain, label, fallback=""):
+    lbl = normalize_text(label)
+    if domain == "rooms":
+        code = extract_room_code(lbl)
+        if code:
+            return code
+    token = token_from_label(lbl)
+    if token:
+        return token
+    fb = normalize_text(fallback)
+    return token_from_label(fb) or fb
 
 
 def ensure_entity(domain, raw_id, label, raw_to_canon, names_map):
@@ -537,6 +576,349 @@ def to_public_lessons(lessons):
     return out
 
 
+def save_final_data(final_data):
+    tmp_file = OUTPUT_FILE + ".tmp"
+    print(f"Zapisywanie danych do: {OUTPUT_FILE}")
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(final_data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_file, OUTPUT_FILE)
+        print("--- Zakończono pomyślnie! ---")
+    except IOError as e:
+        print(f"Błąd podczas zapisu: {e}")
+        try:
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
+        except OSError:
+            pass
+
+
+def detect_legacy_root(source_url):
+    parsed = urlparse(source_url)
+    path = parsed.path or "/"
+    if "/plany/" in path:
+        path = path.split("/plany/")[0] + "/"
+    elif path.endswith("lista.html"):
+        path = path[: -len("lista.html")]
+    elif not path.endswith("/"):
+        path = path.rsplit("/", 1)[0] + "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{parsed.scheme}://{parsed.netloc}{path}"
+
+
+def parse_legacy_entities(session, source_url):
+    root_url = detect_legacy_root(source_url)
+    list_url = urljoin(root_url, "lista.html")
+    print(f"Tryb legacy: pobieranie listy planów: {list_url}")
+    response = request_with_retries(session, list_url)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    raw_to_canon = {"teachers": {}, "rooms": {}, "classes": {}}
+    names_map = {"teachers": {}, "rooms": {}, "classes": {}}
+    file_to_canon = {"teachers": {}, "rooms": {}, "classes": {}}
+    urls_by_canon = {"teachers": {}, "rooms": {}, "classes": {}}
+
+    links = soup.select("a[href]")
+    for link in links:
+        href = link.get("href")
+        file_id = extract_file_id_from_href(href)
+        if not file_id:
+            continue
+        file_id = normalize_text(file_id)
+        if not file_id:
+            continue
+
+        kind = file_id[0].lower()
+        if kind == "n":
+            domain = "teachers"
+        elif kind == "s":
+            domain = "rooms"
+        elif kind == "o":
+            domain = "classes"
+        else:
+            continue
+
+        label = normalize_text(link.get_text(" ", strip=True))
+        entity_label = extract_room_code(label) if domain == "rooms" else label
+        entity_label = entity_label or label
+        raw_id = legacy_raw_id(domain, entity_label, fallback=file_id)
+        canon = ensure_entity(domain, raw_id, entity_label or file_id, raw_to_canon, names_map)
+        if not canon:
+            continue
+        file_to_canon[domain][file_id] = canon
+        urls_by_canon[domain][canon] = urljoin(response.url, href)
+
+    if not any(urls_by_canon[d] for d in ("teachers", "rooms", "classes")):
+        raise RuntimeError("Nie znaleziono żadnych planów w legacy lista.html")
+
+    print(
+        "Wykryto encje (legacy): "
+        f"{len(names_map['teachers'])} nauczycieli, "
+        f"{len(names_map['rooms'])} sal, "
+        f"{len(names_map['classes'])} oddziałów."
+    )
+
+    return root_url, raw_to_canon, names_map, file_to_canon, urls_by_canon
+
+
+def parse_legacy_ref(anchor, domain, raw_to_canon, names_map, file_to_canon):
+    if anchor is None:
+        return None
+
+    file_id = extract_file_id_from_href(anchor.get("href"))
+    label = normalize_text(anchor.get_text(" ", strip=True))
+    canon = None
+    if file_id:
+        canon = file_to_canon[domain].get(file_id)
+    if not canon:
+        raw_id = legacy_raw_id(domain, label, fallback=file_id or "")
+        canon = ensure_entity(domain, raw_id, label or file_id or "", raw_to_canon, names_map)
+        if file_id and canon:
+            file_to_canon[domain][file_id] = canon
+    if not canon:
+        return None
+    return {"id": canon, "name": names_map[domain].get(canon) or label}
+
+
+def extract_chunk_mark(chunk_text, group_name="", subject=""):
+    subject_norm = normalize_text(subject)
+    m_subject = re.search(r"\s*-\s*([0-9]+/[0-9]+|[a-ząćęłńóśżź]\d+)\s*$", subject_norm, flags=re.IGNORECASE)
+    if m_subject:
+        return normalize_text(m_subject.group(1))
+
+    chunk_norm = normalize_text(chunk_text)
+    group_norm = normalize_text(group_name)
+    if group_norm:
+        m_group = re.search(
+            rf"{re.escape(group_norm)}\s*-\s*([0-9]+/[0-9]+|[a-ząćęłńóśżź]\d+)\b",
+            chunk_norm,
+            flags=re.IGNORECASE,
+        )
+        if m_group:
+            return normalize_text(m_group.group(1))
+
+    m_any = re.search(r"-\s*([0-9]+/[0-9]+|[a-ząćęłńóśżź]\d+)\b", chunk_norm, flags=re.IGNORECASE)
+    if m_any:
+        return normalize_text(m_any.group(1))
+
+    return None
+
+
+def maybe_add_mark_to_group_name(group_name, mark):
+    gn = normalize_text(group_name)
+    mk = normalize_text(mark)
+    if not gn or not mk:
+        return gn
+    if re.search(rf"\({re.escape(mk)}\)\s*$", gn, flags=re.IGNORECASE):
+        return gn
+    return f"{gn} ({mk})"
+
+
+def parse_legacy_lesson_chunk(
+    chunk_soup,
+    domain,
+    current_ref,
+    raw_to_canon,
+    names_map,
+    file_to_canon,
+):
+    subject = None
+    subject_tags = chunk_soup.find_all("span", class_="p")
+    if subject_tags:
+        for st in subject_tags:
+            txt = normalize_text(st.get_text(" ", strip=True))
+            if txt and not txt.startswith("#"):
+                subject = txt
+                break
+        if not subject:
+            subject = normalize_text(subject_tags[0].get_text(" ", strip=True))
+
+    teacher_ref = parse_legacy_ref(
+        chunk_soup.find("a", class_="n", href=True),
+        "teachers",
+        raw_to_canon,
+        names_map,
+        file_to_canon,
+    )
+    room_ref = parse_legacy_ref(
+        chunk_soup.find("a", class_="s", href=True),
+        "rooms",
+        raw_to_canon,
+        names_map,
+        file_to_canon,
+    )
+    group_ref = parse_legacy_ref(
+        chunk_soup.find("a", class_="o", href=True),
+        "classes",
+        raw_to_canon,
+        names_map,
+        file_to_canon,
+    )
+
+    # Puste komórki planu nie mogą tworzyć "lekcji widmo".
+    if not any([subject, teacher_ref, room_ref, group_ref]):
+        return None
+
+    teacher = teacher_ref
+    room = room_ref
+    group = group_ref
+
+    if domain == "teachers" and not teacher:
+        teacher = dict(current_ref)
+    if domain == "rooms" and not room:
+        room = dict(current_ref)
+    if domain == "classes" and not group:
+        group = dict(current_ref)
+
+    group_name = group.get("name") if group else ""
+    chunk_text = normalize_text(chunk_soup.get_text(" ", strip=True))
+    mark = extract_chunk_mark(chunk_text, group_name=group_name, subject=subject)
+    if mark and subject:
+        subject = add_mark_to_subject(subject, mark)
+    if mark and group:
+        group["name"] = maybe_add_mark_to_group_name(group.get("name"), mark)
+
+    if not any([subject, teacher, room, group]):
+        return None
+
+    return {
+        "subject": subject or "",
+        "teacher": teacher,
+        "group": group,
+        "room": room,
+    }
+
+
+def parse_legacy_timetable_page(
+    html_text,
+    domain,
+    current_ref,
+    raw_to_canon,
+    names_map,
+    file_to_canon,
+):
+    soup = BeautifulSoup(html_text, "html.parser")
+    table = soup.find("table", class_="tabela")
+    if not table:
+        return [], ""
+
+    rows = table.find_all("tr")
+    if not rows:
+        return [], ""
+
+    header_cells = rows[0].find_all(["th", "td"])
+    days = [normalize_text(day.get_text(" ", strip=True)) for day in header_cells[2:]]
+    lessons = []
+
+    for row in rows[1:]:
+        cells = row.find_all("td", recursive=False)
+        if len(cells) < 3:
+            continue
+        lesson_num = normalize_text(cells[0].get_text(" ", strip=True))
+        time = normalize_time(cells[1].get_text(" ", strip=True))
+        if not lesson_num or not time:
+            continue
+        if lesson_num == "0":
+            continue
+
+        for idx, cell in enumerate(cells[2:]):
+            if idx >= len(days):
+                continue
+            day = days[idx]
+            cell_html = str(cell).replace("<br/>", "<br>").replace("<br />", "<br>")
+            for chunk in cell_html.split("<br>"):
+                chunk_soup = BeautifulSoup(chunk, "html.parser")
+                parsed = parse_legacy_lesson_chunk(
+                    chunk_soup,
+                    domain,
+                    current_ref,
+                    raw_to_canon,
+                    names_map,
+                    file_to_canon,
+                )
+                if not parsed:
+                    continue
+                lessons.append(
+                    {
+                        "day": day,
+                        "lesson_num": lesson_num,
+                        "time": time,
+                        "subject": parsed["subject"],
+                        "teacher": parsed["teacher"],
+                        "group": parsed["group"],
+                        "room": parsed["room"],
+                    }
+                )
+
+    gen_date = ""
+    op_cell = soup.find("td", class_="op")
+    if op_cell:
+        txt = normalize_text(op_cell.get_text(" ", strip=True))
+        m = re.search(r"wygenerowano\s+(\d{2}\.\d{2}\.\d{4})", txt, flags=re.IGNORECASE)
+        if m:
+            gen_date = m.group(1)
+
+    return lessons, gen_date
+
+
+def run_legacy_scraper(session, source_url):
+    root_url, raw_to_canon, names_map, file_to_canon, urls_by_canon = parse_legacy_entities(session, source_url)
+
+    all_timetables = {}
+    generation_date = ""
+    total_pages = sum(len(urls_by_canon[d]) for d in ("teachers", "rooms", "classes"))
+    processed = 0
+
+    for domain in ("teachers", "rooms", "classes"):
+        for canon_id, plan_url in sorted(
+            urls_by_canon[domain].items(),
+            key=lambda kv: names_map[domain].get(kv[0], kv[0]).lower(),
+        ):
+            processed += 1
+            print(f"[legacy {processed}/{total_pages}] Przetwarzam: {plan_url}")
+            current_ref = {"id": canon_id, "name": names_map[domain].get(canon_id) or canon_id}
+            try:
+                response = request_with_retries(session, plan_url)
+            except requests.RequestException as e:
+                print(f"  -> Błąd pobierania {plan_url}: {e}")
+                all_timetables[canon_id] = []
+                continue
+
+            lessons, page_gen_date = parse_legacy_timetable_page(
+                response.text,
+                domain,
+                current_ref,
+                raw_to_canon,
+                names_map,
+                file_to_canon,
+            )
+            if page_gen_date and not generation_date:
+                generation_date = page_gen_date
+            all_timetables[canon_id] = lessons
+
+    for domain in ("teachers", "rooms", "classes"):
+        for canon_id in names_map[domain].keys():
+            all_timetables.setdefault(canon_id, [])
+
+    total_lessons = sum(len(v) for v in all_timetables.values())
+    print(f"Podsumowanie parsowania legacy: strony={total_pages}, lekcje={total_lessons}")
+    if generation_date:
+        print(f"Data obowiązywania planu: {generation_date}")
+
+    return {
+        "metadata": {
+            "source": root_url,
+            "scraped_on": datetime.datetime.now().isoformat(),
+            "generation_date_from_page": generation_date,
+        },
+        "teachers": names_map["teachers"],
+        "rooms": names_map["rooms"],
+        "classes": names_map["classes"],
+        "timetables": all_timetables,
+    }
+
+
 def main():
     print("--- Rozpoczynam scrapowanie planu lekcji ---")
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
@@ -556,10 +938,29 @@ def main():
     source_url = response.url
     soup = BeautifulSoup(response.text, "html.parser")
 
+    has_modern_tables = bool(soup.select("table.plan"))
+    legacy_marker = bool(soup.find("frameset")) or bool(
+        re.search(r"lista\.html|class=['\"]tabela['\"]", response.text, flags=re.IGNORECASE)
+    )
+    if not has_modern_tables and legacy_marker:
+        print("Wykryto stary format Optivum. Przełączam parser na tryb legacy.")
+        try:
+            final_data = run_legacy_scraper(session, source_url)
+            save_final_data(final_data)
+        except Exception as e:
+            print(f"Błąd trybu legacy: {e}")
+        return
+
     try:
         raw_to_canon, names_map = parse_navigation_entities(soup)
     except RuntimeError as e:
-        print(f"Błąd parsowania nawigacji: {e}")
+        print(f"Błąd parsowania nowego formatu: {e}")
+        print("Próba fallback do trybu legacy...")
+        try:
+            final_data = run_legacy_scraper(session, source_url)
+            save_final_data(final_data)
+        except Exception as e2:
+            print(f"Błąd trybu legacy: {e2}")
         return
 
     all_timetables_internal = {}
@@ -638,21 +1039,7 @@ def main():
         "classes": names_map["classes"],
         "timetables": all_timetables_public,
     }
-
-    tmp_file = OUTPUT_FILE + ".tmp"
-    print(f"Zapisywanie danych do: {OUTPUT_FILE}")
-    try:
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(final_data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_file, OUTPUT_FILE)
-        print("--- Zakończono pomyślnie! ---")
-    except IOError as e:
-        print(f"Błąd podczas zapisu: {e}")
-        try:
-            if os.path.exists(tmp_file):
-                os.remove(tmp_file)
-        except OSError:
-            pass
+    save_final_data(final_data)
 
 
 if __name__ == "__main__":
