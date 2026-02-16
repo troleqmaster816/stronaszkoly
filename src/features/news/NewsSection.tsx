@@ -236,34 +236,36 @@ export default function NewsSection() {
   }, [articles, page]);
   return (
     <section className="w-full max-w-5xl mx-auto">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-white/95">
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm">
             <Newspaper className="h-5 w-5" />
           </span>
           <h2 className="text-xl font-semibold">Aktualności</h2>
         </div>
-        <div className="inline-flex items-center gap-2">
-          {Array.from({ length: pageCount }).map((_, i) => {
-            const p = i + 1;
-            const isActive = p === page;
-            return (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPage(p)}
-                aria-current={isActive ? "page" : undefined}
-                className={`h-8 w-8 inline-flex items-center justify-center text-sm font-semibold rounded-full transition focus:outline-none ${
-                  isActive
-                    ? "bg-white text-slate-900 shadow-lg ring-2 ring-white/70 scale-105"
-                    : "bg-white/16 text-white hover:bg-white/24 ring-1 ring-white/25"
-                }`}
-                title={`Strona ${p}`}
-              >
-                {p}
-              </button>
-            );
-          })}
+        <div className="w-full overflow-visible sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 py-2 sm:justify-end">
+            {Array.from({ length: pageCount }).map((_, i) => {
+              const p = i + 1;
+              const isActive = p === page;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPage(p)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`h-8 w-8 shrink-0 inline-flex items-center justify-center text-sm font-semibold rounded-full transition focus:outline-none ${
+                    isActive
+                      ? "bg-white text-slate-900 shadow-lg ring-2 ring-white/70"
+                      : "bg-white/16 text-white hover:bg-white/24 ring-1 ring-white/25"
+                  }`}
+                  title={`Strona ${p}`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
       {loading ? (
@@ -285,4 +287,3 @@ export default function NewsSection() {
     </section>
   );
 }
-
