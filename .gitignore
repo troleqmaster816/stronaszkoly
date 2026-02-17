@@ -29,6 +29,8 @@ print-bundle.zip
 exports/
 screeny/
 .playwright-mcp/
+test-results/
+playwright-report/
  
 # Runtime data written by the dev server
 server/data.json
@@ -37,6 +39,7 @@ public/overrides.json
 # Local notes / agent metadata
 AGENTS.md
 gdziessh.md
+gpt5.2_pro_plan_1702.txt
 
 # Runtime artifacts from timetable scraper/admin refresh
 public/.pip_installed_*.txt

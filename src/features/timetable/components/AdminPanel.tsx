@@ -18,6 +18,7 @@ export function AdminPanel({
   teacherShortNames,
   teacherFilter,
   setTeacherFilter,
+  onSaveOverrides,
   onClose,
 }: {
   isAuth: boolean
@@ -33,6 +34,7 @@ export function AdminPanel({
   teacherShortNames: string[]
   teacherFilter: string
   setTeacherFilter: (v: string) => void
+  onSaveOverrides: () => void | Promise<void>
   onClose: () => void
 }) {
   return (
@@ -57,7 +59,7 @@ export function AdminPanel({
             <Input name="username" placeholder="Nazwa użytkownika" />
             <Input name="password" type="password" placeholder="Hasło" />
             <Button variant="primary" type="submit">Zaloguj</Button>
-            <div className="text-xs text-zinc-500">Przykładowe konto: admin / admin123</div>
+            <div className="text-xs text-zinc-500">Logowanie administratora działa tylko po ustawieniu `ADMIN_USER` i `ADMIN_PASS` po stronie serwera.</div>
           </form>
         ) : (
           <div className="grid gap-4">
@@ -157,7 +159,7 @@ export function AdminPanel({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={() => (document.getElementById('save-overrides') as HTMLButtonElement)?.click()} variant="success">Zapisz nadpisania</Button>
+                <Button onClick={() => { void onSaveOverrides() }} variant="success">Zapisz nadpisania</Button>
                 <Button onClick={() => { setOverrides({ subjectOverrides: {}, teacherNameOverrides: {} }); }} variant="outline">Wyczyść wszystko</Button>
               </div>
             </div>

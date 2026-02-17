@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { FileText, List, Loader2, Menu, Search, X, ChevronDown, ChevronUp } from "lucide-react";
+import { sanitizeStatutHtml } from "@/lib/sanitize";
 
 type StatutContentParagraph = { type: "paragraph"; html: string };
 type StatutContentSubheading = { type: "subheading"; text: string };
@@ -450,7 +451,7 @@ function DocumentBody({ data, query }: { data: StatutJson; query: string }) {
 function ContentBlockRenderer({ block, query }: { block: StatutContentBlock; query: string }) {
   switch (block.type) {
     case "paragraph": {
-      const html = query ? highlightHtml(block.html, query) : block.html;
+      const html = sanitizeStatutHtml(query ? highlightHtml(block.html, query) : block.html);
       return (
         <p
           className="leading-relaxed text-[15px] md:text-base"

@@ -39,6 +39,8 @@ export function useAttendanceState() {
               return;
             }
           }
+        } else {
+          remoteEnabled.current = false;
         }
       } catch { /* ignore */ }
     })();
@@ -64,31 +66,35 @@ export function useAttendanceState() {
 
     try {
       const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      await fetch('/v1/attendance', {
+      const res = await fetch('/v1/attendance', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         credentials: 'include',
         body: JSON.stringify({ ...empty, version: 1 }),
       });
-    } catch { /* ignore */ }
+      if (!res.ok) remoteEnabled.current = false;
+    } catch {
+      remoteEnabled.current = false;
+    }
   }, []);
 
   // Persist to local storage or remote API
   useEffect(() => {
     const doPersist = async () => {
-      if (remoteEnabled.current) {
-        try {
-          const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-          await fetch('/v1/attendance', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-            credentials: 'include',
-            body: JSON.stringify({ ...state, version: 1 }),
-          });
-        } catch { /* ignore */ }
-        return;
-      }
       try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+      if (!remoteEnabled.current) return;
+      try {
+        const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+        const res = await fetch('/v1/attendance', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+          credentials: 'include',
+          body: JSON.stringify({ ...state, version: 1 }),
+        });
+        if (!res.ok) remoteEnabled.current = false;
+      } catch {
+        remoteEnabled.current = false;
+      }
     };
     if (putInFlight.current) clearTimeout(putInFlight.current);
     putInFlight.current = setTimeout(doPersist, 200);

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AuthContext, type AuthContextValue, type AuthResult, type AuthUser } from './authContext'
+import { readErrorMessage } from '@/lib/http'
 
 async function parseError(res: Response): Promise<string> {
-  const body = await res.json().catch(() => ({}))
-  return String(body?.error || 'Operacja nie powiodła się')
+  return readErrorMessage(res, 'Operacja nie powiodła się')
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

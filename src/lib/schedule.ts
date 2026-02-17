@@ -1,6 +1,7 @@
 // Shared schedule utilities – extracted for reuse across views
 
 import type { Lesson } from '@/types/schedule';
+import { normalizeSubjectKeyCanonical } from '@/lib/subjects';
 
 export const DAY_ORDER: Record<string, number> = {
   "Poniedziałek": 1,
@@ -67,9 +68,5 @@ export function stripHalfMark(subject?: string | null): string {
 
 // Normalizes subject key: removes group marks (e.g., 1/2), trims dashes/spaces, lowercases
 export function normalizeSubjectKey(subject?: string | null): string {
-  if (!subject) return "";
-  let s = subject.toLowerCase().trim();
-  s = s.replace(/(?:\s|-)*(\d+\/\d+)(?=$|\b)/gi, "");
-  s = s.replace(/[\s-]+$/g, "").replace(/\s{2,}/g, " ");
-  return s;
+  return normalizeSubjectKeyCanonical(subject);
 }

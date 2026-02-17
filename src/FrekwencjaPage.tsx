@@ -71,6 +71,7 @@ function ManageTools({
   resetAllData: () => Promise<void>
 }){
   const [targetPct, setTargetPct] = useState<number>(85);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [mode, setMode] = useState<'day'|'months'|'range'>('day');
   const todayISO = toISODate(new Date());
   const [singleDate, setSingleDate] = useState<string>(todayISO);
@@ -87,6 +88,7 @@ function ManageTools({
     try { localStorage.removeItem('planner:commits'); } catch { /* ignore */ }
     try { localStorage.removeItem('planner:subjectSettings'); } catch { /* ignore */ }
     await resetAllData()
+    setConfirmClear(false)
   }
 
   type SimEntry = { dateISO: string; dayName: string; slot: string; key: string; label: string }
@@ -185,9 +187,17 @@ function ManageTools({
       </div>
       <div className="p-5 space-y-3">
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => { void clearAllData() }} variant="danger" className="rounded bg-red-600 hover:bg-red-500 transition">
-            <Eraser className="w-4 h-4"/>Wyczyść dane
-          </Button>
+          {!confirmClear ? (
+            <Button onClick={() => setConfirmClear(true)} variant="danger" className="rounded bg-red-600 hover:bg-red-500 transition">
+              <Eraser className="w-4 h-4"/>Wyczyść dane
+            </Button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-red-800 bg-red-950/30 px-2 py-1 text-xs">
+              <span>Potwierdź usunięcie wszystkich danych frekwencji.</span>
+              <Button onClick={() => { void clearAllData() }} variant="danger" size="sm">Potwierdź</Button>
+              <Button onClick={() => setConfirmClear(false)} variant="outline" size="sm">Anuluj</Button>
+            </div>
+          )}
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="space-y-2">
@@ -1147,7 +1157,7 @@ export default function FrekwencjaPage() {
 
         <AnimatePresence>
           {manageOpen && (
-            <ManageDialog state={state} dispatch={dispatch} resetAllData={resetAllData} onClose={()=>setManageOpen(false)}>
+            <ManageDialog state={state} dispatch={dispatch} resetAllData={resetAllData} allowTestTools={import.meta.env.DEV} onClose={()=>setManageOpen(false)}>
               <div className="grid md:grid-cols-2 gap-6">
                 <section className="bg-neutral-950 border border-neutral-800 rounded-xl">
                   <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
@@ -1180,18 +1190,20 @@ function ManageDialog({
   state,
   dispatch,
   resetAllData,
+  allowTestTools,
 }:{
   children: React.ReactNode
   onClose: ()=>void
   state: State
   dispatch: React.Dispatch<Action>
   resetAllData: () => Promise<void>
+  allowTestTools: boolean
 }){
   return (
     <OverlayCard title="Zarządzanie" size="wide">
       <div className="max-h-[80dvh] overflow-auto space-y-4">
         {children}
-        <ManageTools state={state} dispatch={dispatch} resetAllData={resetAllData} />
+        {allowTestTools ? <ManageTools state={state} dispatch={dispatch} resetAllData={resetAllData} /> : null}
         <div className="flex justify-end"><Button onClick={onClose} className="rounded bg-neutral-800 border-neutral-700 hover:bg-neutral-700 transition">Zamknij</Button></div>
       </div>
     </OverlayCard>

@@ -8,6 +8,7 @@ import '@fontsource/space-grotesk/700.css'
 import './styles/print.css'
 import HomeFab from './HomeFab'
 import { AuthProvider } from './features/auth/AuthContext'
+import { ToastProvider } from './components/ui/toast'
 
 const Hub = React.lazy(() => import('./Hub'))
 const TimetableViewer = React.lazy(() => import('./TimetableViewer'))
@@ -68,20 +69,30 @@ export function AppRouter() {
   const [overlayActive, setOverlayActive] = useState(false)
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Suspense fallback={null}>
-          <DocumentTitleManager />
-          <Routes>
-            <Route path="/" element={<HubRoute />} />
-            <Route path="/docs" element={<Docs />} />
-            <Route path="/plan" element={<TimetableRoute overlayActive={overlayActive} setOverlayActive={setOverlayActive} />} />
-            <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
-            <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
-            <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />
-          </Routes>
-        </Suspense>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <Suspense fallback={<AppLoading />}>
+            <DocumentTitleManager />
+            <Routes>
+              <Route path="/" element={<HubRoute />} />
+              <Route path="/docs" element={<Docs />} />
+              <Route path="/plan" element={<TimetableRoute overlayActive={overlayActive} setOverlayActive={setOverlayActive} />} />
+              <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
+              <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
+              <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />
+            </Routes>
+          </Suspense>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
+  )
+}
+
+function AppLoading() {
+  return (
+    <div className="min-h-[100svh] flex items-center justify-center bg-zinc-950 text-zinc-200">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm">Ładowanie aplikacji…</div>
+    </div>
   )
 }
 

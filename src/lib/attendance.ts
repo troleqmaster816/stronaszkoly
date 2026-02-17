@@ -46,12 +46,6 @@ export function isWeekend(d: Date) {
 }
 
 export function normalizeSubjectKey(s: string) {
-  const base = (s || '')
-    .toLowerCase()
-    .trim()
-    .replace(/(?:\s|-)*(\d+\/\d+)(?=$|\b)/gi, '')
-    .replace(/[\s-]+$/g, '')
-    .replace(/\s{2,}/g, ' ')
-  if (base === 'r_matematyka') return 'matematyka'
-  return base
+  return normalizeSubjectKeyCanonical(s)
 }
+import { normalizeSubjectKeyCanonical } from '@/lib/subjects'

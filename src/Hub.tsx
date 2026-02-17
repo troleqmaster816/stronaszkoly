@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
@@ -6,6 +6,8 @@ import { useAuth } from "./features/auth/useAuth";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
+import { readErrorMessage } from "@/lib/http";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -16,6 +18,9 @@ export default function Hub({ navigate }: HubProps) {
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
   const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
+  const [apiKeyMeta, setApiKeyMeta] = useState<{ hasKey: boolean; preview: string | null; createdAt: number | null; lastUsedAt: number | null; format: string | null } | null>(null);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [newsReloadSignal, setNewsReloadSignal] = useState(0);
   const [articlesJob, setArticlesJob] = useState<{ id: string; status: string } | null>(null);
   const [articlesBusy, setArticlesBusy] = useState(false);
   const [ttBusy, setTtBusy] = useState(false);
@@ -23,6 +28,13 @@ export default function Hub({ navigate }: HubProps) {
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const { isAuth, me, login, register, logout } = useAuth()
+  const toast = useToast()
+  const isAdmin = me?.id === 'admin'
+
+  const closeProfile = () => {
+    setProfileOpen(false)
+    setApiKeyVisible(false)
+  }
 
   useEffect(() => {
     return () => {
@@ -35,7 +47,7 @@ export default function Hub({ navigate }: HubProps) {
     e.preventDefault();
     const result = await login(loginForm.username, loginForm.password)
     if (!result.ok) {
-      alert(result.error || 'Logowanie nieudane')
+      toast.error(result.error || 'Logowanie nieudane')
       return
     }
     setLoginForm({ username: '', password: '' })
@@ -45,7 +57,7 @@ export default function Hub({ navigate }: HubProps) {
     e.preventDefault();
     const result = await register(registerForm.username, registerForm.password)
     if (!result.ok) {
-      alert(result.error || 'Rejestracja nieudana')
+      toast.error(result.error || 'Rejestracja nieudana')
       return
     }
     setRegisterForm({ username: '', password: '' })
@@ -54,20 +66,44 @@ export default function Hub({ navigate }: HubProps) {
   const handleLogout = async () => {
     await logout()
     setSingleApiKey(null)
+    setApiKeyMeta(null)
+    setApiKeyVisible(false)
   };
   const loadSingleKey = async () => {
     try {
       const res = await fetch('/v1/apikey', { credentials: 'include' });
       const j = await res.json();
-      if (j?.ok) setSingleApiKey(j.apiKey);
+      if (j?.ok && j?.data) {
+        setApiKeyMeta(j.data)
+        setSingleApiKey(null)
+        setApiKeyVisible(false)
+      }
     } catch { /* ignore */ }
   };
   const regenSingleKey = async () => {
     try {
-      const res = await fetch('/v1/apikey/regenerate', { method: 'POST', credentials: 'include' });
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/apikey/regenerate', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
+      if (!res.ok) {
+        toast.error(await readErrorMessage(res, 'Nie udało się zregenerować klucza API'))
+        return
+      }
       const j = await res.json();
-      if (j?.ok) setSingleApiKey(j.apiKey);
-    } catch { /* ignore */ }
+      if (j?.ok && j?.data?.apiKey) {
+        setSingleApiKey(j.data.apiKey);
+        setApiKeyMeta((prev) => ({
+          hasKey: true,
+          preview: j.data.preview || prev?.preview || null,
+          createdAt: typeof j.data.createdAt === 'number' ? j.data.createdAt : prev?.createdAt || null,
+          lastUsedAt: prev?.lastUsedAt || null,
+          format: j.data.format || 'structured',
+        }))
+        setApiKeyVisible(false)
+        toast.success('Zregenerowano klucz API.')
+      }
+    } catch {
+      toast.error('Nie udało się zregenerować klucza API')
+    }
   };
 
   const refreshTimetable = async () => {
@@ -75,8 +111,8 @@ export default function Hub({ navigate }: HubProps) {
       setTtBusy(true);
       const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
       const res = await fetch('/v1/refresh', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
-      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić odświeżania'); return; }
-      alert('Plan został odświeżony.');
+      if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się uruchomić odświeżania')); return; }
+      toast.success('Plan został odświeżony.');
     } finally {
       setTtBusy(false);
     }
@@ -94,9 +130,11 @@ export default function Hub({ navigate }: HubProps) {
     try {
       const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
       const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, credentials: 'include', body: JSON.stringify({ filename }) });
-      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się przywrócić kopii'); return; }
-      alert('Przywrócono wybrany plan.');
-    } catch { /* ignore */ }
+      if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się przywrócić kopii')); return; }
+      toast.success('Przywrócono wybrany plan.');
+    } catch {
+      toast.error('Nie udało się przywrócić kopii')
+    }
   };
 
   const startArticlesScrape = async () => {
@@ -108,9 +146,9 @@ export default function Hub({ navigate }: HubProps) {
       setArticlesBusy(true);
       const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
       const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
-      if (!res.ok) { const t = await res.json().catch(()=>({})); alert(t?.error || 'Nie udało się uruchomić zadania'); setArticlesBusy(false); return; }
+      if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się uruchomić zadania')); setArticlesBusy(false); return; }
       const j = await res.json();
-      const jobId = j?.jobId;
+      const jobId = j?.data?.jobId || j?.jobId;
       if (!jobId) { setArticlesBusy(false); return; }
       setArticlesJob({ id: jobId, status: 'queued' });
       // Poll co 2s do zakończenia
@@ -119,16 +157,17 @@ export default function Hub({ navigate }: HubProps) {
         try {
           const st = await fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' });
           const jj = await st.json();
+          const jobData = jj?.data ?? jj;
           if (!mountedRef.current) return;
-          setArticlesJob({ id: jobId, status: jj?.status || 'unknown' });
-          if (jj?.status === 'succeeded' || jj?.status === 'failed') {
+          setArticlesJob({ id: jobId, status: jobData?.status || 'unknown' });
+          if (jobData?.status === 'succeeded' || jobData?.status === 'failed') {
             setArticlesBusy(false);
             if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-            if (jj?.status === 'succeeded') {
-              // Odśwież newsy po zakończeniu (proste przeładowanie pliku statycznego)
-              try { await fetch('/articles.json', { cache: 'no-store' }); } catch { /* ignore */ }
-            } else if (jj?.error) {
-              console.error('Articles job error:', jj.error);
+            if (jobData?.status === 'succeeded') {
+              setNewsReloadSignal((v) => v + 1);
+              toast.success('Aktualności zostały odświeżone.')
+            } else if (jobData?.error) {
+              toast.error(String(jobData.error))
             }
             return;
           }
@@ -140,17 +179,32 @@ export default function Hub({ navigate }: HubProps) {
       schedulePoll(poll, 1500);
     } catch {
       setArticlesBusy(false);
+      toast.error('Nie udało się uruchomić zadania')
     }
   };
+
+  const displayedApiKey = useMemo(() => {
+    if (singleApiKey) {
+      if (apiKeyVisible) return singleApiKey
+      const head = singleApiKey.slice(0, 6)
+      const tail = singleApiKey.slice(-4)
+      return `${head}••••••••${tail}`
+    }
+    if (apiKeyMeta?.preview) return apiKeyMeta.preview
+    return apiKeyMeta?.hasKey ? 'Klucz istnieje (ukryty)' : 'Brak klucza API'
+  }, [apiKeyVisible, apiKeyMeta, singleApiKey])
 
   return (
     <div className="relative min-h-[100svh] w-full">
       {/* Background image */}
-      <img
-        src="/szkola.png"
-        alt="Zespół Szkół Elektronicznych im. Stanisława Staszica w Zduńskiej Woli"
-        className="absolute inset-0 h-full w-full object-cover object-top sm:object-center"
-      />
+      <picture>
+        <source srcSet="/szkola.webp" type="image/webp" />
+        <img
+          src="/szkola.png"
+          alt="Zespół Szkół Elektronicznych im. Stanisława Staszica w Zduńskiej Woli"
+          className="absolute inset-0 h-full w-full object-cover object-top sm:object-center"
+        />
+      </picture>
       {/* Overlay for readability */}
       <div className="absolute inset-0 bg-black/50" />
       {/* Subtle grid overlay to reinforce tech theme */}
@@ -162,7 +216,7 @@ export default function Hub({ navigate }: HubProps) {
           <div className="text-sm font-semibold text-zinc-100">ZSE Zduńska Wola</div>
           <div className="ml-auto">
             <Button
-              onClick={() => { setProfileOpen(true); if (isAuth) loadSingleKey(); }}
+              onClick={() => { setProfileOpen(true); setApiKeyVisible(false); if (isAuth) loadSingleKey(); }}
               variant="outline"
               className="border-white/30 bg-black/40 text-white hover:bg-black/60 backdrop-blur"
             >
@@ -205,7 +259,7 @@ export default function Hub({ navigate }: HubProps) {
           </div>
 
           <div className="mt-12 sm:mt-16">
-            <NewsSection />
+            <NewsSection reloadSignal={newsReloadSignal} />
           </div>
         </main>
 
@@ -217,12 +271,12 @@ export default function Hub({ navigate }: HubProps) {
       {/* Profile modal */}
       {profileOpen && (
         <Modal
-          onClose={() => setProfileOpen(false)}
+          onClose={closeProfile}
           panelClassName="w-[92vw] max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl"
         >
             <div className="flex items-center justify-between mb-3">
               <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
-              <Button onClick={()=>setProfileOpen(false)} variant="outline" size="sm">Zamknij</Button>
+              <Button onClick={closeProfile} variant="outline" size="sm">Zamknij</Button>
             </div>
             {!isAuth ? (
               <div className="grid sm:grid-cols-2 gap-3">
@@ -254,14 +308,51 @@ export default function Hub({ navigate }: HubProps) {
                 </div>
                 <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                   <div className="text-sm font-medium mb-2">Klucz API (test)</div>
-                  <div className="text-xs opacity-80 mb-2">Pojedynczy klucz do wszystkich endpointów. Na czas testów widoczny w panelu cały czas.</div>
+                  <div className="text-xs opacity-80 mb-2">
+                    Pełny klucz można zobaczyć tylko bezpośrednio po regeneracji. Przechowuj go bezpiecznie.
+                  </div>
                   <div className="flex items-center gap-2">
-                    <Input readOnly value={singleApiKey || ''} className="flex-1 font-mono" />
-                    <Button onClick={()=>{ navigator.clipboard.writeText(singleApiKey || ''); }} variant="outline">Kopiuj</Button>
+                    <Input readOnly value={displayedApiKey} className="flex-1 font-mono" />
+                    <Button
+                      onClick={() => {
+                        if (apiKeyVisible) {
+                          setApiKeyVisible(false)
+                          return
+                        }
+                        if (!singleApiKey) {
+                          toast.error('Pełny klucz jest dostępny tylko po regeneracji.')
+                          return
+                        }
+                        setApiKeyVisible(true)
+                      }}
+                      variant="outline"
+                    >
+                      {apiKeyVisible ? 'Ukryj' : 'Pokaż'}
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        if (!singleApiKey || !apiKeyVisible) return
+                        try {
+                          await navigator.clipboard.writeText(singleApiKey)
+                          toast.success('Skopiowano klucz API do schowka.')
+                        } catch {
+                          toast.error('Nie udało się skopiować klucza API.')
+                        }
+                      }}
+                      disabled={!singleApiKey || !apiKeyVisible}
+                      variant="outline"
+                    >
+                      Kopiuj
+                    </Button>
                     <Button onClick={regenSingleKey} variant="warning">Regeneruj</Button>
                   </div>
+                  {apiKeyMeta?.createdAt ? (
+                    <div className="mt-2 text-[11px] opacity-70">
+                      Utworzono: {new Date(apiKeyMeta.createdAt).toLocaleString()}
+                    </div>
+                  ) : null}
                 </section>
-                {me?.username === 'admin' ? (
+                {isAdmin ? (
                   <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                     <div className="text-sm font-medium mb-2">Aktualności</div>
                     <div className="flex items-center gap-2">
@@ -279,7 +370,7 @@ export default function Hub({ navigate }: HubProps) {
                     <div className="text-[11px] mt-2 opacity-70">Po zakończeniu zadania nowe artykuły pojawią się w sekcji aktualności.</div>
                   </section>
                 ) : null}
-                {me?.username === 'admin' ? (
+                {isAdmin ? (
                   <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                     <div className="text-sm font-medium mb-2">Plan lekcji</div>
                     <div className="flex items-center gap-2 mb-2">

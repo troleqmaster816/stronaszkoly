@@ -12,6 +12,7 @@ BASE_URL = "https://e-qwerty.zse-zdwola.pl/"
 START_PAGE = BASE_URL
 MAX_WORKERS = int(os.environ.get("SCRAPER_MAX_WORKERS", "8"))
 REQUEST_TIMEOUT = float(os.environ.get("SCRAPER_TIMEOUT", "12"))
+MAX_RUNTIME_SEC = float(os.environ.get("SCRAPER_MAX_RUNTIME_SEC", "300"))
 USER_AGENT = os.environ.get(
     "SCRAPER_UA",
     "Mozilla/5.0 (compatible; ZSE-NewsScraper/1.0; +https://zse-zdwola.pl)"
@@ -50,10 +51,10 @@ def clean_html_content(soup_tag):
     return str(soup_tag)
 
 
-def _get_with_retry(session: requests.Session, url: str) -> Optional[requests.Response]:
+def _get_with_retry(url: str) -> Optional[requests.Response]:
     for attempt in range(3):
         try:
-            r = session.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT})
+            r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT})
             r.raise_for_status()
             return r
         except Exception as e:
@@ -63,11 +64,11 @@ def _get_with_retry(session: requests.Session, url: str) -> Optional[requests.Re
             time.sleep(0.5 * (attempt + 1))
 
 
-def scrape_article_page(session: requests.Session, url: str):
+def scrape_article_page(url: str):
     """Pobiera i analizuje stronę pojedynczego artykułu."""
     print(f"  -> Scraping article: {url}")
     try:
-        response = _get_with_retry(session, url)
+        response = _get_with_retry(url)
         if response is None:
             return None
         soup = BeautifulSoup(response.content, 'lxml')
@@ -149,14 +150,16 @@ def main():
     """Główna funkcja scrapera."""
     all_articles: List[Dict] = []
     current_page_url = START_PAGE
-    session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT})
+    started_at = time.monotonic()
 
     while current_page_url:
+        if (time.monotonic() - started_at) > MAX_RUNTIME_SEC:
+            print(f"[Error] Runtime limit exceeded ({MAX_RUNTIME_SEC}s)")
+            break
         print(f"Scraping news list page: {current_page_url}")
         
         try:
-            response = _get_with_retry(session, current_page_url)
+            response = _get_with_retry(current_page_url)
             if response is None:
                 break
             soup = BeautifulSoup(response.content, 'lxml')
@@ -167,7 +170,7 @@ def main():
             urls = [urljoin(BASE_URL, link['href']) for link in article_links if link and link.get('href')]
             # Równoległe pobieranie stron artykułów (IO-bound)
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-                futures = [ex.submit(scrape_article_page, session, u) for u in urls]
+                futures = [ex.submit(scrape_article_page, u) for u in urls]
                 for fut in as_completed(futures):
                     item = fut.result()
                     if item:
@@ -198,6 +201,11 @@ def main():
     os.replace(tmp_path, OUTPUT_FILE)
     
     print(f"\nScraping complete! Found and saved {len(all_articles)} articles to articles.json")
+    print(json.dumps({"ok": True, "count": len(all_articles), "output": OUTPUT_FILE}, ensure_ascii=False))
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc), "detail": "article scraper failed"}, ensure_ascii=False))
+        raise

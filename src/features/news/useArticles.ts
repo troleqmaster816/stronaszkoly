@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type Article = {
   url: string;
@@ -10,13 +10,16 @@ export type Article = {
 
 type UseArticlesOptions = {
   limit?: number;
+  reloadSignal?: number;
 };
 
 export function useArticles(options: UseArticlesOptions = {}) {
-  const { limit } = options;
+  const { limit, reloadSignal = 0 } = options;
   const [articles, setArticles] = useState<Article[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [reloadToken, setReloadToken] = useState(0);
+  const reload = useCallback(() => setReloadToken((v) => v + 1), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -42,7 +45,7 @@ export function useArticles(options: UseArticlesOptions = {}) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [reloadSignal, reloadToken]);
 
   const processed = useMemo(() => {
     if (!articles) return [] as Article[];
@@ -54,7 +57,7 @@ export function useArticles(options: UseArticlesOptions = {}) {
     return typeof limit === "number" ? sorted.slice(0, limit) : sorted;
   }, [articles, limit]);
 
-  return { articles: processed, raw: articles, loading, error };
+  return { articles: processed, raw: articles, loading, error, reload };
 }
 
 export function formatArticleDate(date?: string) {
@@ -70,5 +73,4 @@ export function formatArticleDate(date?: string) {
     return date;
   }
 }
-
 

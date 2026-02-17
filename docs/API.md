@@ -18,19 +18,20 @@ Legacy `/api/*` wyłączone (HTTP 410). Używaj tylko prefiksu `/v1`.
   - Single API key (zalecany dla aplikacji klienckich): dodaj nagłówek `Authorization: Bearer sk_...`
   - Sesja cookie (dla panelu w przeglądarce/WWW): po `POST /v1/login` otrzymasz cookie `auth` (httpOnly).
 - Format odpowiedzi:
-  - Sukces: `{ ok: true, data?: any }` lub zasób bezpośrednio (np. mapy teachers)
+  - Sukces: `{ ok: true, data?: any }` (dla zgodności w niektórych endpointach mogą pozostać pola pomocnicze)
   - Błąd (v1): `application/problem+json` (RFC7807-like) z polami `{ type, title, status, code, detail }`
 
 ## Klucz API (single-key)
 
-Każdy użytkownik ma jeden klucz API. W czasie testów klucz jest widoczny w panelu użytkownika oraz dostępny przez endpointy.
+Każdy użytkownik ma jeden klucz API. Klucz w pełnej formie jest zwracany tylko po regeneracji.
 
 - Pobierz klucz (wymaga cookie sesyjnego):
   - `GET /v1/apikey`
-  - 200 → `{ ok: true, apiKey: "sk_..." }`
+  - 200 → `{ ok: true, data: { hasKey, preview, createdAt, lastUsedAt, format } }`
 - Zregeneruj klucz (unieważnia poprzedni):
   - `POST /v1/apikey/regenerate`
-  - 200 → `{ ok: true, apiKey: "sk_..." }`
+  - 200 → `{ ok: true, data: { apiKey, preview, createdAt, format } }`
+  - przy autoryzacji cookie wymagany nagłówek `X-CSRF-Token` równy wartości cookie `csrf`
 - Użycie w żądaniu:
   - dodaj nagłówek: `Authorization: Bearer sk_TWÓJ_KLUCZ`
 
@@ -47,20 +48,20 @@ Uwaga: w Postman/Insomnia wybierz Auth = "Bearer Token" i wstaw `sk_XXXX`.
 - `POST /v1/register` body `{ username, password }` → tworzy konto i loguje (cookie)
 - `POST /v1/login` body `{ username, password }` → loguje (cookie)
 - `POST /v1/logout` → wylogowuje (czyści cookie)
-- `GET /v1/users/me` → `{ ok: true, authenticated: boolean, user: { id, username } | null }`
+- `GET /v1/users/me` → `{ ok: true, data: { authenticated: boolean, user: { id, username } | null } }` (zachowane także pola top-level `authenticated` i `user` dla zgodności)
 
 W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wystarczy nagłówek `Authorization: Bearer` z kluczem API.
 
 ## Timetable
 
-- `GET /v1/teachers` → `{ [id: string]: string }`
-- `GET /v1/classes` → `{ [id: string]: string }`
-- `GET /v1/rooms` → `{ [id: string]: string }`
-- `GET /v1/teachers/:id/timetable` → `{ data: Lesson[] }`
-- `GET /v1/classes/:id/timetable?group=2/2&includeWhole=true` → `{ data: Lesson[] }`
+- `GET /v1/teachers` → `{ ok: true, data: { [id: string]: string } }`
+- `GET /v1/classes` → `{ ok: true, data: { [id: string]: string } }`
+- `GET /v1/rooms` → `{ ok: true, data: { [id: string]: string } }`
+- `GET /v1/teachers/:id/timetable` → `{ ok: true, data: Lesson[] }`
+- `GET /v1/classes/:id/timetable?group=2/2&includeWhole=true` → `{ ok: true, data: Lesson[] }`
   - `group` (opcjonalnie): identyfikator lub nazwa grupy (np. `2/2`). Zwraca lekcje dla całej klasy ORAZ wskazanej grupy; inne grupy są wykluczone.
   - `includeWhole` (opcjonalnie, domyślnie `true`): czy dołączyć lekcje „cała klasa” przy filtrowaniu po `group`.
-- `GET /v1/rooms/:id/timetable` → `{ data: Lesson[] }`
+- `GET /v1/rooms/:id/timetable` → `{ ok: true, data: Lesson[] }`
 
 Identyfikatory: `:id` może być kanonicznym identyfikatorem z pliku (np. `n12`, `o5`, `s36`) albo aliasem czytelnym dla człowieka:
 - nauczyciel: inicjały/kod (np. `RM`),
@@ -108,12 +109,13 @@ Endpointy:
 
 - `GET /v1/attendance` → `{ ok: true, data: AttendanceState }`
 - `PUT /v1/attendance` body `AttendanceState` → `{ ok: true }`
-- `GET /v1/attendance/entries?from&to&subjectKey&classId&teacherId&limit&cursor` → `{ data: AttendanceEntry[], nextCursor? }`
+- `GET /v1/attendance/entries?from&to&subjectKey&classId&teacherId&limit&cursor` → `{ ok: true, data: AttendanceEntry[], nextCursor? }`
 - `PATCH /v1/attendance/entries` body `{ updates: { id, present, ifMatch? }[] }` → `{ ok: true, updated }` (409 przy konflikcie wersji)
-- `GET /v1/attendance/summary?from&to&subjectKey` → `{ data: { total, present, percent, needToReach50, canSkipAndKeep50 } }`
+- `GET /v1/attendance/summary?from&to&subjectKey` → `{ ok: true, data: { total, present, percent, needToReach50, canSkipAndKeep50 } }`
 - `POST /v1/attendance/days/{dateISO}/present` body `{ present: true|false }` → masowe ustawienie obecności dla dnia
-- `GET /v1/attendance/plans` → lista zapisanych planów (FrekwencjaPage)
+- `GET /v1/attendance/plans` → `{ ok: true, data: Plan[] }` (lista zapisanych planów)
 - `POST /v1/attendance/days/{dateISO}/apply-plan` body `{ planId, overwrite?: boolean, setPresent?: boolean }` → wypełnij dzień z planu (opcjonalnie ustaw obecność)
+  - przy autoryzacji cookie wymagany nagłówek `X-CSRF-Token` równy wartości cookie `csrf`
 
 Przykłady:
 
@@ -163,16 +165,16 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 
 ## Overrides (nauczyciele/przedmioty)
 
-- Odczyt (publiczny): `GET /v1/overrides` → `{ data: { subjectOverrides, teacherNameOverrides } }`
+- Odczyt (publiczny): `GET /v1/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
 - Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
 
 ## Zadania i utrzymanie planu
 
-- `POST /v1/jobs/timetable-scrape` (admin) → `202 { jobId, statusUrl }` – uruchamia asynchroniczne odświeżenie planu
-- `POST /v1/jobs/articles-scrape` (admin) → `202 { jobId, statusUrl }` – odświeża artykuły
-- `GET /v1/jobs/:jobId` → status zadania (`queued|running|succeeded|failed`)
-- `POST /v1/refresh` (admin) → synchroniczne odświeżenie planu przez scraper (`200|409|500`)
-- `GET /v1/timetable/backups` (admin) → `{ data: { filename, size, mtime }[] }`
+- `POST /v1/jobs/timetable-scrape` (admin) → `202 { ok: true, data: { jobId, statusUrl, status } }` – uruchamia asynchroniczne odświeżenie planu
+- `POST /v1/jobs/articles-scrape` (admin) → `202 { ok: true, data: { jobId, statusUrl, status } }` – odświeża artykuły
+- `GET /v1/jobs/:jobId` → `{ ok: true, data: Job }` ze statusem (`queued|running|succeeded|failed`)
+- `POST /v1/refresh` (admin) → synchroniczne odświeżenie planu przez scraper (`200|409|500`), przy sukcesie zwracane jest także `data` (jeśli scraper poda wynik strukturalny)
+- `GET /v1/timetable/backups` (admin) → `{ ok: true, data: { filename, size, mtime }[] }`
 - `POST /v1/timetable/restore` (admin) body `{ filename }` → `{ ok: true }`
 
 ## Przykłady (JS fetch)

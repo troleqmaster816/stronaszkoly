@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Article } from "./useArticles";
 import { formatArticleDate, useArticles } from "./useArticles";
+import { sanitizeArticleHtml } from "@/lib/sanitize";
 
 function stripHtml(html?: string): string {
   if (!html) return "";
@@ -123,38 +124,9 @@ function NewsCard({ article, index, onOpen }: { article: Article; index: number;
   );
 }
 
-function sanitizeHtml(html?: string): string {
-  if (!html) return "";
-  if (typeof window === "undefined") return html;
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  container.querySelectorAll("script, style").forEach((el) => el.remove());
-  container.querySelectorAll("*").forEach((el) => {
-    [...el.attributes].forEach((attr) => {
-      const name = attr.name.toLowerCase();
-      const value = attr.value.trim();
-      if (name.startsWith("on")) {
-        el.removeAttribute(attr.name);
-      } else if ((name === "href" || name === "src") && /^javascript:/i.test(value)) {
-        el.removeAttribute(attr.name);
-      }
-    });
-    if (el.tagName === "A") {
-      el.setAttribute("target", "_blank");
-      el.setAttribute("rel", "noreferrer noopener");
-    }
-    if (el.tagName === "IFRAME") {
-      el.setAttribute("loading", "lazy");
-      el.setAttribute("referrerpolicy", "no-referrer");
-      el.setAttribute("style", "border:1px solid #ddd; width:100%;");
-    }
-  });
-  return container.innerHTML;
-}
-
 function ArticleModal({ article, onClose }: { article: Article; onClose: () => void }) {
   const date = formatArticleDate(article.date);
-  const content = useMemo(() => sanitizeHtml(article.content_html), [article.content_html]);
+  const content = useMemo(() => sanitizeArticleHtml(article.content_html), [article.content_html]);
   const docxUrl = useMemo(() => extractDocxDirectUrl(article.content_html), [article.content_html]);
   const pdfUrl = useMemo(() => extractPdfUrl(article.content_html), [article.content_html]);
   const imageUrl = useMemo(() => extractFirstImageUrl(article.content_html), [article.content_html]);
@@ -224,11 +196,11 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
   );
 }
 
-export default function NewsSection() {
+export default function NewsSection({ reloadSignal = 0 }: { reloadSignal?: number }) {
   const [selected, setSelected] = useState<Article | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 6;
-  const { articles, loading, error } = useArticles();
+  const { articles, loading, error } = useArticles({ reloadSignal });
   const pageCount = Math.max(1, Math.ceil((articles?.length || 0) / pageSize));
   const visible = useMemo(() => {
     const start = (page - 1) * pageSize;

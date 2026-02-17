@@ -14,6 +14,8 @@ import { FiltersBar } from '@/features/timetable/components/FiltersBar';
 import { AnimatedBackdrop } from '@/features/timetable/components/AnimatedBackdrop';
 import { extractRoomCode, formatRoomDisplay } from '@/features/timetable/lib/roomDisplay';
 import { useAuth } from '@/features/auth/useAuth';
+import { useToast } from '@/components/ui/toast';
+import { readErrorMessage } from '@/lib/http';
 
 const AdminPanel = React.lazy(() => import('@/features/timetable/components/AdminPanel'))
 
@@ -172,6 +174,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [adminOpen, setAdminOpen] = useState(false);
   const [overrides, setOverrides] = useState<Overrides>({ subjectOverrides: {}, teacherNameOverrides: {} });
   const { isAuth, login, logout } = useAuth()
+  const toast = useToast()
   // loginForm removed; handle form values from event target
   const [subjectFilter, setSubjectFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
@@ -652,9 +655,9 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const handleShare = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
-      alert("Skopiowano link do schowka.");
+      toast.success("Skopiowano link do schowka.");
     } catch {
-      alert("Nie udało się skopiować linku. Skopiuj z paska adresu.");
+      toast.error("Nie udało się skopiować linku. Skopiuj z paska adresu.");
     }
   };
 
@@ -664,18 +667,42 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
       const res = await fetch("/v1/refresh", { method: "POST", headers: { 'X-CSRF-Token': csrf } });
       if (!res.ok) {
-        const msg = await res.text();
-        alert(`Błąd podczas odświeżania: ${msg || res.status}`);
+        const msg = await readErrorMessage(res, 'Nie udało się uruchomić odświeżania');
+        toast.error(`Błąd podczas odświeżania: ${msg}`);
         return;
       }
       await loadData();
-      alert("Plan został odświeżony.");
+      toast.success("Plan został odświeżony.");
     } catch {
-      alert("Nie udało się uruchomić odświeżania.");
+      toast.error("Nie udało się uruchomić odświeżania.");
     } finally {
       setRefreshing(false);
     }
   };
+
+  const handleSaveOverrides = async () => {
+    try {
+      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
+      const res = await fetch('/v1/overrides', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrf,
+        },
+        credentials: 'include',
+        body: JSON.stringify(overrides),
+      })
+      if (!res.ok) {
+        const msg = await readErrorMessage(res, 'Nie udało się zapisać nadpisań')
+        toast.error(`Nie udało się zapisać nadpisań: ${msg}`)
+        return
+      }
+      await loadOverrides()
+      toast.success('Zapisano nadpisania.')
+    } catch {
+      toast.error('Nie udało się zapisać nadpisań.')
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -685,7 +712,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const password = String(fd.get('password') || '');
     const result = await login(username, password)
     if (!result.ok) {
-      alert(result.error || 'Logowanie nieudane')
+      toast.error(result.error || 'Logowanie nieudane')
       return
     }
     await loadOverrides();
@@ -1038,7 +1065,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
       {/* Panel admina */}
       {adminOpen && (
-        <React.Suspense fallback={null}>
+        <React.Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 text-zinc-100">Ładowanie panelu administratora…</div>}>
           <AdminPanel
             isAuth={isAuth}
             onLogin={handleLogin}
@@ -1053,6 +1080,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             teacherShortNames={Object.values(data?.teachers ?? {})}
             teacherFilter={teacherFilter}
             setTeacherFilter={setTeacherFilter}
+            onSaveOverrides={handleSaveOverrides}
             onClose={() => setAdminOpen(false)}
           />
         </React.Suspense>

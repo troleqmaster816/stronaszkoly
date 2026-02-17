@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Pełne środowisko (frontend + serwer API na porcie 8787, proxy na `/api`):
+Pełne środowisko (frontend + serwer API na porcie 8787, proxy na `/v1`):
 ```bash
 npm install
 npm run dev:full
@@ -32,8 +32,8 @@ npm run server
 ```
 
 ## Zmienne środowiskowe (opcjonalnie)
-- `ADMIN_USER` – login do panelu administracyjnego (domyślnie: `admin`)
-- `ADMIN_PASS` – hasło do panelu (domyślnie: `admin123`)
+- `ADMIN_USER` – login do panelu administracyjnego (logowanie admina działa tylko gdy ustawione razem z `ADMIN_PASS`)
+- `ADMIN_PASS` – hasło do panelu administracyjnego (brak domyślnego hasła)
 - `PORT` – port serwera API (domyślnie: `8787`)
 - `PYTHON_PATH` – ścieżka/komenda do Pythona (`python`, `python3` lub pełna ścieżka)
 

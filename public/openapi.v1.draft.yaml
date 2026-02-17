@@ -150,6 +150,44 @@ components:
         ok: { type: boolean }
       required: [ok]
 
+    UserMeData:
+      type: object
+      properties:
+        authenticated: { type: boolean }
+        user: { anyOf: [ { $ref: '#/components/schemas/User' }, { type: 'null' } ] }
+      required: [authenticated]
+
+    ApiKeyMeta:
+      type: object
+      properties:
+        hasKey: { type: boolean }
+        preview: { type: string, nullable: true }
+        createdAt: { type: integer, nullable: true }
+        lastUsedAt: { type: integer, nullable: true }
+        format: { type: string, enum: [structured, legacy], nullable: true }
+      required: [hasKey]
+
+    ApiKeyRotateData:
+      type: object
+      properties:
+        apiKey: { type: string }
+        preview: { type: string }
+        createdAt: { type: integer }
+        format: { type: string, enum: [structured] }
+      required: [apiKey, preview, createdAt, format]
+
+    JobStatus:
+      type: object
+      properties:
+        id: { type: string }
+        kind: { type: string, nullable: true }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        error: { type: string, nullable: true }
+      required: [id, status]
+
     AttendanceState:
       type: object
       description: Full per-user attendance state (used by GET/PUT /v1/attendance)
@@ -205,7 +243,16 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, properties: { ok: { type: boolean } }, required: [ok] }
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string }
+                    required: [status]
+                required: [ok, data]
 
   /v1/users/me:
     get:
@@ -222,9 +269,12 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  authenticated: { type: boolean }
-                  user: { anyOf: [ { $ref: '#/components/schemas/User' }, { type: 'null' } ] }
-                required: [ok, authenticated]
+                  data: { $ref: '#/components/schemas/UserMeData' }
+                  authenticated: { type: boolean, description: Deprecated top-level field kept for compatibility }
+                  user:
+                    anyOf: [ { $ref: '#/components/schemas/User' }, { type: 'null' } ]
+                    description: Deprecated top-level field kept for compatibility
+                required: [ok, data]
 
   /v1/login:
     post:
@@ -273,7 +323,12 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: { type: string }
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    additionalProperties: { type: string }
+                required: [ok, data]
 
   /v1/classes:
     get:
@@ -285,7 +340,12 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: { type: string }
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    additionalProperties: { type: string }
+                required: [ok, data]
 
   /v1/rooms:
     get:
@@ -297,7 +357,12 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: { type: string }
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    additionalProperties: { type: string }
+                required: [ok, data]
 
   /v1/teachers/{id}/timetable:
     get:
@@ -315,11 +380,12 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Lesson' }
                   id: { type: string, description: Canonical id resolved from alias (if alias used) }
-                required: [data]
+                required: [ok, data]
 
   /v1/classes/{id}/timetable:
     get:
@@ -347,11 +413,12 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Lesson' }
                   id: { type: string, description: Canonical id resolved from alias (if alias used) }
-                required: [data]
+                required: [ok, data]
 
   /v1/rooms/{id}/timetable:
     get:
@@ -369,11 +436,12 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/Lesson' }
                   id: { type: string, description: Canonical id resolved from alias (if alias used) }
-                required: [data]
+                required: [ok, data]
 
   /v1/attendance/entries:
     get:
@@ -408,13 +476,14 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/AttendanceEntry' }
                   nextCursor:
                     type: string
                     nullable: true
-                required: [data]
+                required: [ok, data]
     patch:
       summary: Bulk update entries by id (set present true/false)
       requestBody:
@@ -497,8 +566,9 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data: { $ref: '#/components/schemas/AttendanceSummary' }
-                required: [data]
+                required: [ok, data]
 
   /v1/attendance/days/{dateISO}/present:
     post:
@@ -508,6 +578,11 @@ paths:
           in: path
           required: true
           schema: { type: string, format: date }
+        - name: X-CSRF-Token
+          in: header
+          required: false
+          schema: { type: string }
+          description: Required when using cookie authentication. Must match csrf cookie value.
       requestBody:
         required: true
         content:
@@ -540,6 +615,7 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data:
                     type: array
                     items:
@@ -560,6 +636,7 @@ paths:
                                     slotHint: { type: string, nullable: true }
                                     subjectKey: { type: string }
                                     subjectLabel: { type: string }
+                required: [ok, data]
       
   /v1/attendance/days/{dateISO}/apply-plan:
     post:
@@ -589,6 +666,12 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      created: { type: integer }
+                      overwritten: { type: boolean }
+                    required: [created, overwritten]
                   created: { type: integer }
                   overwritten: { type: boolean }
                 required: [ok, created, overwritten]
@@ -695,8 +778,9 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data: { $ref: '#/components/schemas/Overrides' }
-                required: [data]
+                required: [ok, data]
     put:
       summary: Replace overrides (admin)
       requestBody:
@@ -722,9 +806,17 @@ paths:
               schema:
                 type: object
                 properties:
-                  jobId: { type: string }
-                  statusUrl: { type: string }
-                required: [jobId, statusUrl]
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      jobId: { type: string }
+                      statusUrl: { type: string }
+                      status: { type: string, enum: [queued, running, succeeded, failed] }
+                    required: [jobId, statusUrl, status]
+                  jobId: { type: string, description: Deprecated compatibility field }
+                  statusUrl: { type: string, description: Deprecated compatibility field }
+                required: [ok, data]
   /v1/jobs/articles-scrape:
     post:
       summary: Start an async job to refresh articles (admin-only)
@@ -736,9 +828,17 @@ paths:
               schema:
                 type: object
                 properties:
-                  jobId: { type: string }
-                  statusUrl: { type: string }
-                required: [jobId, statusUrl]
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      jobId: { type: string }
+                      statusUrl: { type: string }
+                      status: { type: string, enum: [queued, running, succeeded, failed] }
+                    required: [jobId, statusUrl, status]
+                  jobId: { type: string, description: Deprecated compatibility field }
+                  statusUrl: { type: string, description: Deprecated compatibility field }
+                required: [ok, data]
   /v1/jobs/{jobId}:
     get:
       summary: Get job status
@@ -755,12 +855,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  id: { type: string }
-                  status: { type: string, enum: [queued, running, succeeded, failed] }
-                  startedAt: { type: string, format: date-time, nullable: true }
-                  finishedAt: { type: string, format: date-time, nullable: true }
-                  error: { type: string, nullable: true }
-                required: [id, status]
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/JobStatus' }
+                required: [ok, data]
 
   /v1/refresh:
     post:
@@ -770,7 +867,14 @@ paths:
           description: Scrape finished successfully
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OkResponse' }
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    nullable: true
+                required: [ok]
         '409':
           description: Scraper already running
           content:
@@ -793,10 +897,11 @@ paths:
               schema:
                 type: object
                 properties:
+                  ok: { type: boolean }
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/BackupEntry' }
-                required: [data]
+                required: [ok, data]
 
   /v1/timetable/restore:
     post:
@@ -829,22 +934,28 @@ paths:
 
   /v1/apikey:
     get:
-      summary: Get current user's API key (or admin API key)
+      summary: Get metadata of current user's API key (or admin API key)
       responses:
         '200':
-          description: API key
+          description: API key metadata
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  apiKey: { type: string }
-                required: [ok, apiKey]
+                  data: { $ref: '#/components/schemas/ApiKeyMeta' }
+                required: [ok, data]
 
   /v1/apikey/regenerate:
     post:
       summary: Regenerate the API key for the current user (or admin)
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: false
+          schema: { type: string }
+          description: Required when using cookie authentication. Must match csrf cookie value.
       responses:
         '200':
           description: New key
@@ -854,6 +965,5 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  apiKey: { type: string }
-                required: [ok, apiKey]
-
+                  data: { $ref: '#/components/schemas/ApiKeyRotateData' }
+                required: [ok, data]
