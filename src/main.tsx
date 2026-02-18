@@ -15,7 +15,6 @@ const TimetableViewer = React.lazy(() => import('./TimetableViewer'))
 const Harmonogram = React.lazy(() => import('./harmonogram'))
 const StatutSzkolnyViewer = React.lazy(() => import('./statut'))
 const FrekwencjaPage = React.lazy(() => import('./FrekwencjaPage'))
-const Docs = React.lazy(() => import('./Docs'))
 const APP_TITLE = 'ZSE Zduńska Wola'
 
 function resolvePageTitle(pathname: string): string {
@@ -24,7 +23,6 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/frekwencja') return `Frekwencja | ${APP_TITLE}`
   if (pathname === '/harmonogram') return `Harmonogram | ${APP_TITLE}`
   if (pathname === '/statut') return `Statut szkoły | ${APP_TITLE}`
-  if (pathname === '/docs') return `Dokumentacja API | ${APP_TITLE}`
   return APP_TITLE
 }
 
@@ -75,7 +73,6 @@ export function AppRouter() {
             <DocumentTitleManager />
             <Routes>
               <Route path="/" element={<HubRoute />} />
-              <Route path="/docs" element={<Docs />} />
               <Route path="/plan" element={<TimetableRoute overlayActive={overlayActive} setOverlayActive={setOverlayActive} />} />
               <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
               <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />

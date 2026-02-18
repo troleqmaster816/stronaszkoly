@@ -70,6 +70,7 @@ export type AttendanceState = {
 };
 
 export type BackupEntry = { filename: string; size: number; mtime: string };
+export type ApiResponse<T> = { ok: boolean; data: T };
 
 export class ApiClient {
   readonly baseUrl: string;
@@ -99,45 +100,45 @@ export class ApiClient {
 
   // Users
   getMe() {
-    return fetch(`${this.baseUrl}/v1/users/me`, { headers: this.headers() }).then(r => this.handle<{ ok: boolean; authenticated: boolean; user: { id: string; username: string } | null }>(r));
+    return fetch(`${this.baseUrl}/v1/users/me`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ authenticated: boolean; user: { id: string; username: string } | null }>>(r));
   }
 
   // Timetables
   listTeachers() {
-    return fetch(`${this.baseUrl}/v1/teachers`, { headers: this.headers() }).then(r => this.handle<Record<string, string>>(r));
+    return fetch(`${this.baseUrl}/v1/teachers`, { headers: this.headers() }).then(r => this.handle<ApiResponse<Record<string, string>>>(r));
   }
   listClasses() {
-    return fetch(`${this.baseUrl}/v1/classes`, { headers: this.headers() }).then(r => this.handle<Record<string, string>>(r));
+    return fetch(`${this.baseUrl}/v1/classes`, { headers: this.headers() }).then(r => this.handle<ApiResponse<Record<string, string>>>(r));
   }
   listRooms() {
-    return fetch(`${this.baseUrl}/v1/rooms`, { headers: this.headers() }).then(r => this.handle<Record<string, string>>(r));
+    return fetch(`${this.baseUrl}/v1/rooms`, { headers: this.headers() }).then(r => this.handle<ApiResponse<Record<string, string>>>(r));
   }
   getTeacherTimetable(id: string) {
-    return fetch(`${this.baseUrl}/v1/teachers/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[]; id?: string }>(r));
+    return fetch(`${this.baseUrl}/v1/teachers/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ id: string; lessons: Lesson[] }>>(r));
   }
   getClassTimetable(id: string) {
-    return fetch(`${this.baseUrl}/v1/classes/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[]; id?: string }>(r));
+    return fetch(`${this.baseUrl}/v1/classes/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ id: string; lessons: Lesson[] }>>(r));
   }
   getRoomTimetable(id: string) {
-    return fetch(`${this.baseUrl}/v1/rooms/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<{ data: Lesson[]; id?: string }>(r));
+    return fetch(`${this.baseUrl}/v1/rooms/${encodeURIComponent(id)}/timetable`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ id: string; lessons: Lesson[] }>>(r));
   }
 
   // Attendance
   getAttendance() {
-    return fetch(`${this.baseUrl}/v1/attendance`, { headers: this.headers() }).then(r => this.handle<{ ok: boolean; data: AttendanceState }>(r));
+    return fetch(`${this.baseUrl}/v1/attendance`, { headers: this.headers() }).then(r => this.handle<ApiResponse<AttendanceState>>(r));
   }
   putAttendance(state: AttendanceState) {
     return fetch(`${this.baseUrl}/v1/attendance`, {
       method: "PUT",
       headers: this.headers(),
       body: JSON.stringify(state),
-    }).then(r => this.handle<{ ok: boolean }>(r));
+    }).then(r => this.handle<ApiResponse<{ saved: boolean }>>(r));
   }
   getAttendanceEntries(params: { from?: string; to?: string; subjectKey?: string; classId?: string; teacherId?: string; limit?: number; cursor?: string } = {}) {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) q.set(k, String(v));
     const url = `${this.baseUrl}/v1/attendance/entries${q.toString() ? "?" + q.toString() : ""}`;
-    return fetch(url, { headers: this.headers() }).then(r => this.handle<{ data: AttendanceEntry[]; nextCursor?: string | null }>(r));
+    return fetch(url, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ entries: AttendanceEntry[]; nextCursor?: string | null }>>(r));
   }
 
   patchAttendanceEntries(updates: { id: string; present: boolean; ifMatch?: string }[], idempotencyKey?: string) {
@@ -147,14 +148,14 @@ export class ApiClient {
       method: "PATCH",
       headers: this.headers(headers),
       body: JSON.stringify({ updates }),
-    }).then(r => this.handle<{ ok: boolean; updated: number }>(r));
+    }).then(r => this.handle<ApiResponse<{ updated: number }>>(r));
   }
 
   getAttendanceSummary(params: { from?: string; to?: string; subjectKey?: string } = {}) {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) q.set(k, String(v));
     const url = `${this.baseUrl}/v1/attendance/summary${q.toString() ? "?" + q.toString() : ""}`;
-    return fetch(url, { headers: this.headers() }).then(r => this.handle<{ data: AttendanceSummary }>(r));
+    return fetch(url, { headers: this.headers() }).then(r => this.handle<ApiResponse<AttendanceSummary>>(r));
   }
 
   setDayPresent(dateISO: string, present: boolean) {
@@ -162,18 +163,18 @@ export class ApiClient {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ present }),
-    }).then(r => this.handle<{ ok: boolean; updated: number }>(r));
+    }).then(r => this.handle<ApiResponse<{ updated: number }>>(r));
   }
 
   getPlans() {
-    return fetch(`${this.baseUrl}/v1/attendance/plans`, { headers: this.headers() }).then(r => this.handle<{ data: AttendanceState["plans"] }>(r));
+    return fetch(`${this.baseUrl}/v1/attendance/plans`, { headers: this.headers() }).then(r => this.handle<ApiResponse<AttendanceState["plans"]>>(r));
   }
   applyPlan(dateISO: string, body: { planId: string; overwrite?: boolean; setPresent?: boolean }) {
     return fetch(`${this.baseUrl}/v1/attendance/days/${encodeURIComponent(dateISO)}/apply-plan`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(body),
-    }).then(r => this.handle<{ ok: boolean; created: number; overwritten: boolean }>(r));
+    }).then(r => this.handle<ApiResponse<{ created: number; overwritten: boolean }>>(r));
   }
 
   // Approvals
@@ -182,54 +183,54 @@ export class ApiClient {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(body),
-    }).then(r => this.handle<{ ok: boolean; data: { token: string; url: string; expiresAt: string } }>(r));
+    }).then(r => this.handle<ApiResponse<{ token: string; url: string; expiresAt: string }>>(r));
   }
   getApproval(token: string) {
-    return fetch(`${this.baseUrl}/v1/approvals/${encodeURIComponent(token)}`, { headers: this.headers() }).then(r => this.handle<{ ok: boolean; data: unknown }>(r));
+    return fetch(`${this.baseUrl}/v1/approvals/${encodeURIComponent(token)}`, { headers: this.headers() }).then(r => this.handle<ApiResponse<unknown>>(r));
   }
   decideApproval(token: string, decision: "accept" | "deny") {
     return fetch(`${this.baseUrl}/v1/approvals/${encodeURIComponent(token)}`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ decision }),
-    }).then(r => this.handle<{ ok: boolean }>(r));
+    }).then(r => this.handle<ApiResponse<{ status: string }>>(r));
   }
 
   // Overrides
   getOverrides() {
-    return fetch(`${this.baseUrl}/v1/overrides`, { headers: this.headers() }).then(r => this.handle<{ data: { subjectOverrides: Record<string, string>; teacherNameOverrides: Record<string, string> } }>(r));
+    return fetch(`${this.baseUrl}/v1/overrides`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ subjectOverrides: Record<string, string>; teacherNameOverrides: Record<string, string> }>>(r));
   }
   putOverrides(data: { subjectOverrides: Record<string, string>; teacherNameOverrides: Record<string, string> }) {
     return fetch(`${this.baseUrl}/v1/overrides`, {
       method: "PUT",
       headers: this.headers(),
       body: JSON.stringify(data)
-    }).then(r => this.handle<{ ok: boolean }>(r));
+    }).then(r => this.handle<ApiResponse<{ saved: boolean }>>(r));
   }
 
   // Jobs
   startTimetableScrape() {
-    return fetch(`${this.baseUrl}/v1/jobs/timetable-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<{ jobId: string; statusUrl: string }>(r));
+    return fetch(`${this.baseUrl}/v1/jobs/timetable-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: string }>>(r));
   }
   startArticlesScrape() {
-    return fetch(`${this.baseUrl}/v1/jobs/articles-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<{ jobId: string; statusUrl: string }>(r));
+    return fetch(`${this.baseUrl}/v1/jobs/articles-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: string }>>(r));
   }
   getJob(jobId: string) {
-    return fetch(`${this.baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`, { headers: this.headers() }).then(r => this.handle<{ id: string; status: string }>(r));
+    return fetch(`${this.baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ id: string; status: string }>>(r));
   }
 
   // Timetable maintenance
   refreshTimetableSync() {
-    return fetch(`${this.baseUrl}/v1/refresh`, { method: "POST", headers: this.headers() }).then(r => this.handle<{ ok: boolean }>(r));
+    return fetch(`${this.baseUrl}/v1/refresh`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<Record<string, unknown>>>(r));
   }
   listBackups() {
-    return fetch(`${this.baseUrl}/v1/timetable/backups`, { headers: this.headers() }).then(r => this.handle<{ data: BackupEntry[] }>(r));
+    return fetch(`${this.baseUrl}/v1/timetable/backups`, { headers: this.headers() }).then(r => this.handle<ApiResponse<BackupEntry[]>>(r));
   }
   restoreBackup(filename: string) {
     return fetch(`${this.baseUrl}/v1/timetable/restore`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ filename }),
-    }).then(r => this.handle<{ ok: boolean }>(r));
+    }).then(r => this.handle<ApiResponse<{ restored: boolean }>>(r));
   }
 }

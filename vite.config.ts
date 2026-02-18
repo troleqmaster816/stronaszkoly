@@ -2,6 +2,11 @@ import { defineConfig } from 'vite'
 import path from 'node:path'
 import react from '@vitejs/plugin-react'
 
+const allowedHosts = (process.env.VITE_ALLOWED_HOSTS || '.ngrok-free.app,.ngrok.io')
+  .split(',')
+  .map((host) => host.trim())
+  .filter(Boolean)
+
 // Konfiguracja Vite
 export default defineConfig({
   plugins: [react()],
@@ -12,10 +17,7 @@ export default defineConfig({
   },
   server: {
     host: true, // nasłuchiwanie na 0.0.0.0
-    allowedHosts: [
-      '.ngrok-free.app', // akceptuj wszystkie domeny ngrok
-      '.ngrok.io'        // na wszelki wypadek starsze domeny ngrok
-    ],
+    allowedHosts,
     proxy: {
       '/api': {
         target: 'http://localhost:8787',

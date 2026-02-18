@@ -15,9 +15,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/v1/users/me', { credentials: 'include' })
       const j = await res.json().catch(() => ({}))
-      if (res.ok && j?.ok && j?.authenticated) {
+      const meData = j?.data
+      if (res.ok && j?.ok && meData?.authenticated) {
         setIsAuth(true)
-        setMe(j.user ?? null)
+        setMe(meData.user ?? null)
         return
       }
     } catch {

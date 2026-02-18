@@ -32,7 +32,7 @@ export function registerAttendanceRoutes(v1, {
         updatedAt: Date.now(),
       }
       saveDb(db)
-      res.json({ ok: true })
+      res.json({ ok: true, data: { saved: true } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }
@@ -51,7 +51,7 @@ export function registerAttendanceRoutes(v1, {
     const page = entries.slice(startIdx, startIdx + limit)
     const next = page.length === limit ? String(page[page.length - 1].id) : null
     setRateHeaders(res)
-    res.json({ ok: true, data: page, nextCursor: next })
+    res.json({ ok: true, data: { entries: page, nextCursor: next } })
   })
 
   v1.patch('/attendance/entries', requireAuthOrApiKey(['write:attendance']), requireCsrfIfCookieAuth, (req, res) => {
@@ -86,7 +86,7 @@ export function registerAttendanceRoutes(v1, {
       st.updatedAt = Date.now()
       db.attendanceByUser[userId] = st
       saveDb(db)
-      res.json({ ok: true, updated })
+      res.json({ ok: true, data: { updated } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }
@@ -135,7 +135,7 @@ export function registerAttendanceRoutes(v1, {
       st.updatedAt = Date.now()
       db.attendanceByUser[userId] = st
       saveDb(db)
-      res.json({ ok: true, updated })
+      res.json({ ok: true, data: { updated } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }
@@ -183,7 +183,7 @@ export function registerAttendanceRoutes(v1, {
       st.updatedAt = Date.now()
       db.attendanceByUser[userId] = st
       saveDb(db)
-      res.json({ ok: true, data: { created: created.length, overwritten: existing.length > 0 }, created: created.length, overwritten: existing.length > 0 })
+      res.json({ ok: true, data: { created: created.length, overwritten: existing.length > 0 } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }

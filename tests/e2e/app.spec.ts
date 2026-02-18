@@ -114,8 +114,10 @@ test.describe('Plan lekcji', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
-          authenticated: true,
-          user: { id: 'admin', username: 'admin' },
+          data: {
+            authenticated: true,
+            user: { id: 'admin', username: 'admin' },
+          },
         }),
       })
     })

@@ -33,13 +33,13 @@ export function registerAuthRoutes(v1, {
       const token = crypto.randomBytes(32).toString('base64url')
       tokens.set(token, user.id)
       res.cookie('auth', token, authCookieOpts)
-      return res.json({ ok: true })
+      return res.json({ ok: true, data: { authenticated: true } })
     }
     if (adminLoginEnabled && userIn === adminUser && passIn === adminPass) {
       const token = crypto.randomBytes(32).toString('base64url')
       tokens.set(token, 'admin')
       res.cookie('auth', token, authCookieOpts)
-      return res.json({ ok: true })
+      return res.json({ ok: true, data: { authenticated: true } })
     }
     return problem(res, 401, 'auth.invalid_credentials', 'Unauthorized', 'Nieprawidłowe dane logowania')
   })
@@ -48,7 +48,7 @@ export function registerAuthRoutes(v1, {
     const token = (req.cookies && req.cookies.auth) || null
     if (token && tokens.has(token)) tokens.delete(token)
     res.clearCookie('auth', { path: '/', sameSite: 'lax', secure: isProd })
-    res.json({ ok: true })
+    res.json({ ok: true, data: { loggedOut: true } })
   })
 
   v1.post('/register', (req, res) => {
@@ -66,7 +66,7 @@ export function registerAuthRoutes(v1, {
       const session = crypto.randomBytes(32).toString('base64url')
       tokens.set(session, user.id)
       res.cookie('auth', session, authCookieOpts)
-      res.json({ ok: true })
+      res.json({ ok: true, data: { authenticated: true } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }

@@ -19,8 +19,6 @@ export function registerJobRoutes(v1, {
       return res.status(202).json({
         ok: true,
         data: { jobId: running.id, statusUrl: `/v1/jobs/${running.id}`, status: running.status },
-        jobId: running.id,
-        statusUrl: `/v1/jobs/${running.id}`,
       })
     }
 
@@ -30,8 +28,6 @@ export function registerJobRoutes(v1, {
     res.status(202).json({
       ok: true,
       data: { jobId: job.id, statusUrl: `/v1/jobs/${job.id}`, status: job.status },
-      jobId: job.id,
-      statusUrl: `/v1/jobs/${job.id}`,
     })
 
     ;(async () => {
@@ -94,8 +90,6 @@ export function registerJobRoutes(v1, {
           return res.status(202).json({
             ok: true,
             data: { jobId: running.id, statusUrl: `/v1/jobs/${running.id}`, status: running.status },
-            jobId: running.id,
-            statusUrl: `/v1/jobs/${running.id}`,
           })
         }
       }
@@ -106,8 +100,6 @@ export function registerJobRoutes(v1, {
       res.status(202).json({
         ok: true,
         data: { jobId: job.id, statusUrl: `/v1/jobs/${job.id}`, status: job.status },
-        jobId: job.id,
-        statusUrl: `/v1/jobs/${job.id}`,
       })
 
       ;(async () => {

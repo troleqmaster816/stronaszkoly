@@ -23,7 +23,7 @@ export function registerOverrideRoutes(v1, {
         teacherNameOverrides: teacherNameOverrides && typeof teacherNameOverrides === 'object' ? teacherNameOverrides : {},
       }
       saveOverrides(data)
-      res.json({ ok: true })
+      res.json({ ok: true, data: { saved: true } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }

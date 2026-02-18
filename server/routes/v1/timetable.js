@@ -40,7 +40,7 @@ export function registerTimetableRoutes(v1, {
     }
     const lessons = Array.isArray(data.timetables[canon]) ? data.timetables[canon] : []
     setTimetableCacheHeaders(res)
-    res.json({ ok: true, data: lessons, id: canon })
+    res.json({ ok: true, data: { id: canon, lessons } })
   })
 
   v1.get('/classes/:id/timetable', (req, res) => {
@@ -77,7 +77,7 @@ export function registerTimetableRoutes(v1, {
       })
     }
     setTimetableCacheHeaders(res)
-    res.json({ ok: true, data: filtered, id: canon })
+    res.json({ ok: true, data: { id: canon, lessons: filtered } })
   })
 
   v1.get('/rooms/:id/timetable', (req, res) => {
@@ -95,6 +95,6 @@ export function registerTimetableRoutes(v1, {
     }
     const lessons = Array.isArray(data.timetables[canon]) ? data.timetables[canon] : []
     setTimetableCacheHeaders(res)
-    res.json({ ok: true, data: lessons, id: canon })
+    res.json({ ok: true, data: { id: canon, lessons } })
   })
 }

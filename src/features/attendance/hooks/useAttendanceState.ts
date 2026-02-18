@@ -23,7 +23,7 @@ export function useAttendanceState() {
     (async () => {
       try {
         const me = await fetch('/v1/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null);
-        const authed = !!(me && me.ok && me.authenticated);
+        const authed = !!(me && me.ok && me.data && me.data.authenticated);
         if (cancelled) return;
         if (authed) {
           remoteEnabled.current = true;
@@ -58,7 +58,7 @@ export function useAttendanceState() {
     if (!shouldWriteRemote) {
       try {
         const me = await fetch('/v1/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null);
-        shouldWriteRemote = !!(me && me.ok && me.authenticated);
+        shouldWriteRemote = !!(me && me.ok && me.data && me.data.authenticated);
         if (shouldWriteRemote) remoteEnabled.current = true;
       } catch { /* ignore */ }
     }

@@ -84,7 +84,7 @@ export function registerApprovalRoutes(v1, {
         }
       }
       saveDb(db)
-      res.json({ ok: true })
+      res.json({ ok: true, data: { status: item.status } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }

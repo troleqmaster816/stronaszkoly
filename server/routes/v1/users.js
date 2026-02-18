@@ -9,6 +9,6 @@ export function registerUserRoutes(v1, { loadDb, tokens, adminUser }) {
       const hit = db.users.find((u) => u.id === userId)
       user = hit ? { id: hit.id, username: hit.username } : { id: 'admin', username: adminUser || 'admin' }
     }
-    res.json({ ok: true, data: { authenticated: !!hasCookie, user }, authenticated: !!hasCookie, user })
+    res.json({ ok: true, data: { authenticated: !!hasCookie, user } })
   })
 }

@@ -146,7 +146,7 @@ export function registerMaintenanceRoutes(v1, {
 
       writeFileSync(config.timetableFilePath, content, 'utf8')
       invalidateTimetableCache()
-      return res.json({ ok: true })
+      return res.json({ ok: true, data: { restored: true } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }

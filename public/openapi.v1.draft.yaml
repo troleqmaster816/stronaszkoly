@@ -144,12 +144,6 @@ components:
         mtime: { type: string, format: date-time }
       required: [filename, size, mtime]
 
-    OkResponse:
-      type: object
-      properties:
-        ok: { type: boolean }
-      required: [ok]
-
     UserMeData:
       type: object
       properties:
@@ -270,10 +264,6 @@ paths:
                 properties:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/UserMeData' }
-                  authenticated: { type: boolean, description: Deprecated top-level field kept for compatibility }
-                  user:
-                    anyOf: [ { $ref: '#/components/schemas/User' }, { type: 'null' } ]
-                    description: Deprecated top-level field kept for compatibility
                 required: [ok, data]
 
   /v1/login:
@@ -290,13 +280,39 @@ paths:
                 password: { type: string }
               required: [username, password]
       responses:
-        '200': { description: Logged in }
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      authenticated: { type: boolean }
+                    required: [authenticated]
+                required: [ok, data]
 
   /v1/logout:
     post:
       summary: Log out and clear the session cookie
       responses:
-        '200': { description: Logged out }
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      loggedOut: { type: boolean }
+                    required: [loggedOut]
+                required: [ok, data]
 
   /v1/register:
     post:
@@ -312,7 +328,20 @@ paths:
                 password: { type: string }
               required: [username, password]
       responses:
-        '200': { description: Registered }
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      authenticated: { type: boolean }
+                    required: [authenticated]
+                required: [ok, data]
   /v1/teachers:
     get:
       summary: List teachers
@@ -382,9 +411,13 @@ paths:
                 properties:
                   ok: { type: boolean }
                   data:
-                    type: array
-                    items: { $ref: '#/components/schemas/Lesson' }
-                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                    type: object
+                    properties:
+                      id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                      lessons:
+                        type: array
+                        items: { $ref: '#/components/schemas/Lesson' }
+                    required: [id, lessons]
                 required: [ok, data]
 
   /v1/classes/{id}/timetable:
@@ -415,9 +448,13 @@ paths:
                 properties:
                   ok: { type: boolean }
                   data:
-                    type: array
-                    items: { $ref: '#/components/schemas/Lesson' }
-                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                    type: object
+                    properties:
+                      id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                      lessons:
+                        type: array
+                        items: { $ref: '#/components/schemas/Lesson' }
+                    required: [id, lessons]
                 required: [ok, data]
 
   /v1/rooms/{id}/timetable:
@@ -438,9 +475,13 @@ paths:
                 properties:
                   ok: { type: boolean }
                   data:
-                    type: array
-                    items: { $ref: '#/components/schemas/Lesson' }
-                  id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                    type: object
+                    properties:
+                      id: { type: string, description: Canonical id resolved from alias (if alias used) }
+                      lessons:
+                        type: array
+                        items: { $ref: '#/components/schemas/Lesson' }
+                    required: [id, lessons]
                 required: [ok, data]
 
   /v1/attendance/entries:
@@ -478,11 +519,15 @@ paths:
                 properties:
                   ok: { type: boolean }
                   data:
-                    type: array
-                    items: { $ref: '#/components/schemas/AttendanceEntry' }
-                  nextCursor:
-                    type: string
-                    nullable: true
+                    type: object
+                    properties:
+                      entries:
+                        type: array
+                        items: { $ref: '#/components/schemas/AttendanceEntry' }
+                      nextCursor:
+                        type: string
+                        nullable: true
+                    required: [entries]
                 required: [ok, data]
     patch:
       summary: Bulk update entries by id (set present true/false)
@@ -512,8 +557,12 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  updated: { type: integer }
-                required: [ok, updated]
+                  data:
+                    type: object
+                    properties:
+                      updated: { type: integer }
+                    required: [updated]
+                required: [ok, data]
         '409':
           description: Version mismatch
           content:
@@ -546,7 +595,16 @@ paths:
           description: Saved
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OkResponse' }
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      saved: { type: boolean }
+                    required: [saved]
+                required: [ok, data]
 
   /v1/attendance/summary:
     get:
@@ -601,8 +659,12 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                  updated: { type: integer }
-                required: [ok, updated]
+                  data:
+                    type: object
+                    properties:
+                      updated: { type: integer }
+                    required: [updated]
+                required: [ok, data]
 
   /v1/attendance/plans:
     get:
@@ -672,9 +734,7 @@ paths:
                       created: { type: integer }
                       overwritten: { type: boolean }
                     required: [created, overwritten]
-                  created: { type: integer }
-                  overwritten: { type: boolean }
-                required: [ok, created, overwritten]
+                required: [ok, data]
 
   /v1/approvals:
     post:
@@ -733,7 +793,7 @@ paths:
                       createdAt: { type: string, format: date-time }
                       expiresAt: { type: string, format: date-time }
                     required: [status]
-                required: [ok]
+                required: [ok, data]
     post:
       summary: Submit a decision for an approval token
       parameters:
@@ -759,7 +819,12 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
-                required: [ok]
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [accepted, denied] }
+                    required: [status]
+                required: [ok, data]
         '409':
           description: Already decided
           content:
@@ -793,7 +858,16 @@ paths:
           description: Updated
           content:
             application/json:
-              schema: { type: object, properties: { ok: { type: boolean } }, required: [ok] }
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      saved: { type: boolean }
+                    required: [saved]
+                required: [ok, data]
 
   /v1/jobs/timetable-scrape:
     post:
@@ -814,8 +888,6 @@ paths:
                       statusUrl: { type: string }
                       status: { type: string, enum: [queued, running, succeeded, failed] }
                     required: [jobId, statusUrl, status]
-                  jobId: { type: string, description: Deprecated compatibility field }
-                  statusUrl: { type: string, description: Deprecated compatibility field }
                 required: [ok, data]
   /v1/jobs/articles-scrape:
     post:
@@ -836,8 +908,6 @@ paths:
                       statusUrl: { type: string }
                       status: { type: string, enum: [queued, running, succeeded, failed] }
                     required: [jobId, statusUrl, status]
-                  jobId: { type: string, description: Deprecated compatibility field }
-                  statusUrl: { type: string, description: Deprecated compatibility field }
                 required: [ok, data]
   /v1/jobs/{jobId}:
     get:
@@ -874,16 +944,16 @@ paths:
                   data:
                     type: object
                     nullable: true
-                required: [ok]
+                required: [ok, data]
         '409':
           description: Scraper already running
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '500':
           description: Error during scraping
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/timetable/backups:
@@ -920,16 +990,25 @@ paths:
           description: Restored
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OkResponse' }
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      restored: { type: boolean }
+                    required: [restored]
+                required: [ok, data]
         '400':
           description: Invalid filename
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '404':
           description: Backup not found
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/apikey:

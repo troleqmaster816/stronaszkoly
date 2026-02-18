@@ -18,7 +18,7 @@ Legacy `/api/*` wyłączone (HTTP 410). Używaj tylko prefiksu `/v1`.
   - Single API key (zalecany dla aplikacji klienckich): dodaj nagłówek `Authorization: Bearer sk_...`
   - Sesja cookie (dla panelu w przeglądarce/WWW): po `POST /v1/login` otrzymasz cookie `auth` (httpOnly).
 - Format odpowiedzi:
-  - Sukces: `{ ok: true, data?: any }` (dla zgodności w niektórych endpointach mogą pozostać pola pomocnicze)
+  - Sukces: `{ ok: true, data: any }`
   - Błąd (v1): `application/problem+json` (RFC7807-like) z polami `{ type, title, status, code, detail }`
 
 ## Klucz API (single-key)
@@ -48,7 +48,7 @@ Uwaga: w Postman/Insomnia wybierz Auth = "Bearer Token" i wstaw `sk_XXXX`.
 - `POST /v1/register` body `{ username, password }` → tworzy konto i loguje (cookie)
 - `POST /v1/login` body `{ username, password }` → loguje (cookie)
 - `POST /v1/logout` → wylogowuje (czyści cookie)
-- `GET /v1/users/me` → `{ ok: true, data: { authenticated: boolean, user: { id, username } | null } }` (zachowane także pola top-level `authenticated` i `user` dla zgodności)
+- `GET /v1/users/me` → `{ ok: true, data: { authenticated: boolean, user: { id, username } | null } }`
 
 W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wystarczy nagłówek `Authorization: Bearer` z kluczem API.
 
@@ -57,23 +57,23 @@ W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wyst
 - `GET /v1/teachers` → `{ ok: true, data: { [id: string]: string } }`
 - `GET /v1/classes` → `{ ok: true, data: { [id: string]: string } }`
 - `GET /v1/rooms` → `{ ok: true, data: { [id: string]: string } }`
-- `GET /v1/teachers/:id/timetable` → `{ ok: true, data: Lesson[] }`
-- `GET /v1/classes/:id/timetable?group=2/2&includeWhole=true` → `{ ok: true, data: Lesson[] }`
+- `GET /v1/teachers/:id/timetable` → `{ ok: true, data: { id: string, lessons: Lesson[] } }`
+- `GET /v1/classes/:id/timetable?group=2/2&includeWhole=true` → `{ ok: true, data: { id: string, lessons: Lesson[] } }`
   - `group` (opcjonalnie): identyfikator lub nazwa grupy (np. `2/2`). Zwraca lekcje dla całej klasy ORAZ wskazanej grupy; inne grupy są wykluczone.
   - `includeWhole` (opcjonalnie, domyślnie `true`): czy dołączyć lekcje „cała klasa” przy filtrowaniu po `group`.
-- `GET /v1/rooms/:id/timetable` → `{ ok: true, data: Lesson[] }`
+- `GET /v1/rooms/:id/timetable` → `{ ok: true, data: { id: string, lessons: Lesson[] } }`
 
 Identyfikatory: `:id` może być kanonicznym identyfikatorem z pliku (np. `n12`, `o5`, `s36`) albo aliasem czytelnym dla człowieka:
 - nauczyciel: inicjały/kod (np. `RM`),
 - klasa: kod klasy (np. `4TAI`),
 - sala: numer (np. `407`).
 
-Jeśli alias jest niejednoznaczny, zwrócony zostanie `409 Conflict`. W odpowiedzi `200` timetablowej zwracamy również pole `id` – kanoniczne ID, które zostało rozpoznane.
+Jeśli alias jest niejednoznaczny, zwrócony zostanie `409 Conflict`. W odpowiedzi `200` timetablowej `data.id` zawiera kanoniczne ID, które zostało rozpoznane.
 
 Przykład 4TAI Poniedziałek, grupa 2/2:
 ```bash
 curl -s 'http://localhost:8787/v1/classes/4TAI/timetable?group=2%2F2&includeWhole=true' \
-| jq '.data | map(select(.day=="Poniedziałek")) | sort_by(.lesson_num|tonumber) | .[] | {lesson_num,time,subject,teacher:(.teacher?.name),room:(.room?.name)}'
+| jq '.data.lessons | map(select(.day=="Poniedziałek")) | sort_by(.lesson_num|tonumber) | .[] | {lesson_num,time,subject,teacher:(.teacher?.name),room:(.room?.name)}'
 ```
 
 ## Frekwencja – odczyt i zapis wpisów
@@ -108,13 +108,13 @@ type AttendanceState = {
 Endpointy:
 
 - `GET /v1/attendance` → `{ ok: true, data: AttendanceState }`
-- `PUT /v1/attendance` body `AttendanceState` → `{ ok: true }`
-- `GET /v1/attendance/entries?from&to&subjectKey&classId&teacherId&limit&cursor` → `{ ok: true, data: AttendanceEntry[], nextCursor? }`
-- `PATCH /v1/attendance/entries` body `{ updates: { id, present, ifMatch? }[] }` → `{ ok: true, updated }` (409 przy konflikcie wersji)
+- `PUT /v1/attendance` body `AttendanceState` → `{ ok: true, data: { saved: true } }`
+- `GET /v1/attendance/entries?from&to&subjectKey&classId&teacherId&limit&cursor` → `{ ok: true, data: { entries: AttendanceEntry[], nextCursor? } }`
+- `PATCH /v1/attendance/entries` body `{ updates: { id, present, ifMatch? }[] }` → `{ ok: true, data: { updated } }` (409 przy konflikcie wersji)
 - `GET /v1/attendance/summary?from&to&subjectKey` → `{ ok: true, data: { total, present, percent, needToReach50, canSkipAndKeep50 } }`
-- `POST /v1/attendance/days/{dateISO}/present` body `{ present: true|false }` → masowe ustawienie obecności dla dnia
+- `POST /v1/attendance/days/{dateISO}/present` body `{ present: true|false }` → `{ ok: true, data: { updated } }`
 - `GET /v1/attendance/plans` → `{ ok: true, data: Plan[] }` (lista zapisanych planów)
-- `POST /v1/attendance/days/{dateISO}/apply-plan` body `{ planId, overwrite?: boolean, setPresent?: boolean }` → wypełnij dzień z planu (opcjonalnie ustaw obecność)
+- `POST /v1/attendance/days/{dateISO}/apply-plan` body `{ planId, overwrite?: boolean, setPresent?: boolean }` → `{ ok: true, data: { created, overwritten } }`
   - przy autoryzacji cookie wymagany nagłówek `X-CSRF-Token` równy wartości cookie `csrf`
 
 Przykłady:
@@ -159,14 +159,14 @@ Linki jednorazowe do akceptacji/odrzucenia zmiany wpisu. Obecnie tworzenie wymag
 Endpointy:
 - `POST /v1/approvals` (opcjonalny `Idempotency-Key`) → `201 { ok, data: { token, url, expiresAt } }`
 - `GET /v1/approvals/:token` → `{ ok, data: { status, createdAt, expiresAt } }`
-- `POST /v1/approvals/:token` body `{ decision: 'accept'|'deny' }` → `{ ok: true }` lub `409`
+- `POST /v1/approvals/:token` body `{ decision: 'accept'|'deny' }` → `{ ok: true, data: { status } }` lub `409`
 
 Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wskazanego `entryId` w dniu `dateISO`.
 
 ## Overrides (nauczyciele/przedmioty)
 
 - Odczyt (publiczny): `GET /v1/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
-- Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true }`
+- Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true, data: { saved: true } }`
 
 ## Zadania i utrzymanie planu
 
@@ -175,7 +175,7 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 - `GET /v1/jobs/:jobId` → `{ ok: true, data: Job }` ze statusem (`queued|running|succeeded|failed`)
 - `POST /v1/refresh` (admin) → synchroniczne odświeżenie planu przez scraper (`200|409|500`), przy sukcesie zwracane jest także `data` (jeśli scraper poda wynik strukturalny)
 - `GET /v1/timetable/backups` (admin) → `{ ok: true, data: { filename, size, mtime }[] }`
-- `POST /v1/timetable/restore` (admin) body `{ filename }` → `{ ok: true }`
+- `POST /v1/timetable/restore` (admin) body `{ filename }` → `{ ok: true, data: { restored: true } }`
 
 ## Przykłady (JS fetch)
 

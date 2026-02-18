@@ -148,7 +148,7 @@ export default function Hub({ navigate }: HubProps) {
       const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
       if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się uruchomić zadania')); setArticlesBusy(false); return; }
       const j = await res.json();
-      const jobId = j?.data?.jobId || j?.jobId;
+      const jobId = j?.data?.jobId;
       if (!jobId) { setArticlesBusy(false); return; }
       setArticlesJob({ id: jobId, status: 'queued' });
       // Poll co 2s do zakończenia
@@ -157,7 +157,7 @@ export default function Hub({ navigate }: HubProps) {
         try {
           const st = await fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' });
           const jj = await st.json();
-          const jobData = jj?.data ?? jj;
+          const jobData = jj?.data;
           if (!mountedRef.current) return;
           setArticlesJob({ id: jobId, status: jobData?.status || 'unknown' });
           if (jobData?.status === 'succeeded' || jobData?.status === 'failed') {

@@ -45,7 +45,7 @@
 
   /* Avoid content cut between pages */
   tr { page-break-inside: avoid; page-break-after: auto; }
-  .card, .section, .react-pdf__Page { break-inside: avoid; }
+  .card, .section { break-inside: avoid; }
 
   /* Animations */
   * { animation: none !important; transition: none !important; }
@@ -80,8 +80,7 @@
   .print-table.matrix td { word-break: break-word; }
 
   /* Hide elements that can cause extra page */
-  .pagination, .react-pdf__Document, .react-pdf__Page, .print-pager, .fab, .fixed { display: none !important; }
+  .pagination, .print-pager, .fab, .fixed { display: none !important; }
   footer { display: none !important; margin: 0 !important; padding: 0 !important; }
 }
-
 
