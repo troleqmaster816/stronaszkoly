@@ -1,8 +1,8 @@
-export function createAuthMiddleware({ loadDb, saveDb, tokens, problem, findUserIdByApiKeyToken }) {
+export function createAuthMiddleware({ loadDb, saveDb, sessionStore, problem, findUserIdByApiKeyToken }) {
   function requireAuth(req, res, next) {
     const token = (req.cookies && req.cookies.auth) || null
-    if (!token || !tokens.has(token)) return problem(res, 401, 'auth.missing', 'Unauthorized', 'Unauthenticated')
-    const userId = tokens.get(token)
+    const userId = sessionStore.resolve(token, { touch: true })
+    if (!userId) return problem(res, 401, 'auth.missing', 'Unauthorized', 'Unauthenticated')
     req.userId = userId
     req.authMethod = 'cookie'
     return next()
@@ -29,8 +29,8 @@ export function createAuthMiddleware({ loadDb, saveDb, tokens, problem, findUser
       }
 
       const cookieToken = (req.cookies && req.cookies.auth) || null
-      if (!cookieToken || !tokens.has(cookieToken)) return problem(res, 401, 'auth.missing', 'Unauthorized', 'Missing Bearer token or session cookie')
-      const userId = tokens.get(cookieToken)
+      const userId = sessionStore.resolve(cookieToken, { touch: true })
+      if (!userId) return problem(res, 401, 'auth.missing', 'Unauthorized', 'Missing Bearer token or session cookie')
       req.userId = userId
       req.authMethod = 'cookie'
       return next()
@@ -60,9 +60,15 @@ export function createAuthMiddleware({ loadDb, saveDb, tokens, problem, findUser
     }
   }
 
+  function requireAdmin(req, res, next) {
+    if (req.userId === 'admin') return next()
+    return problem(res, 403, 'auth.admin_required', 'Forbidden', 'Tylko administrator')
+  }
+
   return {
     requireAuth,
     requireAuthOrApiKey,
     requireBearer,
+    requireAdmin,
   }
 }

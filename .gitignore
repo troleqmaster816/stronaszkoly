@@ -42,9 +42,10 @@ gdziessh.md
 gpt5.2_pro_plan_1702.txt
 
 # Runtime artifacts from timetable scraper/admin refresh
+server/scripts/__pycache__/
+server/runtime/
 public/.pip_installed_*.txt
 public/__pycache__/
 public/backups/
 public/scraper.py.bak-*
 public/harmonogram_nowy.pdf
-server/scripts/__pycache__/

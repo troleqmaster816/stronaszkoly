@@ -1,5 +1,6 @@
 export function registerJobRoutes(v1, {
   requireAuth,
+  requireAdmin,
   requireCsrfIfCookieAuth,
   problem,
   detectPythonCommand,
@@ -10,11 +11,8 @@ export function registerJobRoutes(v1, {
   jobsStore,
   invalidateTimetableCache,
 }) {
-  let isArticleRunning = false
-
-  v1.post('/jobs/timetable-scrape', requireAuth, requireCsrfIfCookieAuth, async (req, res) => {
-    if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator')
-    const running = jobsStore.findRunning('timetable')
+  v1.post('/jobs/timetable-scrape', requireAuth, requireAdmin, requireCsrfIfCookieAuth, async (req, res) => {
+    const running = jobsStore.findActive('timetable')
     if (running) {
       return res.status(202).json({
         ok: true,
@@ -43,7 +41,7 @@ export function registerJobRoutes(v1, {
           pythonCmd,
           requirementsPath: config.requirementsPath,
           scriptsDir: config.scriptsDir,
-          publicDir: config.publicDir,
+          pipMarkersDir: config.pipMarkersDir,
           pipTimeoutMs: config.pipTimeoutMs,
         })
         if (deps && deps.error) throw new Error(deps.error)
@@ -85,17 +83,14 @@ export function registerJobRoutes(v1, {
     res.json({ ok: true, data: job })
   })
 
-  v1.post('/jobs/articles-scrape', requireAuth, requireCsrfIfCookieAuth, async (req, res) => {
+  v1.post('/jobs/articles-scrape', requireAuth, requireAdmin, requireCsrfIfCookieAuth, async (req, res) => {
     try {
-      if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator')
-      if (isArticleRunning) {
-        const running = jobsStore.findRunning('articles')
-        if (running) {
-          return res.status(202).json({
-            ok: true,
-            data: { jobId: running.id, statusUrl: `/v1/jobs/${running.id}`, status: running.status },
-          })
-        }
+      const running = jobsStore.findActive('articles')
+      if (running) {
+        return res.status(202).json({
+          ok: true,
+          data: { jobId: running.id, statusUrl: `/v1/jobs/${running.id}`, status: running.status },
+        })
       }
 
       const job = jobsStore.createJob({ kind: 'articles' })
@@ -107,7 +102,6 @@ export function registerJobRoutes(v1, {
       })
 
       ;(async () => {
-        isArticleRunning = true
         let timedOut = false
         try {
           job.status = 'running'
@@ -120,7 +114,7 @@ export function registerJobRoutes(v1, {
             pythonCmd,
             requirementsPath: config.requirementsPath,
             scriptsDir: config.scriptsDir,
-            publicDir: config.publicDir,
+            pipMarkersDir: config.pipMarkersDir,
             pipTimeoutMs: config.pipTimeoutMs,
           })
           if (deps && deps.error) throw new Error(deps.error)
@@ -149,7 +143,6 @@ export function registerJobRoutes(v1, {
           job.finishedAt = new Date().toISOString()
           job.error = String(e)
         } finally {
-          isArticleRunning = false
           jobsStore.cleanupJobs()
         }
       })()

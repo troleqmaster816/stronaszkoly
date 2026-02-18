@@ -78,6 +78,8 @@ export function registerApprovalRoutes(v1, {
         if (idx >= 0) {
           if (action === 'toggle') list[idx].present = !list[idx].present
           else if (action === 'set') list[idx].present = !!present
+          const currentV = typeof list[idx]._v === 'number' ? list[idx]._v : Number(list[idx]._v || 1)
+          list[idx]._v = Number.isFinite(currentV) ? currentV + 1 : 2
           st.byDate[dateISO] = list
           st.updatedAt = Date.now()
           db.attendanceByUser[item.userId] = st

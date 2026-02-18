@@ -58,6 +58,10 @@ export function createJobsStore({ ttlMs, max }) {
     return Array.from(jobs.values()).find((j) => j && j.kind === kind && j.status === 'running') || null
   }
 
+  function findActive(kind) {
+    return Array.from(jobs.values()).find((j) => j && j.kind === kind && (j.status === 'queued' || j.status === 'running')) || null
+  }
+
   function startCleanupInterval() {
     const handle = setInterval(() => cleanupJobs(), Math.max(60_000, Math.floor(ttlMs / 4)))
     handle.unref?.()
@@ -71,6 +75,7 @@ export function createJobsStore({ ttlMs, max }) {
     getJob,
     setJob,
     findRunning,
+    findActive,
     startCleanupInterval,
   }
 }

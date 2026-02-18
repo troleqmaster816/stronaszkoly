@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
   title: School Timetable & Attendance API
   version: 1.0.0-draft
+  contact:
+    name: Szkola API Maintainers
+    url: https://szkola.tkch.eu
   description: |
     Draft of a developer-friendly API for timetable browsing, attendance tracking,
     remote approvals, and admin overrides. Uses resource-oriented endpoints,
@@ -9,14 +12,40 @@ info:
 servers:
   - url: https://api.example.com
   - url: http://localhost:8787
+tags:
+  - name: Health
+    description: Service health and readiness endpoints.
+  - name: Users
+    description: Endpoints for current user session identity.
+  - name: Auth
+    description: Session-based authentication endpoints.
+  - name: Timetable
+    description: Timetable dictionaries and lesson schedule endpoints.
+  - name: Attendance
+    description: Attendance state, entries, plans, and summaries.
+  - name: Approvals
+    description: One-time token approval workflow endpoints.
+  - name: Overrides
+    description: Subject and teacher name override management.
+  - name: Jobs
+    description: Asynchronous job execution and status endpoints.
+  - name: Maintenance
+    description: Administrative maintenance endpoints for timetable data.
+  - name: ApiKeys
+    description: API key metadata and rotation endpoints.
 security:
   - BearerAuth: []
+  - CookieAuth: []
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: API-Key
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth
   parameters:
     FromDate:
       name: from
@@ -42,6 +71,18 @@ components:
       description: Page size (max 200)
       required: false
       schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      schema: { type: string }
+      description: Required when using cookie authentication. Must match csrf cookie value.
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string }
+      description: Optional key to safely retry a non-idempotent request.
   headers:
     XRequestId:
       description: Stable request id for tracing.
@@ -55,6 +96,47 @@ components:
     RateLimitReset:
       description: Seconds until the rate-limit window resets.
       schema: { type: integer }
+  responses:
+    Problem400:
+      description: Bad request
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem401:
+      description: Unauthorized
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem403:
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem404:
+      description: Not found
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem409:
+      description: Conflict
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem410:
+      description: Gone
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem429:
+      description: Too many requests
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem500:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
   schemas:
     Problem:
       type: object
@@ -232,7 +314,11 @@ components:
 paths:
   /v1/health:
     get:
+      security: []
       summary: Health check
+      operationId: getHealth
+      tags: [Health]
+      description: Returns service health and basic readiness status.
       responses:
         '200':
           description: OK
@@ -253,6 +339,9 @@ paths:
     get:
       security: []
       summary: Returns the current user if authenticated
+      operationId: getCurrentUser
+      tags: [Users]
+      description: Returns authentication state and current user profile when a valid session exists.
       responses:
         '200':
           description: Current user
@@ -269,7 +358,11 @@ paths:
 
   /v1/login:
     post:
+      security: []
       summary: Log in and set a session cookie (for web panel)
+      operationId: loginUser
+      tags: [Auth]
+      description: Authenticates a user and issues the auth session cookie.
       requestBody:
         required: true
         content:
@@ -295,10 +388,18 @@ paths:
                       authenticated: { type: boolean }
                     required: [authenticated]
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '429':
+          $ref: '#/components/responses/Problem429'
 
   /v1/logout:
     post:
+      security: []
       summary: Log out and clear the session cookie
+      operationId: logoutUser
+      tags: [Auth]
+      description: Revokes the current session and clears the auth cookie.
       responses:
         '200':
           description: Logged out
@@ -317,7 +418,11 @@ paths:
 
   /v1/register:
     post:
-      summary: Register a new user and create a session
+      security: []
+      summary: Register a new user and create a session (when registration is enabled)
+      operationId: registerUser
+      tags: [Auth]
+      description: Creates a new user account (when enabled) and starts an authenticated session.
       requestBody:
         required: true
         content:
@@ -331,6 +436,10 @@ paths:
       responses:
         '200':
           description: Registered
+          headers:
+            RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
           content:
             application/json:
               schema:
@@ -343,9 +452,35 @@ paths:
                       authenticated: { type: boolean }
                     required: [authenticated]
                 required: [ok, data]
+        '400':
+          description: Invalid username or password
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: Registration disabled
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: User exists
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: Too many registration attempts
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          $ref: '#/components/responses/Problem500'
   /v1/teachers:
     get:
+      security: []
       summary: List teachers
+      operationId: listTeachers
+      tags: [Timetable]
+      description: Returns the teacher id-to-label dictionary from timetable data.
       responses:
         '200':
           description: Map of teacher id to label
@@ -359,10 +494,16 @@ paths:
                     type: object
                     additionalProperties: { type: string }
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
 
   /v1/classes:
     get:
+      security: []
       summary: List classes
+      operationId: listClasses
+      tags: [Timetable]
+      description: Returns the class id-to-label dictionary from timetable data.
       responses:
         '200':
           description: Map of class id to label
@@ -376,10 +517,16 @@ paths:
                     type: object
                     additionalProperties: { type: string }
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
 
   /v1/rooms:
     get:
+      security: []
       summary: List rooms
+      operationId: listRooms
+      tags: [Timetable]
+      description: Returns the room id-to-label dictionary from timetable data.
       responses:
         '200':
           description: Map of room id to label
@@ -393,10 +540,16 @@ paths:
                     type: object
                     additionalProperties: { type: string }
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
 
   /v1/teachers/{id}/timetable:
     get:
+      security: []
       summary: Get a teacher's timetable
+      operationId: getTeacherTimetable
+      tags: [Timetable]
+      description: Returns lessons for a teacher by canonical id or alias.
       parameters:
         - name: id
           in: path
@@ -420,10 +573,18 @@ paths:
                         items: { $ref: '#/components/schemas/Lesson' }
                     required: [id, lessons]
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '409':
+          $ref: '#/components/responses/Problem409'
 
   /v1/classes/{id}/timetable:
     get:
+      security: []
       summary: Get a class timetable
+      operationId: getClassTimetable
+      tags: [Timetable]
+      description: Returns class lessons by canonical id or alias, with optional group filtering.
       parameters:
         - name: id
           in: path
@@ -457,10 +618,18 @@ paths:
                         items: { $ref: '#/components/schemas/Lesson' }
                     required: [id, lessons]
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '409':
+          $ref: '#/components/responses/Problem409'
 
   /v1/rooms/{id}/timetable:
     get:
+      security: []
       summary: Get a room timetable
+      operationId: getRoomTimetable
+      tags: [Timetable]
+      description: Returns lessons scheduled in a room by canonical id or alias.
       parameters:
         - name: id
           in: path
@@ -484,10 +653,17 @@ paths:
                         items: { $ref: '#/components/schemas/Lesson' }
                     required: [id, lessons]
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '409':
+          $ref: '#/components/responses/Problem409'
 
   /v1/attendance/entries:
     get:
       summary: List attendance entries for the current user
+      operationId: listAttendanceEntries
+      tags: [Attendance]
+      description: Lists attendance entries for the current user with filters and cursor pagination.
       parameters:
         - $ref: '#/components/parameters/FromDate'
         - $ref: '#/components/parameters/ToDate'
@@ -530,8 +706,15 @@ paths:
                         nullable: true
                     required: [entries]
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
     patch:
       summary: Bulk update entries by id (set present true/false)
+      operationId: patchAttendanceEntries
+      tags: [Attendance]
+      description: Bulk-updates selected attendance entries and supports optional optimistic concurrency via ifMatch.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -564,15 +747,23 @@ paths:
                       updated: { type: integer }
                     required: [updated]
                 required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
         '409':
-          description: Version mismatch
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
+          $ref: '#/components/responses/Problem409'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/attendance:
     get:
       summary: Get full attendance state for the current user
+      operationId: getAttendanceState
+      tags: [Attendance]
+      description: Returns the full attendance state for the authenticated user.
       responses:
         '200':
           description: Current state
@@ -584,8 +775,15 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/AttendanceState' }
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
     put:
       summary: Replace full attendance state for the current user
+      operationId: replaceAttendanceState
+      tags: [Attendance]
+      description: Replaces the full attendance state for the authenticated user.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -606,10 +804,21 @@ paths:
                       saved: { type: boolean }
                     required: [saved]
                 required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/attendance/summary:
     get:
       summary: Summary stats for the current user
+      operationId: getAttendanceSummary
+      tags: [Attendance]
+      description: Computes attendance totals and percentage in the selected date range and optional subject.
       parameters:
         - $ref: '#/components/parameters/FromDate'
         - $ref: '#/components/parameters/ToDate'
@@ -628,20 +837,21 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/AttendanceSummary' }
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
 
   /v1/attendance/days/{dateISO}/present:
     post:
       summary: Set presence for all entries on a given day
+      operationId: setDayPresence
+      tags: [Attendance]
+      description: Sets presence for all attendance entries on a single day.
       parameters:
         - name: dateISO
           in: path
           required: true
           schema: { type: string, format: date }
-        - name: X-CSRF-Token
-          in: header
-          required: false
-          schema: { type: string }
-          description: Required when using cookie authentication. Must match csrf cookie value.
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -666,10 +876,19 @@ paths:
                       updated: { type: integer }
                     required: [updated]
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/attendance/plans:
     get:
       summary: List user lesson plans (FrekwencjaPage)
+      operationId: listAttendancePlans
+      tags: [Attendance]
+      description: Returns saved attendance plans for the current user.
       responses:
         '200':
           description: Plans
@@ -700,15 +919,21 @@ paths:
                                     subjectKey: { type: string }
                                     subjectLabel: { type: string }
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
       
   /v1/attendance/days/{dateISO}/apply-plan:
     post:
       summary: Fill a day from a saved plan and optionally set presence
+      operationId: applyAttendancePlan
+      tags: [Attendance]
+      description: Creates day entries from a saved plan and optionally sets presence values.
       parameters:
         - name: dateISO
           in: path
           required: true
           schema: { type: string, format: date }
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -736,10 +961,30 @@ paths:
                       overwritten: { type: boolean }
                     required: [created, overwritten]
                 required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '409':
+          $ref: '#/components/responses/Problem409'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/approvals:
     post:
+      security:
+        - CookieAuth: []
       summary: Create a one-time approval token to update an entry
+      operationId: createApprovalToken
+      tags: [Approvals]
+      description: Creates a one-time approval token for remote accept or deny flow.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -769,10 +1014,22 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/ApprovalToken' }
                 required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/approvals/{token}:
     get:
+      security: []
       summary: Get approval status
+      operationId: getApprovalStatus
+      tags: [Approvals]
+      description: Returns current status and expiry metadata for an approval token.
       parameters:
         - name: token
           in: path
@@ -795,13 +1052,24 @@ paths:
                       expiresAt: { type: string, format: date-time }
                     required: [status]
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '410':
+          $ref: '#/components/responses/Problem410'
+        '500':
+          $ref: '#/components/responses/Problem500'
     post:
+      security: []
       summary: Submit a decision for an approval token
+      operationId: decideApproval
+      tags: [Approvals]
+      description: Applies accept or deny decision to a pending approval token.
       parameters:
         - name: token
           in: path
           required: true
           schema: { type: string }
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -826,15 +1094,25 @@ paths:
                       status: { type: string, enum: [accepted, denied] }
                     required: [status]
                 required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
         '409':
-          description: Already decided
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
+          $ref: '#/components/responses/Problem409'
+        '410':
+          $ref: '#/components/responses/Problem410'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/overrides:
     get:
       summary: Read subject and teacher name overrides
+      operationId: getOverrides
+      tags: [Overrides]
+      description: Returns subject and teacher name override maps.
       security: []
       responses:
         '200':
@@ -847,8 +1125,17 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/Overrides' }
                 required: [ok, data]
+        '500':
+          $ref: '#/components/responses/Problem500'
     put:
+      security:
+        - CookieAuth: []
       summary: Replace overrides (admin)
+      operationId: replaceOverrides
+      tags: [Overrides]
+      description: Replaces override maps for subjects and teacher names (admin).
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -869,10 +1156,26 @@ paths:
                       saved: { type: boolean }
                     required: [saved]
                 required: [ok, data]
+        '403':
+          description: Admin required
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/jobs/timetable-scrape:
     post:
+      security:
+        - CookieAuth: []
       summary: Start an async job to refresh timetable data (admin-only)
+      operationId: startTimetableScrapeJob
+      tags: [Jobs]
+      description: Starts or reuses an asynchronous timetable scraping job (admin).
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       responses:
         '202':
           description: Job accepted
@@ -890,9 +1193,25 @@ paths:
                       status: { type: string, enum: [queued, running, succeeded, failed, timeout] }
                     required: [jobId, statusUrl, status]
                 required: [ok, data]
+        '403':
+          description: Admin required
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '500':
+          $ref: '#/components/responses/Problem500'
   /v1/jobs/articles-scrape:
     post:
+      security:
+        - CookieAuth: []
       summary: Start an async job to refresh articles (admin-only)
+      operationId: startArticlesScrapeJob
+      tags: [Jobs]
+      description: Starts or reuses an asynchronous article scraping job (admin).
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       responses:
         '202':
           description: Job accepted
@@ -910,9 +1229,22 @@ paths:
                       status: { type: string, enum: [queued, running, succeeded, failed, timeout] }
                     required: [jobId, statusUrl, status]
                 required: [ok, data]
+        '403':
+          description: Admin required
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '500':
+          $ref: '#/components/responses/Problem500'
   /v1/jobs/{jobId}:
     get:
+      security: []
       summary: Get job status
+      operationId: getJobStatus
+      tags: [Jobs]
+      description: Returns current state and metadata for an asynchronous job.
       parameters:
         - name: jobId
           in: path
@@ -929,10 +1261,19 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/JobStatus' }
                 required: [ok, data]
+        '404':
+          $ref: '#/components/responses/Problem404'
 
   /v1/refresh:
     post:
+      security:
+        - CookieAuth: []
       summary: Synchronously refresh timetable data using the scraper (admin-only)
+      operationId: refreshTimetableSync
+      tags: [Maintenance]
+      description: Runs synchronous timetable refresh and returns scraper result details (admin).
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       responses:
         '200':
           description: Scrape finished successfully
@@ -951,6 +1292,15 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '429':
+          $ref: '#/components/responses/Problem429'
+        '403':
+          description: Admin required
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '500':
           description: Error during scraping
           content:
@@ -959,7 +1309,12 @@ paths:
 
   /v1/timetable/backups:
     get:
+      security:
+        - CookieAuth: []
       summary: List available timetable backups (admin-only)
+      operationId: listTimetableBackups
+      tags: [Maintenance]
+      description: Lists available timetable backup files with size and timestamps (admin).
       responses:
         '200':
           description: Backups
@@ -973,10 +1328,26 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/BackupEntry' }
                 required: [ok, data]
+        '403':
+          description: Admin required
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/timetable/restore:
     post:
+      security:
+        - CookieAuth: []
       summary: Restore timetable_data.json from a selected backup (admin-only)
+      operationId: restoreTimetableBackup
+      tags: [Maintenance]
+      description: Restores timetable data from a selected backup file (admin).
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
@@ -1006,15 +1377,29 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: Admin required
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          $ref: '#/components/responses/Problem401'
         '404':
           description: Backup not found
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          $ref: '#/components/responses/Problem500'
 
   /v1/apikey:
     get:
+      security:
+        - CookieAuth: []
       summary: Get metadata of current user's API key (or admin API key)
+      operationId: getApiKeyMeta
+      tags: [ApiKeys]
+      description: Returns metadata of the current user API key without exposing the full secret.
       responses:
         '200':
           description: API key metadata
@@ -1026,16 +1411,21 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/ApiKeyMeta' }
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '404':
+          $ref: '#/components/responses/Problem404'
 
   /v1/apikey/regenerate:
     post:
+      security:
+        - CookieAuth: []
       summary: Regenerate the API key for the current user (or admin)
+      operationId: regenerateApiKey
+      tags: [ApiKeys]
+      description: Regenerates API key for the current user and invalidates the previous key.
       parameters:
-        - name: X-CSRF-Token
-          in: header
-          required: false
-          schema: { type: string }
-          description: Required when using cookie authentication. Must match csrf cookie value.
+        - $ref: '#/components/parameters/CsrfToken'
       responses:
         '200':
           description: New key
@@ -1047,3 +1437,9 @@ paths:
                   ok: { type: boolean }
                   data: { $ref: '#/components/schemas/ApiKeyRotateData' }
                 required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'

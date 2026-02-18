@@ -60,6 +60,7 @@ import { buildPlanNameMap, ensureUniquePlanName, formatCreatedAt } from '@/featu
 import AbsencePlanner from '@/features/attendance/components/AbsencePlanner';
 import { DayAttendance } from '@/features/attendance/components/DayAttendance';
 import { PlanFillMenu } from '@/features/attendance/components/PlanFillMenu';
+import { DataFileSchema, fetchJsonValidated } from '@/lib/api';
 
 function ManageTools({
   state,
@@ -301,10 +302,7 @@ type Lesson = ScheduleLesson;
 async function fetchSchoolData(): Promise<TimetableData> {
   // plik w /public, Vite serwuje go z /timetable_data.json
   const base = (import.meta as unknown as { env?: { BASE_URL?: string } })?.env?.BASE_URL ?? "/";
-  const res = await fetch(`${base}timetable_data.json?t=${Date.now()}`);
-  if (!res.ok) throw new Error("Nie udało się pobrać planu szkoły");
-  const data = await res.json();
-  return data as TimetableData;
+  return fetchJsonValidated(`${base}timetable_data.json`, DataFileSchema, { cache: 'no-cache' });
 }
 
 type SchoolImportProps = {

@@ -43,13 +43,16 @@ function isSameOriginRequest(req, origin) {
   }
 }
 
-export function createAuthCookieOptions(isProd) {
+export function createAuthCookieOptions(isProd, maxAgeMs) {
+  const resolvedMaxAge = Number.isFinite(maxAgeMs) && maxAgeMs > 0
+    ? maxAgeMs
+    : 30 * 24 * 3600 * 1000
   return {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
     secure: isProd,
-    maxAge: 7 * 24 * 3600 * 1000,
+    maxAge: resolvedMaxAge,
   }
 }
 
@@ -93,10 +96,10 @@ export function applySecurityMiddleware(app, config) {
     const directives = {
       'default-src': ["'self'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
       'script-src': ["'self'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
-      'style-src': ["'self'", "'unsafe-inline'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl', 'https://fonts.googleapis.com'],
       'img-src': ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
       'connect-src': ["'self'", 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
-      'font-src': ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl'],
+      'font-src': ["'self'", 'data:', 'https://zse-zdwola.pl', 'https://*.zse-zdwola.pl', 'https://fonts.gstatic.com'],
       'frame-src': [
         "'self'",
         'https://zse-zdwola.pl',
@@ -111,19 +114,19 @@ export function applySecurityMiddleware(app, config) {
   }
 
   const isDevEnv = config.nodeEnv !== 'production'
-  app.use((req, res, next) => {
-    const middleware = cors({
-      origin: (origin, cb) => {
-        if (!origin) return cb(null, true)
-        if (config.allowedOrigins.includes(origin)) return cb(null, true)
-        if (isDevEnv && isDevOriginAllowed(origin)) return cb(null, true)
-        if (isSameOriginRequest(req, origin)) return cb(null, true)
-        return cb(new Error('cors.not_allowed'))
+  const corsMiddleware = cors((req, cb) => {
+    cb(null, {
+      origin: (origin, originCb) => {
+        if (!origin) return originCb(null, true)
+        if (config.allowedOrigins.includes(origin)) return originCb(null, true)
+        if (isDevEnv && isDevOriginAllowed(origin)) return originCb(null, true)
+        if (isSameOriginRequest(req, origin)) return originCb(null, true)
+        return originCb(new Error('cors.not_allowed'))
       },
       credentials: true,
     })
-    return middleware(req, res, next)
   })
+  app.use(corsMiddleware)
 
   app.use(express.json({ limit: '1mb' }))
   app.use(cookieParser())

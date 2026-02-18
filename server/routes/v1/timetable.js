@@ -67,7 +67,7 @@ export function registerTimetableRoutes(v1, {
         const fromRef = g && (String(g.id || g.name || '')).toLowerCase()
         if (fromRef) return fromRef
         const subj = String(lesson && lesson.subject || '').toLowerCase()
-        const m = subj.match(/(?:^|[\s\-])(\d+\/\d+)(?:$|\b)/)
+        const m = subj.match(/(?:^|[^\w])(\d+\/\d+)(?=$|[^\w])/)
         return m ? m[1] : null
       }
       filtered = lessons.filter((l) => {

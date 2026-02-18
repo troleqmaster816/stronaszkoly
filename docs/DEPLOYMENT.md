@@ -34,6 +34,11 @@ Environment variables (systemd-managed):
 - `ADMIN_PASS=<secure_password>`
 - `ALLOWED_ORIGINS=https://szkola.tkch.eu`
 - `PYTHON_PATH=/opt/szkola/venv/bin/python`
+- `REGISTRATION_ENABLED=false` (zalecane w produkcji)
+- `SESSION_TTL_MS=2592000000` (30 dni, sliding)
+- `SESSION_CLEANUP_INTERVAL_MS=900000` (15 min)
+- `SESSION_MAX=10000`
+- `AUTH_COOKIE_MAX_AGE_MS=2592000000` (spójne z TTL sesji)
 
 Python venv for scrapers:
 
@@ -61,6 +66,11 @@ Environment=ADMIN_USER=admin
 Environment=ADMIN_PASS=********
 Environment=ALLOWED_ORIGINS=https://szkola.tkch.eu
 Environment=PYTHON_PATH=/opt/szkola/venv/bin/python
+Environment=REGISTRATION_ENABLED=false
+Environment=SESSION_TTL_MS=2592000000
+Environment=SESSION_CLEANUP_INTERVAL_MS=900000
+Environment=SESSION_MAX=10000
+Environment=AUTH_COOKIE_MAX_AGE_MS=2592000000
 ExecStart=/usr/bin/node server/server.js
 Restart=on-failure
 ```
@@ -103,17 +113,13 @@ sudo certbot renew --dry-run
 
 ## Content Security Policy (CSP)
 
-In production, the app sends a strict CSP via `helmet` configured in `server/server.js`. It allows:
+In production, the app sends a CSP via `helmet` configured in `server/middleware/security.js`. It allows app assets from `https://zse-zdwola.pl` domains and fonts from Google (`fonts.googleapis.com`, `fonts.gstatic.com`).
 
-- Tailwind CDN script: `https://cdn.tailwindcss.com`
-- Assets from `https://zse-zdwola.pl` and all subdomains
-- Inline styles for initial page style
-
-To allow additional domains (images, scripts, fonts, etc.), extend the CSP directives in `server/server.js` accordingly and restart the service.
+To allow additional domains (images, scripts, fonts, etc.), extend CSP directives in `server/middleware/security.js` and restart the service.
 
 ## Health and Diagnostics
 
-- Health: `GET /v1/health` → `{ ok: true }`
+- Health: `GET /v1/health` → `{ ok: true, data: { status: "ok" } }`
 - Swagger (if present): `/docs`
 - Logs: `sudo journalctl -u szkola.service -f`
 
@@ -182,3 +188,4 @@ sudo chown -R szkola:szkola /opt/szkola
 - Firewall: ensure ports 80/443 are open; internal app listens on 8787.
 - Cookies are `Secure` in production; use HTTPS.
 - CORS is restricted to `ALLOWED_ORIGINS`; add more if required.
+- Runtime artifacts (pip markers, timetable backups) are stored under `server/runtime/` and are not publicly served.

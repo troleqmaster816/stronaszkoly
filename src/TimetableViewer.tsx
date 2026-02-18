@@ -1,11 +1,11 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { CalendarDays, Printer, Share2, Upload, Info, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
-import type { Overrides, Lesson, RefTables } from '@/types/schedule';
+import type { Lesson, RefTables } from '@/types/schedule';
 import type { DataFile } from '@/lib/api';
 import { cmpDay, cmpLesson, idToKind, prettyKind, extractHalfMark, normalizeSubjectKey, stripHalfMark } from '@/lib/schedule';
-import { DataFileSchema, OverridesSchema, fetchJsonValidated } from '@/lib/api';
 import { useHashId } from '@/features/timetable/hooks/useHashId';
+import { useTimetableData } from '@/features/timetable/hooks/useTimetableData';
 import { GridView } from '@/features/timetable/components/GridView';
 import type { TimetableDensity } from '@/features/timetable/components/GridView';
 import { ListView } from '@/features/timetable/components/ListView';
@@ -13,205 +13,36 @@ import { EntityPicker } from '@/features/timetable/components/EntityPicker';
 import { FiltersBar } from '@/features/timetable/components/FiltersBar';
 import { AnimatedBackdrop } from '@/features/timetable/components/AnimatedBackdrop';
 import { extractRoomCode, formatRoomDisplay } from '@/features/timetable/lib/roomDisplay';
+import {
+  compactGroupLabel,
+  compactRoomLabel,
+  computeAdaptiveLayoutProfile,
+  getAvailableShellWidth,
+  type ChipLayoutMode,
+  type LabelMode,
+} from '@/features/timetable/lib/layoutProfile';
+import {
+  compactTeacherLabel,
+  resolveTeacherOverrideKey,
+  type TeacherOverrideEntry,
+} from '@/features/timetable/lib/teacherOverrides';
 import { useAuth } from '@/features/auth/useAuth';
 import { useToast } from '@/components/ui/toast';
+import { apiFetch } from '@/lib/apiClient';
 import { readErrorMessage } from '@/lib/http';
 
 const AdminPanel = React.lazy(() => import('@/features/timetable/components/AdminPanel'))
-
-function compactTeacherLabel(label: string): string {
-  const trimmed = (label || '').trim()
-  if (!trimmed) return trimmed
-  if (trimmed.length <= 6) return trimmed
-  const parts = trimmed.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) {
-    const initials = parts.map((p) => p[0]).join('').toUpperCase()
-    if (initials.length >= 2 && initials.length <= 6) return initials
-  }
-  return trimmed.slice(0, 6).toUpperCase()
-}
-
-function compactRoomLabel(label: string): string {
-  const trimmed = (label || '').trim()
-  const base = extractRoomCode(trimmed) || trimmed
-  return base.length > 8 ? base.slice(0, 8) : base
-}
-
-function compactGroupLabel(label: string): string {
-  const cleaned = (label || '').replace(/\s*\(?\d+\/\d+\)?\s*$/i, '').trim()
-  return cleaned || (label || '').trim()
-}
-
-type ChipLayoutMode = 'inline' | 'stacked'
-type LabelMode = 'full' | 'compact'
-type TeacherOverrideEntry = { id: string | null; shortName: string; originalName: string }
-
-function decodeMaybe(value: string): string {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
-function isTeacherShortName(value: string): boolean {
-  return /^[A-ZĄĆĘŁŃÓŚŹŻ0-9]{1,8}$/u.test((value || '').trim())
-}
-
-function getTeacherShortFromId(id: string): string {
-  const decoded = decodeMaybe((id || '').trim())
-  const withoutPrefix = decoded.replace(/^n/i, '').trim()
-  if (isTeacherShortName(withoutPrefix)) return withoutPrefix
-  return ''
-}
-
-function resolveTeacherOverrideKey(args: {
-  teacherId: string
-  teacherLabel: string
-  overrideKeys: Set<string>
-}): string {
-  const { teacherId, teacherLabel, overrideKeys } = args
-  const label = (teacherLabel || '').trim()
-  const id = (teacherId || '').trim()
-  const shortFromId = getTeacherShortFromId(id)
-  const candidates = [label, shortFromId, id, decodeMaybe(id)].filter(Boolean)
-  for (const c of candidates) {
-    if (overrideKeys.has(c)) return c
-  }
-  if (isTeacherShortName(label)) return label
-  if (shortFromId) return shortFromId
-  return label || id
-}
-
-type AdaptiveLayoutProfile = {
-  density: TimetableDensity
-  chipLayoutMode: ChipLayoutMode
-  labelMode: LabelMode
-  shellMaxWidth: number
-  cellMinPx: number
-}
-
-function getAvailableShellWidth(viewportWidth: number): number {
-  const outerGutter = viewportWidth >= 1920 ? 56 : viewportWidth >= 1440 ? 44 : 32
-  return Math.max(1024, viewportWidth - outerGutter)
-}
-
-let textMeasureCanvas: HTMLCanvasElement | null = null
-
-function measureTextPx(text: string, sizePx: number, weight = 600): number {
-  const value = (text || '').trim()
-  if (!value) return 0
-  if (typeof document === 'undefined') return Math.ceil(value.length * sizePx * 0.58)
-  if (!textMeasureCanvas) textMeasureCanvas = document.createElement('canvas')
-  const ctx = textMeasureCanvas.getContext('2d')
-  if (!ctx) return Math.ceil(value.length * sizePx * 0.58)
-  ctx.font = `${weight} ${sizePx}px "Space Grotesk", system-ui, sans-serif`
-  return Math.ceil(ctx.measureText(value).width)
-}
-
-function chipWidthPx(label: string, sizePx: number, padX: number): number {
-  return measureTextPx(label, sizePx, 600) + padX * 2 + 14
-}
-
-function computeAdaptiveLayoutProfile(args: {
-  viewportWidth: number
-  dayCount: number
-  lessons: Lesson[]
-}): AdaptiveLayoutProfile {
-  const { viewportWidth, dayCount, lessons } = args
-  const available = getAvailableShellWidth(viewportWidth)
-  const safeDays = Math.max(1, dayCount)
-  const minShell = safeDays <= 3 ? 980 : safeDays === 4 ? 1120 : 1240
-
-  const options: Array<{
-    density: TimetableDensity
-    chipLayoutMode: ChipLayoutMode
-    labelMode: LabelMode
-    chipFontPx: number
-    chipPadX: number
-    subjectFontPx: number
-    cardPadX: number
-  }> = [
-    { density: 'comfortable', chipLayoutMode: 'inline', labelMode: 'full', chipFontPx: 11, chipPadX: 8, subjectFontPx: 15, cardPadX: 10 },
-    { density: 'compact', chipLayoutMode: 'inline', labelMode: 'compact', chipFontPx: 11, chipPadX: 7, subjectFontPx: 14, cardPadX: 8 },
-    { density: 'tight', chipLayoutMode: 'stacked', labelMode: 'compact', chipFontPx: 11, chipPadX: 6, subjectFontPx: 14, cardPadX: 8 },
-  ]
-
-  let fallback: AdaptiveLayoutProfile | null = null
-  for (const opt of options) {
-    let maxCard = 232
-    for (const l of lessons) {
-      const classFull = l.group?.name ?? ''
-      const classLabel = compactGroupLabel(classFull)
-      const teacherFull = l.teacher?.name ?? ''
-      const roomRaw = l.room?.name ?? ''
-      const roomBase = extractRoomCode(roomRaw) || roomRaw.replace(/^(?:Sala|S)\.?\s*/i, '').trim() || roomRaw
-      const teacherLabel = opt.labelMode === 'compact' ? compactTeacherLabel(teacherFull) : teacherFull
-      const roomLabel = opt.labelMode === 'compact' ? compactRoomLabel(roomBase) : roomBase
-
-      const classW = l.group ? chipWidthPx(classLabel, opt.chipFontPx, opt.chipPadX) : 0
-      const teacherW = l.teacher ? chipWidthPx(teacherLabel, opt.chipFontPx, opt.chipPadX) : 0
-      const roomW = l.room ? chipWidthPx(roomLabel, opt.chipFontPx, opt.chipPadX) : 0
-
-      const chips = [classW, teacherW, roomW].filter((w) => w > 0)
-      const gap = 6
-      let chipsRowWidth = 0
-      if (opt.chipLayoutMode === 'inline') {
-        chipsRowWidth = chips.length ? chips.reduce((a, b) => a + b, 0) + Math.max(0, chips.length - 1) * gap : 0
-      } else {
-        const top = classW
-        const bottomParts = [teacherW, roomW].filter((w) => w > 0)
-        const bottom = bottomParts.length ? bottomParts.reduce((a, b) => a + b, 0) + Math.max(0, bottomParts.length - 1) * gap : 0
-        chipsRowWidth = Math.max(top, bottom)
-      }
-
-      const subject = stripHalfMark(l.subject) || l.subject || ''
-      const subjectW = measureTextPx(subject, opt.subjectFontPx, 700) + (extractHalfMark(l.subject) ? 38 : 0)
-      const timeW = measureTextPx(l.time || '', 11, 500)
-      const rightMin = Math.max(136, subjectW, timeW, chipsRowWidth)
-      const cardW = opt.cardPadX * 2 + 32 + 10 + rightMin
-      if (cardW > maxCard) maxCard = cardW
-    }
-
-    const required = Math.ceil(maxCard * safeDays + 34)
-    const shell = Math.min(available, Math.max(minShell, required))
-    const fits = required <= available
-    const fittedCellMin = fits
-      ? Math.ceil(maxCard)
-      : Math.max(200, Math.floor((available - 34) / safeDays))
-    const profile: AdaptiveLayoutProfile = {
-      density: opt.density,
-      chipLayoutMode: opt.chipLayoutMode,
-      labelMode: opt.labelMode,
-      shellMaxWidth: shell,
-      cellMinPx: Math.max(200, fittedCellMin),
-    }
-    fallback = profile
-    if (fits) return profile
-  }
-
-  return fallback ?? {
-    density: 'tight',
-    chipLayoutMode: 'stacked',
-    labelMode: 'compact',
-    shellMaxWidth: available,
-    cellMinPx: Math.max(220, Math.floor((available - 34) / safeDays)),
-  }
-}
-
 
 // ==========================================
 // Komponent – główny (DARK ONLY)
 // ==========================================
 export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayActiveChange?: (active: boolean) => void }) {
-  const [data, setData] = useState<DataFile | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hashId, setHashId] = useHashId();
   const [adminOpen, setAdminOpen] = useState(false);
-  const [overrides, setOverrides] = useState<Overrides>({ subjectOverrides: {}, teacherNameOverrides: {} });
-  const { isAuth, login, logout } = useAuth()
+  const { data, setData, error, setError, loading, overrides, setOverrides, loadData, loadOverrides } = useTimetableData({ setHashId })
+  const { isAuth, me, login, logout } = useAuth()
+  const isAdmin = me?.id === 'admin'
   const toast = useToast()
   // loginForm removed; handle form values from event target
   const [subjectFilter, setSubjectFilter] = useState("");
@@ -253,42 +84,6 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // swipeStart removed; swipe gestures not used currently
   const shellClassName = 'mx-auto px-4'
-
-  // wczytaj JSON
-  const loadData = useCallback(async () => {
-    try {
-      setError(null);
-      const json = await fetchJsonValidated(`/timetable_data.json?t=${Date.now()}`, DataFileSchema);
-      setData(json);
-      if (!window.location.hash) {
-        const saved = localStorage.getItem('timetable.lastPlanId');
-        const hasSaved = saved && json.timetables && Object.prototype.hasOwnProperty.call(json.timetables, saved);
-        const fallback = Object.keys(json.classes ?? {})[0] ?? null;
-        const toUse = (hasSaved ? saved : fallback) as string | null;
-        if (toUse) setHashId(toUse);
-      }
-    } catch {
-      setError("Nie udało się pobrać pliku /timetable_data.json. Możesz wczytać go ręcznie poniżej.");
-    }
-  }, [setHashId]);
-
-  const loadOverrides = useCallback(async () => {
-    try {
-      const res = await fetch(`/v1/overrides`, { cache: "no-store", credentials: 'include' });
-      if (!res.ok) return;
-      const j = await res.json();
-      if (j?.data) {
-        const parsed = OverridesSchema.safeParse(j.data)
-        if (parsed.success) setOverrides(parsed.data)
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load initial data
-  useEffect(() => {
-    setLoading(true)
-    Promise.all([loadData(), loadOverrides()]).finally(() => setLoading(false))
-  }, [loadData, loadOverrides])
 
   // Load persisted UI prefs - moved to lazy initializers above
 
@@ -725,8 +520,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch("/v1/refresh", { method: "POST", headers: { 'X-CSRF-Token': csrf } });
+      const res = await apiFetch("/v1/refresh", { method: "POST" });
       if (!res.ok) {
         const msg = await readErrorMessage(res, 'Nie udało się uruchomić odświeżania');
         toast.error(`Błąd podczas odświeżania: ${msg}`);
@@ -743,14 +537,11 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
   const handleSaveOverrides = async () => {
     try {
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch('/v1/overrides', {
+      const res = await apiFetch('/v1/overrides', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrf,
         },
-        credentials: 'include',
         body: JSON.stringify(overrides),
       })
       if (!res.ok) {
@@ -875,12 +666,14 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                 <button onClick={handleShare} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800">
                   <Share2 className="w-4 h-4" /> Udostępnij
                 </button>
-                <button
-                  onClick={() => setAdminOpen(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800"
-                >
-                  Panel admina
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setAdminOpen(true)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800"
+                  >
+                    Panel admina
+                  </button>
+                )}
               </>
             )}
             {isMobile && (
@@ -1125,7 +918,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       )}
 
       {/* Panel admina */}
-      {adminOpen && (
+      {adminOpen && isAdmin && (
         <React.Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 text-zinc-100">Ładowanie panelu administratora…</div>}>
           <AdminPanel
             isAuth={isAuth}

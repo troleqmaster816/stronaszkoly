@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { apiFetch } from '@/lib/apiClient'
 import type {
   DataFile as ScheduleDataFile,
   Lesson as ScheduleLesson,
@@ -40,7 +41,7 @@ export type Lesson = ScheduleLesson
 export type Overrides = ScheduleOverrides
 
 export async function fetchJsonValidated<T>(url: string, schema: z.ZodSchema<T>, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, cache: 'no-store' })
+  const res = await apiFetch(url, { cache: 'no-store', ...init })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const json = await res.json()
   const parsed = schema.safeParse(json)

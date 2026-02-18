@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export function detectPythonCommand() {
@@ -73,16 +73,17 @@ function getRequirementsHash(requirementsPath) {
   }
 }
 
-export async function ensurePythonDepsInstalled({ pythonCmd, requirementsPath, scriptsDir, publicDir, pipTimeoutMs }) {
+export async function ensurePythonDepsInstalled({ pythonCmd, requirementsPath, scriptsDir, pipMarkersDir, pipTimeoutMs }) {
   const hash = getRequirementsHash(requirementsPath)
   const markerName = hash ? `.pip_installed_${hash}.txt` : '.pip_installed.txt'
-  const markerPath = join(publicDir, markerName)
+  const markerPath = join(pipMarkersDir, markerName)
   if (existsSync(markerPath)) return { skipped: true }
   if (!existsSync(requirementsPath)) return { skipped: true }
   const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', requirementsPath]
   const pip = await runCommand(pythonCmd, pipArgs, { cwd: scriptsDir, env: process.env, timeoutMs: pipTimeoutMs })
   if (pip.timedOut) return { error: `pip timeout after ${pipTimeoutMs}ms` }
   if (pip.code !== 0) return { error: pip.stderr.slice(-4000) }
+  try { mkdirSync(pipMarkersDir, { recursive: true }) } catch {}
   try { writeFileSync(markerPath, String(Date.now()), 'utf8') } catch {}
   return { skipped: false }
 }

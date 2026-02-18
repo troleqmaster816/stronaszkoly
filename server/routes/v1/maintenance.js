@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 export function registerMaintenanceRoutes(v1, {
   requireAuth,
+  requireAdmin,
   requireCsrfIfCookieAuth,
   refreshLimiter,
   problem,
@@ -15,8 +16,7 @@ export function registerMaintenanceRoutes(v1, {
 }) {
   let isRunning = false
 
-  v1.post('/refresh', requireAuth, requireCsrfIfCookieAuth, refreshLimiter, async (req, res) => {
-    if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator')
+  v1.post('/refresh', requireAuth, requireAdmin, requireCsrfIfCookieAuth, refreshLimiter, async (req, res) => {
     if (isRunning) return problem(res, 409, 'jobs.already_running', 'Conflict', 'Scraper już działa')
 
     const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand()
@@ -35,7 +35,7 @@ export function registerMaintenanceRoutes(v1, {
         pythonCmd,
         requirementsPath: config.requirementsPath,
         scriptsDir: config.scriptsDir,
-        publicDir: config.publicDir,
+        pipMarkersDir: config.pipMarkersDir,
         pipTimeoutMs: config.pipTimeoutMs,
       })
       if (deps && deps.error) {
@@ -103,8 +103,7 @@ export function registerMaintenanceRoutes(v1, {
     }
   })
 
-  v1.get('/timetable/backups', requireAuth, (req, res) => {
-    if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator')
+  v1.get('/timetable/backups', requireAuth, requireAdmin, (req, res) => {
     try {
       if (!existsSync(config.timetableBackupsDir)) return res.json({ ok: true, data: [] })
       const list = readdirSync(config.timetableBackupsDir)
@@ -121,8 +120,7 @@ export function registerMaintenanceRoutes(v1, {
     }
   })
 
-  v1.post('/timetable/restore', requireAuth, requireCsrfIfCookieAuth, (req, res) => {
-    if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator')
+  v1.post('/timetable/restore', requireAuth, requireAdmin, requireCsrfIfCookieAuth, (req, res) => {
     try {
       const body = req.body && typeof req.body === 'object' ? req.body : {}
       const filename = String(body.filename || '')

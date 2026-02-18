@@ -1,11 +1,11 @@
-export function registerUserRoutes(v1, { loadDb, tokens, adminUser }) {
+export function registerUserRoutes(v1, { loadDb, sessionStore, adminUser }) {
   v1.get('/users/me', (req, res) => {
     const cookieToken = (req.cookies && req.cookies.auth) || null
-    const hasCookie = !!(cookieToken && tokens.has(cookieToken))
+    const userId = sessionStore.resolve(cookieToken, { touch: true })
+    const hasCookie = !!userId
     let user = null
     if (hasCookie) {
       const db = loadDb()
-      const userId = tokens.get(cookieToken)
       const hit = db.users.find((u) => u.id === userId)
       user = hit ? { id: hit.id, username: hit.username } : { id: 'admin', username: adminUser || 'admin' }
     }

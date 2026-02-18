@@ -179,10 +179,15 @@ export class ApiClient {
   }
 
   // Approvals
-  createApproval(body: { action: "toggle" | "set"; dateISO: string; entryId: string; present?: boolean }) {
+  createApproval(
+    body: { action: "toggle" | "set"; dateISO: string; entryId: string; present?: boolean },
+    idempotencyKey?: string,
+  ) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     return fetch(`${this.baseUrl}/v1/approvals`, {
       method: "POST",
-      headers: this.headers(),
+      headers: this.headers(headers),
       body: JSON.stringify(body),
     }).then(r => this.handle<ApiResponse<{ token: string; url: string; expiresAt: string }>>(r));
   }

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { readErrorMessage } from "@/lib/http";
+import { apiFetch } from "@/lib/apiClient";
 
 type HubProps = {
   navigate: (to: string) => void;
@@ -73,7 +74,7 @@ export default function Hub({ navigate }: HubProps) {
   };
   const loadSingleKey = async () => {
     try {
-      const res = await fetch('/v1/apikey', { credentials: 'include' });
+      const res = await apiFetch('/v1/apikey');
       const j = await res.json();
       if (j?.ok && j?.data) {
         setApiKeyMeta(j.data)
@@ -84,8 +85,7 @@ export default function Hub({ navigate }: HubProps) {
   };
   const regenSingleKey = async () => {
     try {
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch('/v1/apikey/regenerate', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
+      const res = await apiFetch('/v1/apikey/regenerate', { method: 'POST' });
       if (!res.ok) {
         toast.error(await readErrorMessage(res, 'Nie udało się zregenerować klucza API'))
         return
@@ -112,8 +112,7 @@ export default function Hub({ navigate }: HubProps) {
   const refreshTimetable = async () => {
     try {
       setTtBusy(true);
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch('/v1/refresh', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
+      const res = await apiFetch('/v1/refresh', { method: 'POST' });
       if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się uruchomić odświeżania')); return; }
       toast.success('Plan został odświeżony.');
     } finally {
@@ -123,7 +122,7 @@ export default function Hub({ navigate }: HubProps) {
 
   const loadBackups = async () => {
     try {
-      const res = await fetch('/v1/timetable/backups', { credentials: 'include' });
+      const res = await apiFetch('/v1/timetable/backups');
       const j = await res.json();
       setBackups(Array.isArray(j?.data) ? j.data : []);
     } catch { /* ignore */ }
@@ -131,8 +130,7 @@ export default function Hub({ navigate }: HubProps) {
 
   const restoreBackup = async (filename: string) => {
     try {
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, credentials: 'include', body: JSON.stringify({ filename }) });
+      const res = await apiFetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename }) });
       if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się przywrócić kopii')); return; }
       toast.success('Przywrócono wybrany plan.');
     } catch {
@@ -147,8 +145,7 @@ export default function Hub({ navigate }: HubProps) {
     };
     try {
       setArticlesBusy(true);
-      const csrf = document.cookie.split('; ').find((c) => c.startsWith('csrf='))?.split('=')[1] || '';
-      const res = await fetch('/v1/jobs/articles-scrape', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
+      const res = await apiFetch('/v1/jobs/articles-scrape', { method: 'POST' });
       if (!res.ok) { toast.error(await readErrorMessage(res, 'Nie udało się uruchomić zadania')); setArticlesBusy(false); return; }
       const j = await res.json();
       const jobId = j?.data?.jobId;
@@ -158,7 +155,7 @@ export default function Hub({ navigate }: HubProps) {
       const poll = async () => {
         if (!mountedRef.current) return;
         try {
-          const st = await fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' });
+          const st = await apiFetch(`/v1/jobs/${encodeURIComponent(jobId)}`);
           const jj = await st.json();
           const jobData = jj?.data;
           if (!mountedRef.current) return;

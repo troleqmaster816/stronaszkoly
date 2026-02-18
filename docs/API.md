@@ -17,9 +17,13 @@ Legacy `/api/*` wyłączone (HTTP 410). Używaj tylko prefiksu `/v1`.
 - Autoryzacja:
   - Single API key (zalecany dla aplikacji klienckich): dodaj nagłówek `Authorization: Bearer sk_...`
   - Sesja cookie (dla panelu w przeglądarce/WWW): po `POST /v1/login` otrzymasz cookie `auth` (httpOnly).
+  - Dla żądań modyfikujących przy autoryzacji cookie wymagany jest nagłówek `X-CSRF-Token` równy wartości cookie `csrf`.
 - Format odpowiedzi:
   - Sukces: `{ ok: true, data: any }`
   - Błąd (v1): `application/problem+json` (RFC7807-like) z polami `{ type, title, status, code, detail }`
+
+Health:
+- `GET /v1/health` → `{ ok: true, data: { status: "ok" } }`
 
 ## Klucz API (single-key)
 
@@ -45,10 +49,11 @@ Uwaga: w Postman/Insomnia wybierz Auth = "Bearer Token" i wstaw `sk_XXXX`.
 
 ## Autoryzacja kont (opcjonalnie)
 
-- `POST /v1/register` body `{ username, password }` → tworzy konto i loguje (cookie)
+- `POST /v1/register` body `{ username, password }` → tworzy konto i loguje (cookie), gdy rejestracja jest włączona (`REGISTRATION_ENABLED=true`)
 - `POST /v1/login` body `{ username, password }` → loguje (cookie)
 - `POST /v1/logout` → wylogowuje (czyści cookie)
 - `GET /v1/users/me` → `{ ok: true, data: { authenticated: boolean, user: { id, username } | null } }`
+- Sesja cookie ma TTL (domyślnie 30 dni) i działa w trybie sliding: każde poprawne użycie sesji odświeża termin wygaśnięcia.
 
 W trybie single-key do żądań zewnętrznych nie są potrzebne cookies – wystarczy nagłówek `Authorization: Bearer` z kluczem API.
 
@@ -115,7 +120,7 @@ Endpointy:
 - `POST /v1/attendance/days/{dateISO}/present` body `{ present: true|false }` → `{ ok: true, data: { updated } }`
 - `GET /v1/attendance/plans` → `{ ok: true, data: Plan[] }` (lista zapisanych planów)
 - `POST /v1/attendance/days/{dateISO}/apply-plan` body `{ planId, overwrite?: boolean, setPresent?: boolean }` → `{ ok: true, data: { created, overwritten } }`
-  - przy autoryzacji cookie wymagany nagłówek `X-CSRF-Token` równy wartości cookie `csrf`
+- Dla mutacji (`PUT /attendance`, `PATCH /attendance/entries`, `POST .../present`, `POST .../apply-plan`) przy auth cookie wymagany jest `X-CSRF-Token`.
 
 Przykłady:
 
@@ -160,13 +165,14 @@ Endpointy:
 - `POST /v1/approvals` (opcjonalny `Idempotency-Key`) → `201 { ok, data: { token, url, expiresAt } }`
 - `GET /v1/approvals/:token` → `{ ok, data: { status, createdAt, expiresAt } }`
 - `POST /v1/approvals/:token` body `{ decision: 'accept'|'deny' }` → `{ ok: true, data: { status } }` lub `409`
+- Przy autoryzacji cookie, mutacje (`POST /v1/approvals`, `POST /v1/approvals/:token`) wymagają `X-CSRF-Token`.
 
 Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wskazanego `entryId` w dniu `dateISO`.
 
 ## Overrides (nauczyciele/przedmioty)
 
 - Odczyt (publiczny): `GET /v1/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
-- Zapis (cookie auth): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true, data: { saved: true } }`
+- Zapis (cookie auth + admin): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true, data: { saved: true } }`
 
 ## Zadania i utrzymanie planu
 
@@ -176,6 +182,7 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 - `POST /v1/refresh` (admin) → synchroniczne odświeżenie planu przez scraper (`200|409|500`), przy sukcesie zwracane jest także `data` (jeśli scraper poda wynik strukturalny)
 - `GET /v1/timetable/backups` (admin) → `{ ok: true, data: { filename, size, mtime }[] }`
 - `POST /v1/timetable/restore` (admin) body `{ filename }` → `{ ok: true, data: { restored: true } }`
+- Endpointy administracyjne mutujące (`POST /v1/jobs/*`, `POST /v1/refresh`, `POST /v1/timetable/restore`) wymagają cookie auth, roli admin i `X-CSRF-Token`.
 
 ## Przykłady (JS fetch)
 
@@ -220,12 +227,13 @@ Nagłówki (v1):
 
 Rate limiting (obecnie):
 - `/v1/login` – limiter 20 żądań / 10 min
+- `/v1/register` – limiter 10 żądań / 10 min
 - `/v1/refresh` – limiter 10 żądań / 15 min
 
 ## Bezpieczeństwo i środowisko
 
 - Klucz API trzymaj w sekrecie. `POST /v1/apikey/regenerate` unieważnia poprzedni.
-- W dev Vite proxy ustawia CORS/połączenie z serwerem automatycznie; bezpośrednio na serwerze Express obowiązują zasady CORS z `server/server.js`.
+- W dev Vite proxy ustawia CORS/połączenie z serwerem automatycznie; bezpośrednio na serwerze Express obowiązują zasady CORS z `server/middleware/security.js`.
 - Zapis danych testowych jest w pliku `server/data.json` (ignorowany przez git).
 
 ## Zmiany i wersjonowanie

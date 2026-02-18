@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AuthContext, type AuthContextValue, type AuthResult, type AuthUser } from './authContext'
+import { apiFetch } from '@/lib/apiClient'
 import { readErrorMessage } from '@/lib/http'
 
 async function parseError(res: Response): Promise<string> {
@@ -13,7 +14,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshMe = useCallback(async () => {
     try {
-      const res = await fetch('/v1/users/me', { credentials: 'include' })
+      const res = await apiFetch('/v1/users/me')
       const j = await res.json().catch(() => ({}))
       const meData = j?.data
       if (res.ok && j?.ok && meData?.authenticated) {
@@ -34,10 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (username: string, password: string): Promise<AuthResult> => {
     try {
-      const res = await fetch('/v1/login', {
+      const res = await apiFetch('/v1/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ username, password }),
       })
       if (!res.ok) return { ok: false, error: await parseError(res) }
@@ -50,10 +50,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(async (username: string, password: string): Promise<AuthResult> => {
     try {
-      const res = await fetch('/v1/register', {
+      const res = await apiFetch('/v1/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ username, password }),
       })
       if (!res.ok) return { ok: false, error: await parseError(res) }
@@ -66,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/v1/logout', { method: 'POST', credentials: 'include' })
+      await apiFetch('/v1/logout', { method: 'POST' })
     } finally {
       setIsAuth(false)
       setMe(null)

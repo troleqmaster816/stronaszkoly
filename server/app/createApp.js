@@ -26,6 +26,7 @@ import {
 import { hashPassword, verifyPassword } from '../lib/passwords.js'
 import { createTimetableStore } from '../lib/timetableStore.js'
 import { createJobsStore } from '../lib/jobsStore.js'
+import { createSessionStore } from '../lib/sessionStore.js'
 import {
   detectPythonCommand,
   runCommand,
@@ -69,14 +70,19 @@ export function createApp(config) {
   const timetableStore = createTimetableStore({ timetableFilePath: config.timetableFilePath, ttlMs: config.timetableCacheTtlMs })
   const jobsStore = createJobsStore({ ttlMs: config.jobsTtlMs, max: config.jobsMax })
   jobsStore.startCleanupInterval()
+  const sessionStore = createSessionStore({
+    ttlMs: config.sessionTtlMs,
+    cleanupIntervalMs: config.sessionCleanupIntervalMs,
+    max: config.sessionMax,
+  })
+  sessionStore.startCleanupInterval()
 
-  const tokens = new Map()
-  const authCookieOpts = createAuthCookieOptions(config.isProd)
+  const authCookieOpts = createAuthCookieOptions(config.isProd, config.authCookieMaxAgeMs)
   const requireCsrfIfCookieAuth = createRequireCsrfIfCookieAuth(problem)
-  const { requireAuth, requireAuthOrApiKey, requireBearer } = createAuthMiddleware({
+  const { requireAuth, requireAuthOrApiKey, requireBearer, requireAdmin } = createAuthMiddleware({
     loadDb: dbStore.loadDb,
     saveDb: dbStore.saveDb,
-    tokens,
+    sessionStore,
     problem,
     findUserIdByApiKeyToken,
   })
@@ -86,7 +92,13 @@ export function createApp(config) {
     maxEntries: config.idempotencyMax,
   })
 
-  const { loginLimiter, refreshLimiter } = createAuthLimiters()
+  const { loginLimiter, refreshLimiter, registerLimiter } = createAuthLimiters()
+
+  try {
+    dbStore.ensureOverridesFile()
+  } catch (e) {
+    console.warn('[server] Failed to ensure overrides file:', e)
+  }
 
   const legacyApiCatchAll = (_req, res) => {
     return problem(res, 410, 'api.legacy_disabled', 'Gone', 'Legacy API disabled. Use /v1')
@@ -95,8 +107,9 @@ export function createApp(config) {
 
   const deps = {
     config,
-    tokens,
+    sessionStore,
     authCookieOpts,
+    isProd: config.isProd,
     adminUser: config.adminUser,
     adminPass: config.adminPass,
     adminLoginEnabled: config.adminLoginEnabled,
@@ -106,6 +119,7 @@ export function createApp(config) {
     requireAuth,
     requireAuthOrApiKey,
     requireBearer,
+    requireAdmin,
 
     ...dbStore,
     ...timetableStore,
@@ -132,6 +146,8 @@ export function createApp(config) {
     idempotencyMiddleware,
     loginLimiter,
     refreshLimiter,
+    registerLimiter,
+    registrationEnabled: config.registrationEnabled,
   }
 
   const v1 = createV1Router(deps)

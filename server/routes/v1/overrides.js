@@ -2,6 +2,7 @@ export function registerOverrideRoutes(v1, {
   loadOverrides,
   saveOverrides,
   requireAuth,
+  requireAdmin,
   requireCsrfIfCookieAuth,
   problem,
 }) {
@@ -14,9 +15,8 @@ export function registerOverrideRoutes(v1, {
     }
   })
 
-  v1.put('/overrides', requireAuth, requireCsrfIfCookieAuth, (req, res) => {
+  v1.put('/overrides', requireAuth, requireAdmin, requireCsrfIfCookieAuth, (req, res) => {
     try {
-      if (req.userId !== 'admin') return problem(res, 403, 'auth.forbidden', 'Forbidden', 'Tylko administrator')
       const { subjectOverrides, teacherNameOverrides } = req.body || {}
       const data = {
         subjectOverrides: subjectOverrides && typeof subjectOverrides === 'object' ? subjectOverrides : {},
