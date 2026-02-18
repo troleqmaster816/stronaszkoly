@@ -31,6 +31,7 @@ export function registerJobRoutes(v1, {
     })
 
     ;(async () => {
+      let timedOut = false
       try {
         job.status = 'running'
         job.startedAt = new Date().toISOString()
@@ -56,7 +57,10 @@ export function registerJobRoutes(v1, {
           timeoutMs: config.scraperTimeoutMs,
         })
         const runResult = parseStructuredJobOutput(run.stdout)
-        if (run.timedOut) throw new Error(`Scraper timeout after ${config.scraperTimeoutMs}ms`)
+        if (run.timedOut) {
+          timedOut = true
+          throw new Error(`Scraper timeout after ${config.scraperTimeoutMs}ms`)
+        }
         if (run.code !== 0) throw new Error((runResult && (runResult.detail || runResult.error)) || run.stderr.slice(-4000))
         if (runResult && runResult.ok === false) throw new Error(runResult.detail || runResult.error || 'Scraper failed')
 
@@ -65,7 +69,7 @@ export function registerJobRoutes(v1, {
         job.finishedAt = new Date().toISOString()
         job.result = runResult
       } catch (e) {
-        job.status = 'failed'
+        job.status = timedOut ? 'timeout' : 'failed'
         job.finishedAt = new Date().toISOString()
         job.error = String(e)
       } finally {
@@ -104,6 +108,7 @@ export function registerJobRoutes(v1, {
 
       ;(async () => {
         isArticleRunning = true
+        let timedOut = false
         try {
           job.status = 'running'
           job.startedAt = new Date().toISOString()
@@ -129,7 +134,10 @@ export function registerJobRoutes(v1, {
             timeoutMs: config.scraperTimeoutMs,
           })
           const runResult = parseStructuredJobOutput(run.stdout)
-          if (run.timedOut) throw new Error(`Scraper timeout after ${config.scraperTimeoutMs}ms`)
+          if (run.timedOut) {
+            timedOut = true
+            throw new Error(`Scraper timeout after ${config.scraperTimeoutMs}ms`)
+          }
           if (run.code !== 0) throw new Error((runResult && (runResult.detail || runResult.error)) || run.stderr.slice(-4000))
           if (runResult && runResult.ok === false) throw new Error(runResult.detail || runResult.error || 'Scraper failed')
 
@@ -137,7 +145,7 @@ export function registerJobRoutes(v1, {
           job.finishedAt = new Date().toISOString()
           job.result = runResult
         } catch (e) {
-          job.status = 'failed'
+          job.status = timedOut ? 'timeout' : 'failed'
           job.finishedAt = new Date().toISOString()
           job.error = String(e)
         } finally {

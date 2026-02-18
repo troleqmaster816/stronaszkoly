@@ -68,7 +68,8 @@ export function getUserApiKeyMeta(user) {
     preview: user.apiKeyPreview || null,
     createdAt: user.apiKeyCreatedAt || null,
     lastUsedAt: user.apiKeyLastUsedAt || null,
-    format: hasStructured ? 'structured' : hasLegacy ? 'legacy' : null,
+    format: hasStructured ? 'structured' : null,
+    requiresRotation: !hasStructured && hasLegacy,
   }
 }
 
@@ -80,7 +81,8 @@ export function getAdminApiKeyMeta(db) {
     preview: db.adminApiKeyPreview || null,
     createdAt: db.adminApiKeyCreatedAt || null,
     lastUsedAt: db.adminApiKeyLastUsedAt || null,
-    format: hasStructured ? 'structured' : hasLegacy ? 'legacy' : null,
+    format: hasStructured ? 'structured' : null,
+    requiresRotation: !hasStructured && hasLegacy,
   }
 }
 
@@ -111,17 +113,6 @@ export function findUserIdByApiKeyToken(db, token) {
       return { userId: 'admin', changed }
     }
   }
-
-  const tokenHash = hashApiKeySecret(raw)
-  const userLegacy = db.users.find((u) => u && typeof u.legacyApiKeyHash === 'string' && safeHashEqHex(u.legacyApiKeyHash, tokenHash))
-  if (userLegacy) {
-    changed = touchLastUsedField(userLegacy, 'apiKeyLastUsedAt') || changed
-    return { userId: userLegacy.id, changed }
-  }
-  if (typeof db.adminLegacyApiKeyHash === 'string' && safeHashEqHex(db.adminLegacyApiKeyHash, tokenHash)) {
-    changed = touchLastUsedField(db, 'adminApiKeyLastUsedAt') || changed
-    return { userId: 'admin', changed }
-  }
   return { userId: null, changed }
 }
 
@@ -134,6 +125,7 @@ export function rotateUserApiKey(db, userId) {
     db.adminApiKeyCreatedAt = record.createdAt
     db.adminApiKeyLastUsedAt = null
     delete db.adminLegacyApiKeyHash
+    delete db.adminApiKeyNeedsRotation
   } else {
     const user = db.users.find((u) => u.id === userId)
     if (!user) return null
@@ -143,6 +135,7 @@ export function rotateUserApiKey(db, userId) {
     user.apiKeyCreatedAt = record.createdAt
     user.apiKeyLastUsedAt = null
     delete user.legacyApiKeyHash
+    delete user.apiKeyNeedsRotation
   }
   return record
 }
@@ -177,8 +170,10 @@ export function migrateDbSchema(db) {
       if (parsed) {
         user.apiKeyId = parsed.keyId
         user.apiKeyHash = hashApiKeySecret(parsed.secret)
+        delete user.apiKeyNeedsRotation
       } else {
         user.legacyApiKeyHash = hashApiKeySecret(legacy)
+        user.apiKeyNeedsRotation = true
       }
       user.apiKeyPreview = user.apiKeyPreview || makeApiKeyPreview(legacy)
       user.apiKeyCreatedAt = user.apiKeyCreatedAt || Date.now()
@@ -193,6 +188,16 @@ export function migrateDbSchema(db) {
       user.apiKeyCreatedAt = Date.now()
       changed = true
     }
+    const hasStructured = !!(user.apiKeyId && user.apiKeyHash)
+    const hasLegacy = !!user.legacyApiKeyHash
+    if (!hasStructured && hasLegacy && user.apiKeyNeedsRotation !== true) {
+      user.apiKeyNeedsRotation = true
+      changed = true
+    }
+    if ((hasStructured || !hasLegacy) && user.apiKeyNeedsRotation) {
+      delete user.apiKeyNeedsRotation
+      changed = true
+    }
   }
 
   if (typeof db.adminApiKey === 'string' && db.adminApiKey.trim()) {
@@ -201,8 +206,10 @@ export function migrateDbSchema(db) {
     if (parsed) {
       db.adminApiKeyId = parsed.keyId
       db.adminApiKeyHash = hashApiKeySecret(parsed.secret)
+      delete db.adminApiKeyNeedsRotation
     } else {
       db.adminLegacyApiKeyHash = hashApiKeySecret(legacy)
+      db.adminApiKeyNeedsRotation = true
     }
     db.adminApiKeyPreview = db.adminApiKeyPreview || makeApiKeyPreview(legacy)
     db.adminApiKeyCreatedAt = db.adminApiKeyCreatedAt || Date.now()
@@ -216,6 +223,18 @@ export function migrateDbSchema(db) {
   if (!db.adminApiKeyCreatedAt && (db.adminApiKeyHash || db.adminLegacyApiKeyHash)) {
     db.adminApiKeyCreatedAt = Date.now()
     changed = true
+  }
+  {
+    const hasStructured = !!(db.adminApiKeyId && db.adminApiKeyHash)
+    const hasLegacy = !!db.adminLegacyApiKeyHash
+    if (!hasStructured && hasLegacy && db.adminApiKeyNeedsRotation !== true) {
+      db.adminApiKeyNeedsRotation = true
+      changed = true
+    }
+    if ((hasStructured || !hasLegacy) && db.adminApiKeyNeedsRotation) {
+      delete db.adminApiKeyNeedsRotation
+      changed = true
+    }
   }
   return changed
 }

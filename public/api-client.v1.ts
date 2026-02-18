@@ -71,6 +71,7 @@ export type AttendanceState = {
 
 export type BackupEntry = { filename: string; size: number; mtime: string };
 export type ApiResponse<T> = { ok: boolean; data: T };
+export type JobExecutionStatus = "queued" | "running" | "succeeded" | "failed" | "timeout";
 
 export class ApiClient {
   readonly baseUrl: string;
@@ -210,13 +211,13 @@ export class ApiClient {
 
   // Jobs
   startTimetableScrape() {
-    return fetch(`${this.baseUrl}/v1/jobs/timetable-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: string }>>(r));
+    return fetch(`${this.baseUrl}/v1/jobs/timetable-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: JobExecutionStatus }>>(r));
   }
   startArticlesScrape() {
-    return fetch(`${this.baseUrl}/v1/jobs/articles-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: string }>>(r));
+    return fetch(`${this.baseUrl}/v1/jobs/articles-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: JobExecutionStatus }>>(r));
   }
   getJob(jobId: string) {
-    return fetch(`${this.baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ id: string; status: string }>>(r));
+    return fetch(`${this.baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{ id: string; status: JobExecutionStatus }>>(r));
   }
 
   // Timetable maintenance

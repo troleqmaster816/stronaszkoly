@@ -18,7 +18,7 @@ export default function Hub({ navigate }: HubProps) {
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
   const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
-  const [apiKeyMeta, setApiKeyMeta] = useState<{ hasKey: boolean; preview: string | null; createdAt: number | null; lastUsedAt: number | null; format: string | null } | null>(null);
+  const [apiKeyMeta, setApiKeyMeta] = useState<{ hasKey: boolean; preview: string | null; createdAt: number | null; lastUsedAt: number | null; format: string | null; requiresRotation?: boolean } | null>(null);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [newsReloadSignal, setNewsReloadSignal] = useState(0);
   const [articlesJob, setArticlesJob] = useState<{ id: string; status: string } | null>(null);
@@ -30,6 +30,8 @@ export default function Hub({ navigate }: HubProps) {
   const { isAuth, me, login, register, logout } = useAuth()
   const toast = useToast()
   const isAdmin = me?.id === 'admin'
+  const heroJpgSrcSet = '/szkola-640.jpg 640w, /szkola-1024.jpg 1024w, /szkola-1600.jpg 1600w'
+  const heroSizes = '(max-width: 640px) 100vw, (max-width: 1280px) 100vw, 1600px'
 
   const closeProfile = () => {
     setProfileOpen(false)
@@ -97,6 +99,7 @@ export default function Hub({ navigate }: HubProps) {
           createdAt: typeof j.data.createdAt === 'number' ? j.data.createdAt : prev?.createdAt || null,
           lastUsedAt: prev?.lastUsedAt || null,
           format: j.data.format || 'structured',
+          requiresRotation: false,
         }))
         setApiKeyVisible(false)
         toast.success('Zregenerowano klucz API.')
@@ -160,12 +163,14 @@ export default function Hub({ navigate }: HubProps) {
           const jobData = jj?.data;
           if (!mountedRef.current) return;
           setArticlesJob({ id: jobId, status: jobData?.status || 'unknown' });
-          if (jobData?.status === 'succeeded' || jobData?.status === 'failed') {
+          if (jobData?.status === 'succeeded' || jobData?.status === 'failed' || jobData?.status === 'timeout') {
             setArticlesBusy(false);
             if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
             if (jobData?.status === 'succeeded') {
               setNewsReloadSignal((v) => v + 1);
               toast.success('Aktualności zostały odświeżone.')
+            } else if (jobData?.status === 'timeout') {
+              toast.error(jobData?.error ? String(jobData.error) : 'Zadanie przekroczyło limit czasu.')
             } else if (jobData?.error) {
               toast.error(String(jobData.error))
             }
@@ -191,6 +196,7 @@ export default function Hub({ navigate }: HubProps) {
       return `${head}••••••••${tail}`
     }
     if (apiKeyMeta?.preview) return apiKeyMeta.preview
+    if (apiKeyMeta?.requiresRotation) return 'Klucz wymaga regeneracji'
     return apiKeyMeta?.hasKey ? 'Klucz istnieje (ukryty)' : 'Brak klucza API'
   }, [apiKeyVisible, apiKeyMeta, singleApiKey])
 
@@ -199,8 +205,14 @@ export default function Hub({ navigate }: HubProps) {
       {/* Background image */}
       <picture>
         <source srcSet="/szkola.webp" type="image/webp" />
+        <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
         <img
-          src="/szkola.png"
+          src="/szkola-1024.jpg"
+          srcSet={heroJpgSrcSet}
+          sizes={heroSizes}
+          decoding="async"
+          loading="eager"
+          fetchPriority="high"
           alt="Zespół Szkół Elektronicznych im. Stanisława Staszica w Zduńskiej Woli"
           className="absolute inset-0 h-full w-full object-cover object-top sm:object-center"
         />
@@ -349,6 +361,11 @@ export default function Hub({ navigate }: HubProps) {
                   {apiKeyMeta?.createdAt ? (
                     <div className="mt-2 text-[11px] opacity-70">
                       Utworzono: {new Date(apiKeyMeta.createdAt).toLocaleString()}
+                    </div>
+                  ) : null}
+                  {apiKeyMeta?.requiresRotation ? (
+                    <div className="mt-1 text-[11px] text-amber-300">
+                      Wykryto stary format klucza. Zregeneruj klucz, aby dalej używać API.
                     </div>
                   ) : null}
                 </section>

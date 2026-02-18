@@ -27,7 +27,7 @@ Każdy użytkownik ma jeden klucz API. Klucz w pełnej formie jest zwracany tylk
 
 - Pobierz klucz (wymaga cookie sesyjnego):
   - `GET /v1/apikey`
-  - 200 → `{ ok: true, data: { hasKey, preview, createdAt, lastUsedAt, format } }`
+  - 200 → `{ ok: true, data: { hasKey, preview, createdAt, lastUsedAt, format, requiresRotation } }`
 - Zregeneruj klucz (unieważnia poprzedni):
   - `POST /v1/apikey/regenerate`
   - 200 → `{ ok: true, data: { apiKey, preview, createdAt, format } }`
@@ -172,7 +172,7 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 
 - `POST /v1/jobs/timetable-scrape` (admin) → `202 { ok: true, data: { jobId, statusUrl, status } }` – uruchamia asynchroniczne odświeżenie planu
 - `POST /v1/jobs/articles-scrape` (admin) → `202 { ok: true, data: { jobId, statusUrl, status } }` – odświeża artykuły
-- `GET /v1/jobs/:jobId` → `{ ok: true, data: Job }` ze statusem (`queued|running|succeeded|failed`)
+- `GET /v1/jobs/:jobId` → `{ ok: true, data: Job }` ze statusem (`queued|running|succeeded|failed|timeout`)
 - `POST /v1/refresh` (admin) → synchroniczne odświeżenie planu przez scraper (`200|409|500`), przy sukcesie zwracane jest także `data` (jeśli scraper poda wynik strukturalny)
 - `GET /v1/timetable/backups` (admin) → `{ ok: true, data: { filename, size, mtime }[] }`
 - `POST /v1/timetable/restore` (admin) body `{ filename }` → `{ ok: true, data: { restored: true } }`

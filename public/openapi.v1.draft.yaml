@@ -158,7 +158,8 @@ components:
         preview: { type: string, nullable: true }
         createdAt: { type: integer, nullable: true }
         lastUsedAt: { type: integer, nullable: true }
-        format: { type: string, enum: [structured, legacy], nullable: true }
+        format: { type: string, enum: [structured], nullable: true }
+        requiresRotation: { type: boolean }
       required: [hasKey]
 
     ApiKeyRotateData:
@@ -175,7 +176,7 @@ components:
       properties:
         id: { type: string }
         kind: { type: string, nullable: true }
-        status: { type: string, enum: [queued, running, succeeded, failed] }
+        status: { type: string, enum: [queued, running, succeeded, failed, timeout] }
         createdAt: { type: string, format: date-time }
         startedAt: { type: string, format: date-time, nullable: true }
         finishedAt: { type: string, format: date-time, nullable: true }
@@ -886,7 +887,7 @@ paths:
                     properties:
                       jobId: { type: string }
                       statusUrl: { type: string }
-                      status: { type: string, enum: [queued, running, succeeded, failed] }
+                      status: { type: string, enum: [queued, running, succeeded, failed, timeout] }
                     required: [jobId, statusUrl, status]
                 required: [ok, data]
   /v1/jobs/articles-scrape:
@@ -906,7 +907,7 @@ paths:
                     properties:
                       jobId: { type: string }
                       statusUrl: { type: string }
-                      status: { type: string, enum: [queued, running, succeeded, failed] }
+                      status: { type: string, enum: [queued, running, succeeded, failed, timeout] }
                     required: [jobId, statusUrl, status]
                 required: [ok, data]
   /v1/jobs/{jobId}:
