@@ -4,6 +4,8 @@ import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+type TeacherEntry = { id: string | null; shortName: string; originalName: string }
+
 export function AdminPanel({
   isAuth,
   onLogin,
@@ -15,7 +17,7 @@ export function AdminPanel({
   subjectKeys,
   subjectFilter,
   setSubjectFilter,
-  teacherShortNames,
+  teacherEntries,
   teacherFilter,
   setTeacherFilter,
   onSaveOverrides,
@@ -31,7 +33,7 @@ export function AdminPanel({
   subjectKeys: string[]
   subjectFilter: string
   setSubjectFilter: (v: string) => void
-  teacherShortNames: string[]
+  teacherEntries: TeacherEntry[]
   teacherFilter: string
   setTeacherFilter: (v: string) => void
   onSaveOverrides: () => void | Promise<void>
@@ -87,7 +89,7 @@ export function AdminPanel({
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-sm">Przedmioty (oryginał → wyświetlana)</div>
                     <Input
-                      className="text-xs px-2 py-1 w-48"
+                      className="text-xs px-2 py-1 !w-48"
                       placeholder="Szukaj przedmiotu"
                       value={subjectFilter}
                       onChange={(e) => setSubjectFilter(e.target.value)}
@@ -99,23 +101,25 @@ export function AdminPanel({
                       .slice(0, 200)
                       .sort()
                       .map((key) => (
-                        <div key={key} className="flex items-center gap-2 p-2 border-b border-zinc-800 last:border-b-0">
-                          <div className="text-xs text-zinc-400 min-w-0 flex-1 truncate" title={key}>{key}</div>
-                          <Input
-                            className="text-sm px-2 py-1 w-48"
-                            placeholder="Wyświetlana nazwa"
-                            value={overrides.subjectOverrides[key] ?? ''}
-                            onChange={(e) => setOverrides((s) => ({ ...s, subjectOverrides: { ...s.subjectOverrides, [key]: e.target.value } }))}
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setOverrides((s) => {
-                              const copy = { ...s.subjectOverrides };
-                              delete copy[key];
-                              return { ...s, subjectOverrides: copy };
-                            })}
-                          >Wyczyść</Button>
+                        <div key={key} className="p-2 border-b border-zinc-800 last:border-b-0">
+                          <div className="text-xs text-zinc-400 truncate" title={key}>{key}</div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <Input
+                              className="text-sm px-2 py-1 !w-48 shrink-0"
+                              placeholder="Wyświetlana nazwa"
+                              value={overrides.subjectOverrides[key] ?? ''}
+                              onChange={(e) => setOverrides((s) => ({ ...s, subjectOverrides: { ...s.subjectOverrides, [key]: e.target.value } }))}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setOverrides((s) => {
+                                const copy = { ...s.subjectOverrides };
+                                delete copy[key];
+                                return { ...s, subjectOverrides: copy };
+                              })}
+                            >Wyczyść</Button>
+                          </div>
                         </div>
                       ))}
                   </div>
@@ -124,35 +128,52 @@ export function AdminPanel({
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-sm">Nauczyciele (skrót → pełna nazwa)</div>
                     <Input
-                      className="text-xs px-2 py-1 w-48"
+                      className="text-xs px-2 py-1 !w-48"
                       placeholder="Szukaj nauczyciela"
                       value={teacherFilter}
                       onChange={(e) => setTeacherFilter(e.target.value)}
                     />
                   </div>
                   <div className="max-h-56 overflow-y-auto border border-zinc-800 rounded-md">
-                    {teacherShortNames
-                      .filter((shortName) => shortName.toLowerCase().includes(teacherFilter.toLowerCase().trim()))
+                    {teacherEntries
+                      .filter((entry) => {
+                        const q = teacherFilter.toLowerCase().trim()
+                        if (!q) return true
+                        return entry.shortName.toLowerCase().includes(q)
+                          || entry.originalName.toLowerCase().includes(q)
+                          || String(entry.id || '').toLowerCase().includes(q)
+                      })
                       .slice(0, 300)
-                      .sort()
-                      .map((shortName) => (
-                        <div key={shortName} className="flex items-center gap-2 p-2 border-b border-zinc-800 last:border-b-0">
-                          <div className="text-xs text-zinc-400 min-w-0 flex-1 truncate" title={shortName}>{shortName}</div>
-                          <Input
-                            className="text-sm px-2 py-1 w-48"
-                            placeholder="Pełna nazwa"
-                            value={overrides.teacherNameOverrides[shortName] ?? ''}
-                            onChange={(e) => setOverrides((s) => ({ ...s, teacherNameOverrides: { ...s.teacherNameOverrides, [shortName]: e.target.value } }))}
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setOverrides((s) => {
-                              const copy = { ...s.teacherNameOverrides };
-                              delete copy[shortName];
-                              return { ...s, teacherNameOverrides: copy };
-                            })}
-                          >Wyczyść</Button>
+                      .sort((a, b) => a.shortName.localeCompare(b.shortName, 'pl', { sensitivity: 'base' }))
+                      .map((entry) => (
+                        <div key={`${entry.id ?? 'override'}:${entry.shortName}`} className="p-2 border-b border-zinc-800 last:border-b-0">
+                          <div className="min-w-0">
+                            <div className="text-xs text-zinc-300 truncate font-medium" title={entry.shortName}>
+                              {entry.shortName}
+                            </div>
+                            {entry.originalName !== entry.shortName && (
+                              <div className="text-[11px] text-zinc-500 truncate" title={entry.originalName}>
+                                Oryginał: {entry.originalName}
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <Input
+                              className="text-sm px-2 py-1 !w-48 shrink-0"
+                              placeholder="Pełna nazwa"
+                              value={overrides.teacherNameOverrides[entry.shortName] ?? ''}
+                              onChange={(e) => setOverrides((s) => ({ ...s, teacherNameOverrides: { ...s.teacherNameOverrides, [entry.shortName]: e.target.value } }))}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setOverrides((s) => {
+                                const copy = { ...s.teacherNameOverrides };
+                                delete copy[entry.shortName];
+                                return { ...s, teacherNameOverrides: copy };
+                              })}
+                            >Wyczyść</Button>
+                          </div>
                         </div>
                       ))}
                   </div>

@@ -106,6 +106,66 @@ test.describe('Plan lekcji', () => {
     expect(overrides).toHaveProperty('teacherNameOverrides')
     expect(Object.keys(overrides.teacherNameOverrides || {}).length).toBeGreaterThan(0)
   })
+
+  test('admin teacher overrides show short key and original full name', async ({ page }) => {
+    await page.route('**/v1/users/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          authenticated: true,
+          user: { id: 'admin', username: 'admin' },
+        }),
+      })
+    })
+
+    await page.route('**/v1/overrides', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            data: {
+              subjectOverrides: {},
+              teacherNameOverrides: { AG: 'A.Glinkowska' },
+            },
+          }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.route('**/timetable_data.json*', async (route) => {
+      const response = await route.fetch()
+      const json = await response.json()
+      if (json?.teachers?.nAG) json.teachers.nAG = 'Anna Glinkowska'
+      await route.fulfill({
+        response,
+        contentType: 'application/json',
+        body: JSON.stringify(json),
+      })
+    })
+
+    await page.goto('/plan')
+    await page.getByRole('button', { name: 'Panel admina' }).click()
+
+    await expect(page.getByText('Nadpisania nazw')).toBeVisible()
+    await page.getByPlaceholder('Szukaj nauczyciela').fill('AG')
+
+    await expect(page.getByText('AG', { exact: true })).toBeVisible()
+    await expect(page.getByText('Oryginał: Anna Glinkowska')).toBeVisible()
+    await expect(page.getByPlaceholder('Pełna nazwa').first()).toHaveValue('A.Glinkowska')
+
+    const firstSubjectRow = page
+      .locator('div.max-h-56.overflow-y-auto.border.border-zinc-800.rounded-md')
+      .first()
+      .locator('div.p-2.border-b.border-zinc-800')
+      .first()
+    await expect(firstSubjectRow.locator('div.text-xs.text-zinc-400.truncate')).toBeVisible()
+  })
 })
 
 test.describe('Frekwencja', () => {

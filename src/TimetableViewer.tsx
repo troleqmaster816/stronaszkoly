@@ -44,6 +44,44 @@ function compactGroupLabel(label: string): string {
 
 type ChipLayoutMode = 'inline' | 'stacked'
 type LabelMode = 'full' | 'compact'
+type TeacherOverrideEntry = { id: string | null; shortName: string; originalName: string }
+
+function decodeMaybe(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function isTeacherShortName(value: string): boolean {
+  return /^[A-ZĄĆĘŁŃÓŚŹŻ0-9]{1,8}$/u.test((value || '').trim())
+}
+
+function getTeacherShortFromId(id: string): string {
+  const decoded = decodeMaybe((id || '').trim())
+  const withoutPrefix = decoded.replace(/^n/i, '').trim()
+  if (isTeacherShortName(withoutPrefix)) return withoutPrefix
+  return ''
+}
+
+function resolveTeacherOverrideKey(args: {
+  teacherId: string
+  teacherLabel: string
+  overrideKeys: Set<string>
+}): string {
+  const { teacherId, teacherLabel, overrideKeys } = args
+  const label = (teacherLabel || '').trim()
+  const id = (teacherId || '').trim()
+  const shortFromId = getTeacherShortFromId(id)
+  const candidates = [label, shortFromId, id, decodeMaybe(id)].filter(Boolean)
+  for (const c of candidates) {
+    if (overrideKeys.has(c)) return c
+  }
+  if (isTeacherShortName(label)) return label
+  if (shortFromId) return shortFromId
+  return label || id
+}
 
 type AdaptiveLayoutProfile = {
   density: TimetableDensity
@@ -272,18 +310,41 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const meta = data?.metadata;
   const refs = { teachers: data?.teachers ?? {}, rooms: data?.rooms ?? {}, classes: data?.classes ?? {} };
 
+  const teacherOverrideEntries = useMemo<TeacherOverrideEntry[]>(() => {
+    const teachers = data?.teachers ?? {}
+    const overrideKeys = new Set(Object.keys(overrides.teacherNameOverrides))
+    const rows: TeacherOverrideEntry[] = Object.entries(teachers).map(([id, label]) => {
+      const originalName = String(label ?? '').trim() || id
+      const shortName = resolveTeacherOverrideKey({
+        teacherId: id,
+        teacherLabel: originalName,
+        overrideKeys,
+      })
+      return { id, shortName, originalName }
+    })
+
+    const knownShort = new Set(rows.map((r) => r.shortName))
+    for (const shortName of Object.keys(overrides.teacherNameOverrides)) {
+      if (knownShort.has(shortName)) continue
+      rows.push({ id: null, shortName, originalName: shortName })
+    }
+
+    rows.sort((a, b) => a.shortName.localeCompare(b.shortName, 'pl', { sensitivity: 'base' }))
+    return rows
+  }, [data, overrides.teacherNameOverrides]);
+
   // Zbuduj listy do wyszukiwania
   const pickList = useMemo(() => {
     if (!data) return [] as { id: string; label: string; type: "teachers" | "classes" | "rooms" }[];
     const isMainClass = (label: string) => /^\d/.test((label || '').trim());
+    const teacherEntries = teacherOverrideEntries
+      .filter((entry) => !!entry.id)
+      .map((entry) => [
+        entry.id as string,
+        overrides.teacherNameOverrides[entry.shortName] ?? entry.originalName,
+      ] as const)
     const entries = Object.entries({
-      teachers: Object.fromEntries(
-        Object.entries(data.teachers ?? {}).map(([id, label]) => {
-          const shortName = String(label)
-          const displayName = overrides.teacherNameOverrides[shortName] ?? shortName
-          return [id, displayName]
-        })
-      ),
+      teachers: Object.fromEntries(teacherEntries),
       classes: Object.fromEntries(
         Object.entries(data.classes ?? {}).filter(([, label]) => isMainClass(String(label)))
       ),
@@ -293,7 +354,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       Object.entries(table).map(([id, label]) => ({ id, label, type }))
     );
     return list;
-  }, [data, overrides.teacherNameOverrides]);
+  }, [data, overrides.teacherNameOverrides, teacherOverrideEntries]);
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
@@ -1077,7 +1138,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             subjectKeys={subjectKeys}
             subjectFilter={subjectFilter}
             setSubjectFilter={setSubjectFilter}
-            teacherShortNames={Object.values(data?.teachers ?? {})}
+            teacherEntries={teacherOverrideEntries}
             teacherFilter={teacherFilter}
             setTeacherFilter={setTeacherFilter}
             onSaveOverrides={handleSaveOverrides}
