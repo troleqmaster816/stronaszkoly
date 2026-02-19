@@ -4,12 +4,14 @@ Krótki opis: Aplikacja do przeglądania planu lekcji i materiałów szkolnych.
 
 ## Funkcje
 - Przeglądanie planu lekcji
+- Zarządzanie frekwencją ucznia
 - Harmonogram i informacje szkolne
 - Statut szkoły w aplikacji
 - Prosta nawigacja po modułach
+- Uwierzytelnianie (logowanie/rejestracja), klucze API i panel admina
 
 ## Wymagania
-- Node.js 18+
+- Node.js 20.19+
 - Python 3 (dla skryptów w katalogu `server/scripts/`)
 
 ## Szybki start
@@ -36,11 +38,28 @@ npm run server
 - `ADMIN_PASS` – hasło do panelu administracyjnego (brak domyślnego hasła)
 - `PORT` – port serwera API (domyślnie: `8787`)
 - `PYTHON_PATH` – ścieżka/komenda do Pythona (`python`, `python3` lub pełna ścieżka)
+- `ALLOWED_ORIGINS` – lista dozwolonych originów dla CORS (oddzielana przecinkami), np. `https://szkola.tkch.eu`
+- `TRUST_PROXY` – ustawienie `trust proxy` dla Express (`true`, `false`, liczba lub niestandardowa wartość)
+- `REGISTRATION_ENABLED` – włączenie/wyłączenie rejestracji użytkowników (`true`/`false`, domyślnie: włączone lokalnie, wyłączone w produkcji)
+- `SESSION_TTL_MS` – TTL sesji auth w ms (domyślnie 30 dni)
+- `SESSION_CLEANUP_INTERVAL_MS` – interwał sprzątania sesji w ms (domyślnie 15 min)
+- `SESSION_MAX` – maks. liczba aktywnych sesji (domyślnie `10000`)
+- `AUTH_COOKIE_MAX_AGE_MS` – max-age ciasteczka `auth` w ms
+- `TIMETABLE_CACHE_TTL_MS` – TTL pamięci podręcznej planu lekcji
+- `SCRAPER_TIMEOUT_MS`, `PIP_TIMEOUT_MS`, `IDEMPOTENCY_*`, `JOBS_*` – timeouty i limity zadań
+- `VITE_ALLOWED_HOSTS` – hosty dopuszczone w serwerze Vite (`.ngrok-free.app,.ngrok.io` domyślnie), separowane przecinkami.
 
-## Skróty
+Uwaga:
+- Legacy endpointy `/api/*` są wyłączone (HTTP 410) – używaj tylko `/v1/*`.
+
+## Skrypty npm
 - `npm run build` – build produkcyjny (TypeScript + Vite)
 - `npm run preview` – podgląd buildu
 - `npm run lint` – lintowanie kodu
+- `npm run start` – uruchomienie serwera produkcyjnego (`NODE_ENV=production`)
+- `npm run test:e2e` – testy Playwright
+- `npm run docs:ui` – uruchomienie Swagger UI (`/docs`)
+- `npm run docs:lint` – walidacja OpenAPI (`public/openapi.v1.draft.yaml`)
 
 Repozytorium: https://github.com/troleqmaster816/stronaszkoly
 
@@ -78,10 +97,10 @@ export ADMIN_PASS='silne_haslo'
 export ALLOWED_ORIGINS='https://szkola.tkch.eu'
 ```
 
-Start serwera:
+Start serwera (zalecane):
 
 ```bash
-node server/server.js
+npm run start
 ```
 
 ### Reverse proxy (Nginx/Traefik)
