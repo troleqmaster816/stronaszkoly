@@ -31,8 +31,21 @@ export default function Hub({ navigate }: HubProps) {
   const { isAuth, me, login, register, logout } = useAuth()
   const toast = useToast()
   const isAdmin = me?.id === 'admin'
-  const heroJpgSrcSet = '/szkola-640.jpg 640w, /szkola-1024.jpg 1024w, /szkola-1600.jpg 1600w'
-  const heroSizes = '(max-width: 640px) 100vw, (max-width: 1280px) 100vw, 1600px'
+  const heroWebpSrcSet = '/hub-bg-right-640.webp 640w, /hub-bg-right-1024.webp 1024w, /hub-bg-right-1600.webp 1600w, /hub-bg-right-1920.webp 1920w, /hub-bg-right-2560.webp 2560w'
+  const heroJpgSrcSet = '/hub-bg-right-640.jpg 640w, /hub-bg-right-1024.jpg 1024w, /hub-bg-right-1600.jpg 1600w, /hub-bg-right-1920.jpg 1920w, /hub-bg-right-2560.jpg 2560w'
+  const heroSizes = '100vw'
+
+  const getPreferredPlanPath = () => {
+    try {
+      const saved = (localStorage.getItem('timetable.lastPlanId') || '').trim()
+      if (!saved) return '/plan'
+      const token = (/^[nos]/i.test(saved) && saved.length > 1) ? saved.slice(1) : saved
+      if (!token) return '/plan'
+      return `/plan/${encodeURIComponent(token)}`
+    } catch {
+      return '/plan'
+    }
+  }
 
   const closeProfile = () => {
     setProfileOpen(false)
@@ -201,10 +214,10 @@ export default function Hub({ navigate }: HubProps) {
     <div className="relative min-h-[100svh] w-full">
       {/* Background image */}
       <picture>
-        <source srcSet="/szkola.webp" type="image/webp" />
+        <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
         <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
         <img
-          src="/szkola-1024.jpg"
+          src="/hub-bg-right-1024.jpg"
           srcSet={heroJpgSrcSet}
           sizes={heroSizes}
           decoding="async"
@@ -245,7 +258,7 @@ export default function Hub({ navigate }: HubProps) {
               title="Plan lekcji"
               description="Przeglądaj interaktywny plan dla klas, nauczycieli i sal."
               icon={<CalendarDays className="h-6 w-6" />}
-              onClick={() => navigate("/plan")}
+              onClick={() => navigate(getPreferredPlanPath())}
             />
             <HubTile
               title="Frekwencja"
