@@ -40,6 +40,14 @@ function toRouteEntityToken(id: string | null | undefined): string {
   return id
 }
 
+function formatRoomCodeOnly(label: string): string {
+  const raw = (label || '').trim()
+  if (!raw) return raw
+  const code = extractRoomCode(raw)
+  if (code) return code
+  return raw.replace(/^(?:sala|s)\.?\s*/i, '').trim() || raw
+}
+
 function resolveRouteEntityToken({
   token,
   refs,
@@ -92,10 +100,11 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const params = useParams<{ entity?: string }>()
   const routeEntityToken = (params.entity || '').trim()
   const [hashId, setHashIdState] = useState<string | null>(null);
+  const [displayedId, setDisplayedId] = useState<string | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const setHashId = useCallback((id: string | null, replace = false) => {
-    setHashIdState(id)
     if (!id) {
+      setHashIdState(null)
       navigate('/plan', { replace })
       return
     }
@@ -227,18 +236,22 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         entry.id as string,
         overrides.teacherNameOverrides[entry.shortName] ?? entry.originalName,
       ] as const)
+    const roomEntries = Object.entries(data.rooms ?? {}).map(([id, label]) => {
+      const rawLabel = String(label ?? '')
+      return [id, isMobile ? formatRoomCodeOnly(rawLabel) : rawLabel] as const
+    })
     const entries = Object.entries({
       teachers: Object.fromEntries(teacherEntries),
       classes: Object.fromEntries(
         Object.entries(data.classes ?? {}).filter(([, label]) => isMainClass(String(label)))
       ),
-      rooms: data.rooms ?? {},
+      rooms: Object.fromEntries(roomEntries),
     }) as ["teachers" | "classes" | "rooms", RefTables][];
     const list = entries.flatMap(([type, table]) =>
       Object.entries(table).map(([id, label]) => ({ id, label, type }))
     );
     return list;
-  }, [data, overrides.teacherNameOverrides, teacherOverrideEntries]);
+  }, [data, isMobile, overrides.teacherNameOverrides, teacherOverrideEntries]);
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
@@ -259,12 +272,22 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   const activeKind = idToKind(activeId ?? undefined);
   const hasActiveTimetable = !!(activeId && Object.prototype.hasOwnProperty.call(data?.timetables ?? {}, activeId))
   const activeTimetableLoading = isTimetableLoading(activeId)
-  const activeName = activeId ?
-    (activeKind === "class" ? refs.classes[activeId] : activeKind === "teacher" ? refs.teachers[activeId] : refs.rooms[activeId]) : "";
+  const displayedHasTimetable = !!(displayedId && Object.prototype.hasOwnProperty.call(data?.timetables ?? {}, displayedId))
+  const renderId = activeId ? (hasActiveTimetable ? activeId : displayedHasTimetable ? displayedId : activeId) : null
+  const renderKind = idToKind(renderId ?? undefined)
+  const hasRenderTimetable = !!(renderId && Object.prototype.hasOwnProperty.call(data?.timetables ?? {}, renderId))
+  const loadingActiveWithoutTimetable = !!(activeId && !hasActiveTimetable && activeTimetableLoading)
+  const showInitialLoading = !!(activeId && !hasRenderTimetable && activeTimetableLoading)
+  const showTransitionOverlay = !!(activeId && renderId && activeId !== renderId && !hasActiveTimetable && activeTimetableLoading && hasRenderTimetable)
 
-  const activeDisplayName = activeKind === 'room' ? formatRoomDisplay(activeName) : activeName;
-  const isClassView = activeKind === 'class'
-  const activeClassId = isClassView ? activeId : null
+  const renderName = renderId
+    ? (renderKind === "class" ? refs.classes[renderId] : renderKind === "teacher" ? refs.teachers[renderId] : refs.rooms[renderId])
+    : ""
+  const activeDisplayName = renderKind === 'room'
+    ? (isMobile ? formatRoomCodeOnly(renderName) : formatRoomDisplay(renderName))
+    : renderName;
+  const isClassView = renderKind === 'class'
+  const activeClassId = isClassView ? renderId : null
   const groupHalf = activeClassId ? (groupHalfByClass[activeClassId] ?? 'all') : 'all'
 
   const setGroupHalf = useCallback((nextMark: string) => {
@@ -299,9 +322,25 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     }
   }, [activeId, data, loadTimetable, setHashId])
 
+  useEffect(() => {
+    if (!data) return
+    if (!activeId) {
+      setDisplayedId((prev) => (prev === null ? prev : null))
+      return
+    }
+    if (Object.prototype.hasOwnProperty.call(data.timetables ?? {}, activeId)) {
+      setDisplayedId((prev) => (prev === activeId ? prev : activeId))
+      return
+    }
+    setDisplayedId((prev) => {
+      if (!prev) return null
+      return Object.prototype.hasOwnProperty.call(data.timetables ?? {}, prev) ? prev : null
+    })
+  }, [activeId, data])
+
   // Filtry: dni + grupa (1/2, 2/2, wszystkie)
   const activeLessons: Lesson[] = useMemo(() => {
-    const arr: Lesson[] = (activeId && data?.timetables?.[activeId]) || [];
+    const arr: Lesson[] = (renderId && data?.timetables?.[renderId]) || [];
     return arr.filter((l: Lesson) => {
       if (!selectedDays.includes(l.day)) return false;
       if (!isClassView) return true;
@@ -310,21 +349,31 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       // Pokaż lekcje bez oznaczenia (całoklasowe) oraz te, które pasują do wybranej podgrupy
       return !mark || mark === groupHalf;
     });
-  }, [activeId, data, selectedDays, groupHalf, isClassView]);
+  }, [renderId, data, selectedDays, groupHalf, isClassView]);
+
+  const printLessons: Lesson[] = useMemo(() => {
+    const arr: Lesson[] = (renderId && data?.timetables?.[renderId]) || [];
+    return arr.filter((l: Lesson) => {
+      if (!isClassView) return true;
+      if (groupHalf === "all") return true;
+      const mark = extractHalfMark(l.subject);
+      return !mark || mark === groupHalf;
+    });
+  }, [renderId, data, groupHalf, isClassView]);
 
   const daysInData = useMemo(() => {
     const dset = new Set<string>();
-    (activeId && data?.timetables?.[activeId] ? data!.timetables[activeId] : []).forEach((l: Lesson) => dset.add(l.day));
+    (renderId && data?.timetables?.[renderId] ? data!.timetables[renderId] : []).forEach((l: Lesson) => dset.add(l.day));
     const all = Array.from(dset);
     all.sort(cmpDay);
     return all;
-  }, [activeId, data]);
+  }, [renderId, data]);
 
   // Dostępne podgrupy (np. 1/2, 2/2, opcjonalnie 1/3, 2/3, 3/3) tylko dla aktywnego planu
   const availableGroupMarks = useMemo(() => {
     if (!isClassView) return []
     const marks = new Set<string>();
-    const lessons: Lesson[] = (activeId && data?.timetables?.[activeId]) || [];
+    const lessons: Lesson[] = (renderId && data?.timetables?.[renderId]) || [];
     for (const l of lessons) {
       const m = extractHalfMark(l.subject);
       if (m) marks.add(m);
@@ -351,7 +400,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
 
       return a.localeCompare(b, 'pl', { numeric: true, sensitivity: 'base' })
     });
-  }, [activeId, data, isClassView]);
+  }, [renderId, data, isClassView]);
 
   // wymiary siatki (zbiór numerów lekcji + czasy)
   const periods = useMemo(() => {
@@ -386,7 +435,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     [daysInData, selectedDays]
   )
 
-  const layoutProfile = useMemo(() => {
+  const computedLayoutProfile = useMemo(() => {
     if (isMobile) {
       return {
         density: 'comfortable' as TimetableDensity,
@@ -402,6 +451,16 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       lessons: activeLessons,
     })
   }, [activeLessons, isMobile, viewportWidth, visibleDayCount])
+
+  const stableLayoutProfileRef = useRef(computedLayoutProfile)
+  useEffect(() => {
+    if (loadingActiveWithoutTimetable) return
+    stableLayoutProfileRef.current = computedLayoutProfile
+  }, [computedLayoutProfile, loadingActiveWithoutTimetable])
+
+  const layoutProfile = loadingActiveWithoutTimetable
+    ? stableLayoutProfileRef.current
+    : computedLayoutProfile
 
   const shellStyle = useMemo(
     () => (isMobile ? undefined : { maxWidth: `${Math.round(layoutProfile.shellMaxWidth)}px` }),
@@ -643,12 +702,12 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const extraParts: string[] = [];
     const teacherName = l.teacher?.name ?? '';
     const roomName = l.room?.name ?? '';
-    if (activeKind !== 'teacher' && teacherName) extraParts.push(teacherName);
-    if (activeKind !== 'room' && roomName) extraParts.push(formatRoomDisplay(roomName));
-    const groupText = activeKind === 'class' ? (l.group?.name ?? half ?? '') : (l.group?.name ?? '');
+    if (renderKind !== 'teacher' && teacherName) extraParts.push(teacherName);
+    if (renderKind !== 'room' && roomName) extraParts.push(formatRoomCodeOnly(roomName));
+    const groupText = renderKind === 'class' ? (half ?? '') : (l.group?.name ?? '');
     const subjectWithGroup = groupText ? `${subjectDisplay} ${groupText}` : subjectDisplay;
     return extraParts.length > 0 ? `${subjectWithGroup} (${extraParts.join(', ')})` : subjectWithGroup;
-  }, [activeKind, overrides.subjectOverrides]);
+  }, [renderKind, overrides.subjectOverrides]);
 
   const handlePrint = () => window.print();
   const handleShare = async () => {
@@ -736,7 +795,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     <div className={`relative min-h-dvh text-zinc-100 overflow-x-hidden ${animationsEnabled ? 'bg-gradient-to-b from-zinc-950 to-black' : 'bg-gradient-to-b from-zinc-900 via-zinc-950 to-black'}`}>
       {/* Desktop backdrop: animated on demand, otherwise static to reduce GPU usage */}
       {animationsEnabled ? (
-        <AnimatedBackdrop text={activeDisplayName} variant={(activeKind ?? null) as 'class' | 'teacher' | 'room' | null} />
+        <AnimatedBackdrop text={activeDisplayName} variant={(renderKind ?? null) as 'class' | 'teacher' | 'room' | null} />
       ) : (
         <div
           aria-hidden
@@ -893,7 +952,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         )}
 
         {/* Zawartość – wybrany plan */}
-        {data && activeId && !hasActiveTimetable && activeTimetableLoading && (
+        {data && showInitialLoading && (
           <section className="mt-1">
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-zinc-300">
               Wczytywanie planu…
@@ -901,34 +960,43 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           </section>
         )}
 
-        {data && activeId && hasActiveTimetable && (
-          <section className="mt-1">
-            <AnimatePresence mode="popLayout">
-              {view === "grid" ? (
-                <GridView
-                  daysInData={daysInData}
-                  selectedDays={selectedDays}
-                  periods={periods}
-                  activeLessons={activeLessons}
-                  isMobile={isMobile}
-                  density={layoutProfile.density}
-                  dayCount={visibleDayCount}
-                  cellMinPx={layoutProfile.cellMinPx}
-                  onSwipePrev={goPrevDay}
-                  onSwipeNext={goNextDay}
-                  onRenderLesson={renderLessonCard}
-                />
-              ) : (
-                <ListView
-                  selectedDays={selectedDays}
-                  lessonsByDay={lessonsByDay}
-                  isMobile={isMobile}
-                  onSwipePrev={goPrevDay}
-                  onSwipeNext={goNextDay}
-                  onRenderLesson={renderLessonCard}
-                />
-              )}
-            </AnimatePresence>
+        {data && renderId && hasRenderTimetable && (
+          <section className="mt-1 relative">
+            {showTransitionOverlay && (
+              <div className="absolute inset-0 z-20 flex items-start justify-center rounded-xl border border-zinc-700/60 bg-zinc-950/45 pt-3 backdrop-blur-[1px]">
+                <div className="rounded-full border border-zinc-700 bg-zinc-900/95 px-3 py-1 text-xs text-zinc-200 shadow-sm">
+                  Wczytywanie planu…
+                </div>
+              </div>
+            )}
+            <div className={showTransitionOverlay ? 'pointer-events-none' : undefined}>
+              <AnimatePresence mode="popLayout">
+                {view === "grid" ? (
+                  <GridView
+                    daysInData={daysInData}
+                    selectedDays={selectedDays}
+                    periods={periods}
+                    activeLessons={activeLessons}
+                    isMobile={isMobile}
+                    density={layoutProfile.density}
+                    dayCount={visibleDayCount}
+                    cellMinPx={layoutProfile.cellMinPx}
+                    onSwipePrev={goPrevDay}
+                    onSwipeNext={goNextDay}
+                    onRenderLesson={renderLessonCard}
+                  />
+                ) : (
+                  <ListView
+                    selectedDays={selectedDays}
+                    lessonsByDay={lessonsByDay}
+                    isMobile={isMobile}
+                    onSwipePrev={goPrevDay}
+                    onSwipeNext={goNextDay}
+                    onRenderLesson={renderLessonCard}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
           </section>
         )}
 
@@ -941,25 +1009,25 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </div>
 
         {/* PRINT-ONLY simplified view */}
-        {data && activeId && hasActiveTimetable && (
+        {data && renderId && hasRenderTimetable && (
           <section className="print-only">
             <div className="print-page print-container" style={{ marginBottom: 0 }}>
               <div className="print-title">
-                {prettyKind(activeKind)}: {activeName}
+                {prettyKind(renderKind)}: {renderKind === 'room' ? formatRoomCodeOnly(renderName) : renderName}
               </div>
               {/* Compact one-page matrix: Days as columns, lesson numbers as rows */}
               {(() => {
                 const colDays = [...daysInData].sort(cmpDay);
                 const lessonNumbers: string[] = Array.from(new Set<string>(
-                  ((data?.timetables?.[activeId] || []) as Lesson[]).map((l: Lesson) => l.lesson_num || '-')
+                  printLessons.map((l: Lesson) => l.lesson_num || '-')
                 )).sort((a, b) => parseInt(a || '0', 10) - parseInt(b || '0', 10));
 
                 return (
                   <table className="print-table matrix" style={{ marginBottom: 0 }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '6%' }}>Nr</th>
-                        <th style={{ width: '14%' }}>Godziny</th>
+                        <th style={{ width: '4%' }}>Nr</th>
+                        <th style={{ width: '8%' }}>Godziny</th>
                         {colDays.map((d) => (
                           <th key={d}>{d}</th>
                         ))}
@@ -968,7 +1036,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                     <tbody>
                       {lessonNumbers.map((num) => {
                         // gather all lessons for this lesson number to pick the time per day
-                        const perDay: Lesson[][] = colDays.map((d) => ((data?.timetables?.[activeId] || []) as Lesson[]).filter((l: Lesson) => l.day === d && (l.lesson_num || '-') === num));
+                        const perDay: Lesson[][] = colDays.map((d) => printLessons.filter((l: Lesson) => l.day === d && (l.lesson_num || '-') === num));
                         const any: Lesson[] = perDay.flat();
                         const time = any.find((l: Lesson) => l.time)?.time || '—';
                         return (

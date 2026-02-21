@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/apiClient'
 import { idToKind } from '@/lib/schedule'
 import type { DataFile, Lesson, Meta, Overrides, RefObj, RefTables } from '@/types/schedule'
@@ -99,6 +99,11 @@ async function fetchApiData<T>(url: string, parse: (value: unknown) => T | null)
 }
 
 export function useTimetableData({ setHashId, hasRouteSelection }: Args) {
+  const setHashIdRef = useRef(setHashId)
+  useEffect(() => {
+    setHashIdRef.current = setHashId
+  }, [setHashId])
+
   const [data, setData] = useState<DataFile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -135,12 +140,12 @@ export function useTimetableData({ setHashId, hasRouteSelection }: Args) {
           )
         const fallback = Object.keys(classes ?? {})[0] ?? null
         const toUse = (hasSaved ? saved : fallback) as string | null
-        if (toUse) setHashId(toUse)
+        if (toUse) setHashIdRef.current(toUse)
       }
     } catch {
       setError('Nie udało się pobrać danych planu. Możesz wczytać plik JSON ręcznie poniżej.')
     }
-  }, [hasRouteSelection, setHashId])
+  }, [hasRouteSelection])
 
   const loadTimetable = useCallback(async (id: string): Promise<string | null> => {
     const kind = idToKind(id)

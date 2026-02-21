@@ -3,7 +3,7 @@
 
 @page {
   size: A4 landscape;
-  margin: 0;
+  margin: 8mm;
 }
 
 @media print {
@@ -11,13 +11,19 @@
   html, body {
     margin: 0 !important;
     padding: 0 !important;
-    width: 297mm;
-    height: 210mm;
     background: #ffffff !important;
     color: #000000 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+  }
+  html, body, #root, #root > div, main {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  #root {
+    min-height: 0 !important;
+    height: auto !important;
   }
   .bg-zinc-900, .bg-zinc-950, .bg-zinc-800, .bg-zinc-800\/70, .bg-gradient-to-b { background: #ffffff !important; }
   .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-500, .text-zinc-600 { color: #000000 !important; }
@@ -26,7 +32,8 @@
   /* Show/hide utilities */
   header, .print\:hidden { display: none !important; }
   .print\:block { display: block !important; }
-  .print-only { display: block !important; page-break-after: avoid; }
+  .print-only { display: block !important; page-break-after: auto; break-after: auto; }
+  main > *:not(.print-only) { display: none !important; }
 
   /* Layout */
   main { padding: 0 !important; margin: 0 !important; }
@@ -37,14 +44,14 @@
   .backdrop-blur { backdrop-filter: none !important; }
 
   /* Tables */
-  table { page-break-inside: avoid; width: 100% !important; border-collapse: collapse !important; }
+  table { width: 100% !important; }
   thead tr { background: #ffffff !important; }
-  th, td { break-inside: avoid; border: 1px solid #cccccc !important; padding: 6px 8px !important; vertical-align: top; }
+  th, td { border: 0 !important; padding: 6px 8px !important; vertical-align: top; }
   .border-zinc-800, .border-zinc-700 { border-color: #cccccc !important; }
   .border-dashed { border-style: solid !important; }
 
   /* Avoid content cut between pages */
-  tr { page-break-inside: avoid; page-break-after: auto; }
+  tr { page-break-after: auto; }
   .card, .section { break-inside: avoid; }
 
   /* Animations */
@@ -60,27 +67,45 @@
   .print-page {
     position: relative;
     box-sizing: border-box;
-    width: calc(var(--print-a4-w) - var(--print-fudge));
-    height: calc(var(--print-a4-h) - var(--print-fudge));
+    width: 100%;
+    min-height: 0;
+    height: auto;
     padding: var(--print-pad);
     margin: 0 !important;
-    overflow: clip;
+    overflow: visible;
     background: #ffffff !important;
   }
-  @supports not (overflow: clip) { .print-page { overflow: hidden; } }
+  @supports not (overflow: clip) { .print-page { overflow: visible; } }
   .print-container { display: block; }
   .print-title { font-size: 18px; font-weight: 700; margin: 0 0 4px 0; }
   .print-day { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8mm; }
   .print-day-title { font-size: 14px; font-weight: 700; margin: 0 0 4px 0; }
-  .print-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .print-table th, .print-table td { border: 1px solid #cccccc; padding: 4px 6px; font-size: 10px; line-height: 1.2; text-align: left; vertical-align: top; }
+  .print-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    border: 1px solid #cccccc !important;
+  }
+  .print-table th, .print-table td {
+    border-right: 1px solid #cccccc !important;
+    border-bottom: 1px solid #cccccc !important;
+    padding: 4px 6px;
+    font-size: 10px;
+    line-height: 1.2;
+    text-align: left;
+    vertical-align: top;
+    background-clip: padding-box;
+  }
+  .print-table th:last-child, .print-table td:last-child { border-right: 0 !important; }
+  .print-table tbody tr:last-child td { border-bottom: 0 !important; }
   .print-table th { font-weight: 700; }
-  .print-table.matrix th:nth-child(1) { width: 5%; }
-  .print-table.matrix th:nth-child(2) { width: 12%; }
+  .print-table.matrix th:nth-child(1) { width: 4%; }
+  .print-table.matrix th:nth-child(2) { width: 8%; white-space: nowrap; }
+  .print-table.matrix td:nth-child(2) { white-space: nowrap; }
   .print-table.matrix td { word-break: break-word; }
 
   /* Hide elements that can cause extra page */
   .pagination, .print-pager, .fab, .fixed { display: none !important; }
   footer { display: none !important; margin: 0 !important; padding: 0 !important; }
 }
-
