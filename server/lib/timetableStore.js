@@ -1,36 +1,109 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { validateTimetableData } from './timetableSchema.js'
 
 export function createTimetableStore({ timetableFilePath, ttlMs }) {
   let cache = {
     data: null,
     mtimeMs: 0,
     loadedAt: 0,
+    invalidMtimeMs: 0,
+    invalidAt: 0,
+  }
+  let validationStatus = {
+    ok: false,
+    mtimeMs: 0,
+    checkedAt: 0,
+    error: 'No timetable loaded yet',
   }
 
   function invalidateTimetableCache() {
-    cache = { data: null, mtimeMs: 0, loadedAt: 0 }
+    cache = { data: null, mtimeMs: 0, loadedAt: 0, invalidMtimeMs: 0, invalidAt: 0 }
+    validationStatus = {
+      ok: false,
+      mtimeMs: 0,
+      checkedAt: Date.now(),
+      error: 'Cache invalidated',
+    }
+  }
+
+  function markInvalidState({ mtimeMs, error, now }) {
+    cache = {
+      ...cache,
+      invalidMtimeMs: mtimeMs,
+      invalidAt: now,
+    }
+    validationStatus = {
+      ok: false,
+      mtimeMs,
+      checkedAt: now,
+      error,
+    }
+  }
+
+  function markValidState({ mtimeMs, now }) {
+    validationStatus = {
+      ok: true,
+      mtimeMs,
+      checkedAt: now,
+      error: null,
+    }
   }
 
   function readTimetableFile() {
     if (!existsSync(timetableFilePath)) return null
+    let currentMtimeMs = 0
     try {
       const st = statSync(timetableFilePath)
+      currentMtimeMs = st.mtimeMs
       const now = Date.now()
       const cacheValid = !!cache.data
         && cache.mtimeMs === st.mtimeMs
         && (now - cache.loadedAt) < ttlMs
       if (cacheValid) return cache.data
+
+      const invalidCacheValid = cache.invalidMtimeMs === st.mtimeMs
+        && (now - cache.invalidAt) < ttlMs
+      if (invalidCacheValid) return cache.data
+
       const txt = readFileSync(timetableFilePath, 'utf8')
       const parsed = JSON.parse(txt)
+      const validated = validateTimetableData(parsed)
+      if (!validated.ok) {
+        const firstIssue = validated.error?.issues?.[0]
+        const issuePath = firstIssue?.path?.length ? firstIssue.path.join('.') : '(root)'
+        const issueMsg = firstIssue?.message || 'Schema validation failed'
+        const error = `${issuePath}: ${issueMsg}`
+        markInvalidState({ mtimeMs: st.mtimeMs, error, now })
+        console.warn(`[timetable] Invalid timetable_data.json: ${error}`)
+        return cache.data
+      }
+
       cache = {
-        data: parsed,
+        data: validated.data,
         mtimeMs: st.mtimeMs,
         loadedAt: now,
+        invalidMtimeMs: 0,
+        invalidAt: 0,
       }
-      return parsed
-    } catch {
-      return null
+      markValidState({ mtimeMs: st.mtimeMs, now })
+      return cache.data
+    } catch (error) {
+      const now = Date.now()
+      const message = error instanceof Error ? error.message : String(error)
+      if (currentMtimeMs) {
+        markInvalidState({
+          mtimeMs: currentMtimeMs,
+          error: message,
+          now,
+        })
+      }
+      console.warn(`[timetable] Failed to read timetable_data.json: ${message}`)
+      return cache.data
     }
+  }
+
+  function getTimetableValidationStatus() {
+    return validationStatus
   }
 
   function setTimetableCacheHeaders(res) {
@@ -75,6 +148,7 @@ export function createTimetableStore({ timetableFilePath, ttlMs }) {
   return {
     invalidateTimetableCache,
     readTimetableFile,
+    getTimetableValidationStatus,
     setTimetableCacheHeaders,
     resolveCanonicalId,
   }

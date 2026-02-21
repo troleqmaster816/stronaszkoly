@@ -49,18 +49,22 @@ export function prettyKind(kind: ReturnType<typeof idToKind>) {
   }
 }
 
-// Extracts group mark such as 1/2, 2/3 present at end or after dash/space
+// Extracts group mark such as 1/2 or j1 present in subject suffix
 export function extractHalfMark(subject?: string | null): string | null {
   if (!subject) return null;
-  const m = subject.match(/(?:^|\b|-)(\d+\/\d+)(?=$|\b)/i);
+  const normalized = subject.trim();
+  const jMark = normalized.match(/(?:^|[-–]\s*|\s+)\(?j(\d+)\)?\s*$/i);
+  if (jMark) return `j${jMark[1]}`;
+  const m = normalized.match(/(?:^|\b|-)(\d+\/\d+)(?=$|\b)/i);
   if (!m) return null;
   return m[1].replace(/\s+/g, "");
 }
 
-// Removes trailing subgroup marker from lesson name, e.g. "wf - 1/3" -> "wf"
+// Removes trailing subgroup marker from lesson name, e.g. "wf - 1/3" or "mat - j2"
 export function stripHalfMark(subject?: string | null): string {
   if (!subject) return "";
   let s = subject.trim();
+  s = s.replace(/\s*(?:[-–]\s*)?\(?j\d+\)?\s*$/i, "").trim();
   s = s.replace(/\s*(?:[-–]\s*)?\(?\d+\/\d+\)?\s*$/i, "").trim();
   s = s.replace(/\s*[-–]\s*$/g, "").trim();
   return s;

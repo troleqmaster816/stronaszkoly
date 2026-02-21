@@ -4,6 +4,13 @@ export function registerTimetableRoutes(v1, {
   resolveCanonicalId,
   problem,
 }) {
+  v1.get('/timetable/meta', (_req, res) => {
+    const data = readTimetableFile()
+    if (!data) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json')
+    setTimetableCacheHeaders(res)
+    res.json({ ok: true, data: data.metadata || {} })
+  })
+
   v1.get('/teachers', (_req, res) => {
     const data = readTimetableFile()
     if (!data || !data.teachers) return problem(res, 404, 'timetable.missing', 'Not Found', 'Brak pliku timetable_data.json')

@@ -13,6 +13,8 @@ export function registerMaintenanceRoutes(v1, {
   parseStructuredJobOutput,
   config,
   invalidateTimetableCache,
+  readTimetableFile,
+  getTimetableValidationStatus,
 }) {
   let isRunning = false
 
@@ -65,6 +67,18 @@ export function registerMaintenanceRoutes(v1, {
       }
 
       invalidateTimetableCache()
+      readTimetableFile()
+      const validationStatus = getTimetableValidationStatus ? getTimetableValidationStatus() : null
+      if (validationStatus?.ok === false) {
+        return problem(
+          res,
+          500,
+          'jobs.invalid_output',
+          'Internal Server Error',
+          `Scraper wygenerował niepoprawny timetable_data.json: ${validationStatus.error || 'Schema validation failed'}`,
+          { step: 'validation' }
+        )
+      }
 
       try {
         const nowRaw = existsSync(config.timetableFilePath) ? readFileSync(config.timetableFilePath, 'utf8') : null
@@ -144,6 +158,17 @@ export function registerMaintenanceRoutes(v1, {
 
       writeFileSync(config.timetableFilePath, content, 'utf8')
       invalidateTimetableCache()
+      readTimetableFile()
+      const validationStatus = getTimetableValidationStatus ? getTimetableValidationStatus() : null
+      if (validationStatus?.ok === false) {
+        return problem(
+          res,
+          500,
+          'backups.invalid',
+          'Internal Server Error',
+          `Przywrócony backup zawiera niepoprawny timetable_data.json: ${validationStatus.error || 'Schema validation failed'}`
+        )
+      }
       return res.json({ ok: true, data: { restored: true } })
     } catch (e) {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))

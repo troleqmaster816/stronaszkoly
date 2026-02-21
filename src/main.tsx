@@ -20,6 +20,18 @@ const APP_TITLE = 'ZSE Zduńska Wola'
 function resolvePageTitle(pathname: string): string {
   if (pathname === '/') return `Hub | ${APP_TITLE}`
   if (pathname === '/plan') return `Plan lekcji | ${APP_TITLE}`
+  if (pathname.startsWith('/plan/')) {
+    const raw = pathname.slice('/plan/'.length)
+    const token = raw.split('/')[0] || ''
+    if (!token) return `Plan lekcji | ${APP_TITLE}`
+    let decoded = token
+    try {
+      decoded = decodeURIComponent(token)
+    } catch {
+      decoded = token
+    }
+    return `Plan lekcji - ${decoded} | ${APP_TITLE}`
+  }
   if (pathname === '/frekwencja') return `Frekwencja | ${APP_TITLE}`
   if (pathname === '/harmonogram') return `Harmonogram | ${APP_TITLE}`
   if (pathname === '/statut') return `Statut szkoły | ${APP_TITLE}`
@@ -74,6 +86,7 @@ export function AppRouter() {
             <Routes>
               <Route path="/" element={<HubRoute />} />
               <Route path="/plan" element={<TimetableRoute overlayActive={overlayActive} setOverlayActive={setOverlayActive} />} />
+              <Route path="/plan/:entity" element={<TimetableRoute overlayActive={overlayActive} setOverlayActive={setOverlayActive} />} />
               <Route path="/harmonogram" element={<PageWithFab><Harmonogram /></PageWithFab>} />
               <Route path="/statut" element={<PageWithFab><StatutSzkolnyViewer jsonSrc="/statut.json" /></PageWithFab>} />
               <Route path="/frekwencja" element={<PageWithFab><FrekwencjaPage /></PageWithFab>} />

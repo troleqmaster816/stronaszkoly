@@ -68,6 +68,14 @@ export function createApp(config) {
 
   const dbStore = createDbStore({ dbPath: config.dbPath, overridesPath: config.overridesPath })
   const timetableStore = createTimetableStore({ timetableFilePath: config.timetableFilePath, ttlMs: config.timetableCacheTtlMs })
+  const startupTimetable = timetableStore.readTimetableFile()
+  const startupValidation = timetableStore.getTimetableValidationStatus()
+  if (!startupTimetable) {
+    console.warn('[timetable] No valid timetable data available at startup.')
+  }
+  if (startupValidation?.ok === false && startupValidation?.error) {
+    console.warn(`[timetable] Startup validation failed: ${startupValidation.error}`)
+  }
   const jobsStore = createJobsStore({ ttlMs: config.jobsTtlMs, max: config.jobsMax })
   jobsStore.startCleanupInterval()
   const sessionStore = createSessionStore({

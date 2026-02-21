@@ -2,6 +2,7 @@ export function normalizeSubjectKeyCanonical(subject?: string | null): string {
   const base = String(subject || '')
     .toLowerCase()
     .trim()
+    .replace(/\s*(?:[-–]\s*)?\(?j\d+\)?\s*$/gi, '')
     .replace(/(?:\s|-)*(\d+\/\d+)(?=$|\b)/gi, '')
     .replace(/[\s-]+$/g, '')
     .replace(/\s{2,}/g, ' ')
