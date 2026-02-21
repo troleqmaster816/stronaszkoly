@@ -149,13 +149,22 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       return {}
     }
   });
-  const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(() => {
+  const [animationMode, setAnimationMode] = useState<'off' | 'eco3'>(() => {
     try {
-      return localStorage.getItem('timetable.animationsEnabled') === '1';
+      const savedMode = localStorage.getItem('timetable.animationMode')
+      if (savedMode === 'off' || savedMode === 'eco3') return savedMode
+      if (savedMode === 'eco' || savedMode === 'eco2') return 'eco3'
+      return localStorage.getItem('timetable.animationsEnabled') === '1' ? 'eco3' : 'off'
     } catch {
-      return false;
+      return 'off';
     }
   });
+  const animationsEnabled = animationMode !== 'off'
+  // Quick rollback switch: set true to restore blur in ECO3 header mode.
+  const keepHeaderBlurInEco3 = false
+  const headerClassName = `sticky top-0 z-40 border-b border-zinc-800 ${
+    animationsEnabled && !keepHeaderBlurInEco3 ? 'bg-zinc-950/85' : 'backdrop-blur bg-zinc-950/70'
+  }`
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileDay, setMobileDay] = useState<string | null>(null);
@@ -566,8 +575,9 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     if (mobileDay) localStorage.setItem('timetable.lastDay', mobileDay);
   }, [mobileDay]);
   useEffect(() => {
-    localStorage.setItem('timetable.animationsEnabled', animationsEnabled ? '1' : '0');
-  }, [animationsEnabled]);
+    localStorage.setItem('timetable.animationMode', animationMode);
+    localStorage.setItem('timetable.animationsEnabled', animationMode !== 'off' ? '1' : '0');
+  }, [animationMode]);
 
   const renderLessonCard = useCallback((l: Lesson, key: React.Key) => {
     const normalizedKey = normalizeSubjectKey(l.subject);
@@ -795,7 +805,11 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     <div className={`relative min-h-dvh text-zinc-100 overflow-x-hidden ${animationsEnabled ? 'bg-gradient-to-b from-zinc-950 to-black' : 'bg-gradient-to-b from-zinc-900 via-zinc-950 to-black'}`}>
       {/* Desktop backdrop: animated on demand, otherwise static to reduce GPU usage */}
       {animationsEnabled ? (
-        <AnimatedBackdrop text={activeDisplayName} variant={(renderKind ?? null) as 'class' | 'teacher' | 'room' | null} />
+        <AnimatedBackdrop
+          text={activeDisplayName}
+          variant={(renderKind ?? null) as 'class' | 'teacher' | 'room' | null}
+          mode="eco3"
+        />
       ) : (
         <div
           aria-hidden
@@ -807,7 +821,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         />
       )}
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
-      <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
+      <header className={headerClassName}>
         <div className={`${shellClassName} py-2 flex items-center gap-3`} style={shellStyle}>
           {!isMobile && <CalendarDays className="w-5 h-5 text-zinc-200" />}
           {!isMobile && <div className="text-sm font-semibold text-zinc-200">Plan lekcji</div>}
@@ -854,8 +868,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                   type="button"
                   role="switch"
                   aria-checked={animationsEnabled}
-                  onClick={() => setAnimationsEnabled((prev) => !prev)}
-                  title={animationsEnabled ? 'Wyłącz animacje tła' : 'Włącz animacje tła'}
+                  onClick={() => setAnimationMode((prev) => (prev === 'off' ? 'eco3' : 'off'))}
+                  title={animationsEnabled ? 'Wyłącz animacje tła' : 'Włącz animacje tła (ECO3)'}
                   className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 transition ${
                     animationsEnabled
                       ? 'border-emerald-700 bg-emerald-900/40 text-emerald-100 hover:bg-emerald-900/55'
@@ -865,7 +879,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                   <span className={`relative h-5 w-9 rounded-full border ${animationsEnabled ? 'border-emerald-500/70 bg-emerald-500/30' : 'border-zinc-600 bg-zinc-700/70'}`}>
                     <span className={`absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform ${animationsEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                   </span>
-                  <span className="text-sm font-medium">Animacje: {animationsEnabled ? 'WŁ.' : 'WYŁ.'}</span>
+                  <span className="text-sm font-medium">Animacje: {animationsEnabled ? 'ECO3' : 'WYŁ.'}</span>
                 </button>
                 <button onClick={handlePrint} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800">
                   <Printer className="w-4 h-4" /> Drukuj / PDF

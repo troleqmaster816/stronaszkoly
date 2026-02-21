@@ -4,12 +4,20 @@ import { AnimatePresence, motion } from 'framer-motion'
 type Props = {
   text: string
   variant?: 'class' | 'teacher' | 'room' | null
+  mode?: 'eco3' | 'full'
 }
 
 // Desktop-only animated background with large, drifting text inspired by stylish UI.
 // It renders behind content; parent must be position:relative.
-export function AnimatedBackdrop({ text, variant = null }: Props) {
+export function AnimatedBackdrop({ text, variant = null, mode = 'full' }: Props) {
   if (!text) return null
+  const isEco3 = mode === 'eco3'
+  const isFirefox = React.useMemo(
+    () => typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent),
+    []
+  )
+  const rowIndexes = [0, 1, 2]
+  const rowTopAbsolute = rowIndexes.map((row) => 10 + row * 30)
 
   // Palette via CSS variables for flexible theming per variant
   const palette: Record<string, string> =
@@ -28,127 +36,129 @@ export function AnimatedBackdrop({ text, variant = null }: Props) {
       style={{ zIndex: 0, contain: 'layout paint', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)', ...(palette as React.CSSProperties) }}
     >
       {/* Soft gradient clouds for depth */}
-      <div className="absolute -top-1/4 -left-1/4 w-[70vw] h-[70vw] rounded-full bg-gradient-to-br from-[color:var(--accent2)]/15 via-[color:var(--accent1)]/8 to-[color:var(--accent3)]/10 blur-3xl animate-slow-float will-change-transform" />
-      <div className="absolute -bottom-1/3 -right-1/4 w-[70vw] h-[70vw] rounded-full bg-gradient-to-tr from-[color:var(--accent1)]/10 via-[color:var(--accent3)]/10 to-[color:var(--accent2)]/14 blur-3xl animate-slow-float-delayed will-change-transform" />
+      {isEco3 ? (
+        <div className="absolute inset-0 overflow-hidden">
+          <img
+            src="/backdrop/aurora-a-1600.webp"
+            srcSet="/backdrop/aurora-a-1600.webp 1600w, /backdrop/aurora-a-2560.webp 2560w"
+            sizes="100vw"
+            decoding="async"
+            loading="eager"
+            alt=""
+            className="absolute left-0 w-full object-cover opacity-[0.62] animate-slow-float"
+            style={{ top: '-12%', height: '124%' }}
+          />
+          <img
+            src="/backdrop/aurora-b-1600.webp"
+            srcSet="/backdrop/aurora-b-1600.webp 1600w, /backdrop/aurora-b-2560.webp 2560w"
+            sizes="100vw"
+            decoding="async"
+            loading="eager"
+            alt=""
+            className="absolute left-0 w-full object-cover opacity-[0.56] animate-slow-float-delayed"
+            style={{ top: '-12%', height: '124%' }}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="absolute -top-1/4 -left-1/4 w-[70vw] h-[70vw] rounded-full bg-gradient-to-br from-[color:var(--accent2)]/15 via-[color:var(--accent1)]/8 to-[color:var(--accent3)]/10 will-change-transform blur-3xl animate-slow-float" />
+          <div className="absolute -bottom-1/3 -right-1/4 w-[70vw] h-[70vw] rounded-full bg-gradient-to-tr from-[color:var(--accent1)]/10 via-[color:var(--accent3)]/10 to-[color:var(--accent2)]/14 blur-3xl animate-slow-float-delayed will-change-transform" />
+        </>
+      )}
 
       {/* Aurora ribbons */}
-      <div className="absolute inset-0">
-        <div className="aurora-ribbon aurora-ribbon--a" />
-        <div className="aurora-ribbon aurora-ribbon--b" />
-        <div className="aurora-ribbon aurora-ribbon--c" />
-      </div>
+      {!isEco3 && (
+        <div className="absolute inset-0">
+          <div className="aurora-ribbon aurora-ribbon--a" />
+          <div className="aurora-ribbon aurora-ribbon--b" />
+          <div className="aurora-ribbon aurora-ribbon--c" />
+        </div>
+      )}
 
       {/* Subtle animated grid for structure */}
-      <div className="absolute inset-0 backdrop-grid" />
+      <div className={`absolute inset-0 ${isEco3 ? '' : 'backdrop-grid'}`} style={isEco3 ? { backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.07) 1px, transparent 1px)', backgroundSize: '96px 96px', opacity: 0.08 } : undefined} />
 
       {/* Repeated giant text stripes for parallax loop with crossfade on change */}
-      <div className="absolute inset-0 mask-fade">
-        <AnimatePresence initial={false} mode="wait">
-          <motion.div
-            key={text}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            className="absolute inset-0"
-          >
-            {[0, 1, 2].map((row) => (
-              <MovingRow key={row} index={row} text={text} />
-            ))}
-          </motion.div>
-        </AnimatePresence>
+      <div className="absolute inset-0">
+        <div className={`absolute inset-0 ${isFirefox ? '' : 'backdrop-fade-mask'}`}>
+          <AnimatePresence initial={false} mode="wait">
+            <motion.div
+              key={text}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="absolute inset-0"
+            >
+              {rowIndexes.map((row) => (
+                <MovingRow
+                  key={row}
+                  index={row}
+                  topVh={rowTopAbsolute[row]}
+                  text={text}
+                  variant={variant}
+                  mode={isEco3 ? 'eco3' : 'full'}
+                  isFirefox={isFirefox}
+                />
+              ))}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+        {isFirefox && (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[18%] ff-fade-overlay-top" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[18%] ff-fade-overlay-bottom" />
+          </>
+        )}
       </div>
 
       {/* Scanline/grain overlay */}
-      <div className="absolute inset-0 scanlines" />
+      {!isEco3 && <div className="absolute inset-0 scanlines" />}
     </div>
   )
 }
 
-function MovingRow({ text, index }: { text: string; index: number }) {
-  const rowRef = React.useRef<HTMLDivElement | null>(null)
-  const measureRef = React.useRef<HTMLSpanElement | null>(null)
-  const offsetRef = React.useRef<number>(0)
-  const lastTsRef = React.useRef<number | null>(null)
-  const tileWidthRef = React.useRef<number>(0)
-  const rafRef = React.useRef<number | null>(null)
-
+function MovingRow({
+  text,
+  index,
+  topVh,
+  variant,
+  mode,
+  isFirefox,
+}: {
+  text: string
+  index: number
+  topVh: number
+  variant: 'class' | 'teacher' | 'room' | null
+  mode: 'eco3' | 'full'
+  isFirefox: boolean
+}) {
   const isLeft = index % 2 === 0
-  const speedPxPerSec = isLeft ? 24 : 28
-
-  React.useEffect(() => {
-    const el = measureRef.current
-    if (!el) return
-    const computeTile = () => {
-      const rect = el.getBoundingClientRect()
-      const styles = window.getComputedStyle(el)
-      const ml = parseFloat(styles.marginLeft || '0')
-      const mr = parseFloat(styles.marginRight || '0')
-      tileWidthRef.current = rect.width + ml + mr
-      // set staggered starting offset for rows to avoid alignment
-      offsetRef.current = -tileWidthRef.current * (index * 0.33)
-    }
-    computeTile()
-    const ro = new ResizeObserver(() => computeTile())
-    ro.observe(el)
-    window.addEventListener('resize', computeTile)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', computeTile)
-    }
-  }, [index, text])
-
-  React.useEffect(() => {
-    const step = (ts: number) => {
-      const node = rowRef.current
-      if (!node || tileWidthRef.current === 0) {
-        rafRef.current = requestAnimationFrame(step)
-        return
-      }
-      const last = lastTsRef.current
-      lastTsRef.current = ts
-      if (last != null) {
-        const dt = (ts - last) / 1000
-        const delta = speedPxPerSec * dt * (isLeft ? -1 : 1)
-        let next = offsetRef.current + delta
-        if (isLeft) {
-          const limit = -tileWidthRef.current
-          if (next <= limit) next -= limit // wrap
-        } else {
-          const limit = tileWidthRef.current
-          if (next >= 0) next -= limit // wrap
-        }
-        offsetRef.current = next
-        node.style.transform = `translate3d(${next}px,0,0)`
-      }
-      rafRef.current = requestAnimationFrame(step)
-    }
-    rafRef.current = requestAnimationFrame(step)
-    return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-    }
-  }, [isLeft, speedPxPerSec, text])
-
-  const copies = 4
+  const isEco3 = mode === 'eco3'
+  const rowAnimationClass = variant === 'room'
+    ? (isLeft ? 'animate-marquee-left-3-room' : 'animate-marquee-right-3-room')
+    : (isLeft ? 'animate-marquee-left-3' : 'animate-marquee-right-3')
+  const tileCopies = 4
+  const trackTiles = 3
   return (
     <div
-      ref={rowRef}
-      className={`whitespace-nowrap will-change-transform`}
+      className="absolute left-0 right-0 overflow-hidden"
       style={{
-        position: 'absolute',
-        top: `${10 + index * 30}vh`,
-        left: 0,
-        right: 0,
+        top: `${topVh}vh`,
         backfaceVisibility: 'hidden',
       }}
     >
-      {Array.from({ length: copies }).map((_, i) => (
-        <span key={i} ref={i === 0 ? measureRef : undefined} className="mx-8 inline-block text-[14vw] leading-none tracking-[-0.02em] font-extrabold uppercase opacity-[0.04] text-white/90 drop-shadow-[0_0_24px_rgba(99,102,241,0.10)] hover:opacity-[0.06] transition-opacity duration-500" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.08)', fontKerning: 'none', fontVariantLigatures: 'none' }}>{text}</span>
-      ))}
+      <div className={`inline-flex w-max whitespace-nowrap ${isFirefox ? '' : 'will-change-transform'} ${rowAnimationClass}`}>
+        {Array.from({ length: trackTiles }).map((_, tileIndex) => (
+          <div key={tileIndex} className="inline-flex shrink-0">
+            {Array.from({ length: tileCopies }).map((__, i) => (
+              <span key={`${tileIndex}-${i}`} className={`mx-8 inline-block leading-none tracking-[-0.02em] font-extrabold uppercase ${isEco3 ? 'text-white/95 text-[14vw] opacity-[0.075]' : 'text-white/90 text-[14vw] opacity-[0.04] drop-shadow-[0_0_24px_rgba(99,102,241,0.10)] hover:opacity-[0.06] transition-opacity duration-500'}`} style={{ WebkitTextStroke: isEco3 ? '1px rgba(255,255,255,0.14)' : '1px rgba(255,255,255,0.08)', fontKerning: 'none', fontVariantLigatures: 'none' }}>{text}</span>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
 export default AnimatedBackdrop
-
-
