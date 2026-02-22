@@ -26,6 +26,7 @@ export default function Hub({ navigate }: HubProps) {
   const [articlesBusy, setArticlesBusy] = useState(false);
   const [ttBusy, setTtBusy] = useState(false);
   const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
+  const [backupsError, setBackupsError] = useState<string | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const { isAuth, me, login, register, logout } = useAuth()
@@ -135,10 +136,30 @@ export default function Hub({ navigate }: HubProps) {
 
   const loadBackups = async () => {
     try {
+      setBackupsError(null)
       const res = await apiFetch('/v1/timetable/backups');
+      if (!res.ok) {
+        setBackups([])
+        setBackupsError(await readErrorMessage(res, 'Nie udało się pobrać kopii zapasowych.'))
+        return
+      }
       const j = await res.json();
-      setBackups(Array.isArray(j?.data) ? j.data : []);
-    } catch { /* ignore */ }
+      if (!j?.ok) {
+        const detail = typeof j?.detail === 'string' ? j.detail : 'Nie udało się pobrać kopii zapasowych.'
+        setBackups([])
+        setBackupsError(detail)
+        return
+      }
+      if (!Array.isArray(j?.data)) {
+        setBackups([])
+        setBackupsError('Serwer zwrócił nieprawidłową odpowiedź podczas pobierania kopii zapasowych.')
+        return
+      }
+      setBackups(j.data)
+    } catch {
+      setBackups([])
+      setBackupsError('Nie udało się pobrać kopii zapasowych. Sprawdź połączenie i spróbuj ponownie.')
+    }
   };
 
   const restoreBackup = async (filename: string) => {
@@ -404,6 +425,9 @@ export default function Hub({ navigate }: HubProps) {
                       <Button onClick={refreshTimetable} disabled={ttBusy} variant={ttBusy ? 'neutral' : 'primary'}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</Button>
                       <Button onClick={loadBackups} variant="outline">Pokaż kopie zapasowe</Button>
                     </div>
+                    {backupsError ? (
+                      <div className="text-xs text-rose-300 mb-2">{backupsError}</div>
+                    ) : null}
                     {Array.isArray(backups) ? (
                       backups.length === 0 ? (
                         <div className="text-xs text-zinc-400">Brak kopii zapasowych.</div>

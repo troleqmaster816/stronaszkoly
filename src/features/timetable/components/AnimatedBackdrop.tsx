@@ -10,12 +10,12 @@ type Props = {
 // Desktop-only animated background with large, drifting text inspired by stylish UI.
 // It renders behind content; parent must be position:relative.
 export function AnimatedBackdrop({ text, variant = null, mode = 'full' }: Props) {
-  if (!text) return null
   const isEco3 = mode === 'eco3'
   const isFirefox = React.useMemo(
     () => typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent),
     []
   )
+  if (!text) return null
   const rowIndexes = [0, 1, 2]
   const rowTopAbsolute = rowIndexes.map((row) => 10 + row * 30)
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 
 export function registerMaintenanceRoutes(v1, {
@@ -17,6 +17,45 @@ export function registerMaintenanceRoutes(v1, {
   getTimetableValidationStatus,
 }) {
   let isRunning = false
+  let legacyBackupsMigrated = false
+  const legacyBackupsDir = join(config.publicDir, 'backups', 'timetables')
+
+  const ensureBackupsReady = () => {
+    try {
+      mkdirSync(config.timetableBackupsDir, { recursive: true })
+    } catch {}
+
+    if (legacyBackupsMigrated) return
+    legacyBackupsMigrated = true
+
+    try {
+      if (!existsSync(legacyBackupsDir)) return
+
+      const runtimeFiles = new Set(
+        readdirSync(config.timetableBackupsDir).filter((f) => f.endsWith('.json'))
+      )
+      const legacyFiles = readdirSync(legacyBackupsDir).filter((f) => f.endsWith('.json'))
+      let migratedCount = 0
+
+      for (const file of legacyFiles) {
+        if (runtimeFiles.has(file)) continue
+        const src = join(legacyBackupsDir, file)
+        const dst = join(config.timetableBackupsDir, file)
+        try {
+          copyFileSync(src, dst)
+          const legacyStat = statSync(src)
+          try { utimesSync(dst, legacyStat.atime, legacyStat.mtime) } catch {}
+          migratedCount += 1
+        } catch {}
+      }
+
+      if (migratedCount > 0) {
+        console.log(`[timetable] Migrated ${migratedCount} legacy backup(s) to runtime directory.`)
+      }
+    } catch (e) {
+      console.warn('[timetable] Failed to migrate legacy timetable backups:', e)
+    }
+  }
 
   v1.post('/refresh', requireAuth, requireAdmin, requireCsrfIfCookieAuth, refreshLimiter, async (req, res) => {
     if (isRunning) return problem(res, 409, 'jobs.already_running', 'Conflict', 'Scraper już działa')
@@ -94,7 +133,7 @@ export function registerMaintenanceRoutes(v1, {
         })()
 
         if (changed && prevRaw) {
-          try { mkdirSync(config.timetableBackupsDir, { recursive: true }) } catch {}
+          ensureBackupsReady()
           const stamp = new Date().toISOString().replace(/[:.]/g, '-')
           const fname = `timetable_data-${stamp}.json`
           writeFileSync(join(config.timetableBackupsDir, fname), prevRaw, 'utf8')
@@ -119,6 +158,7 @@ export function registerMaintenanceRoutes(v1, {
 
   v1.get('/timetable/backups', requireAuth, requireAdmin, (req, res) => {
     try {
+      ensureBackupsReady()
       if (!existsSync(config.timetableBackupsDir)) return res.json({ ok: true, data: [] })
       const list = readdirSync(config.timetableBackupsDir)
         .filter((f) => f.endsWith('.json'))
@@ -136,6 +176,7 @@ export function registerMaintenanceRoutes(v1, {
 
   v1.post('/timetable/restore', requireAuth, requireAdmin, requireCsrfIfCookieAuth, (req, res) => {
     try {
+      ensureBackupsReady()
       const body = req.body && typeof req.body === 'object' ? req.body : {}
       const filename = String(body.filename || '')
       if (!filename || filename.includes('..') || filename.includes('/') || !filename.endsWith('.json')) {
@@ -149,7 +190,7 @@ export function registerMaintenanceRoutes(v1, {
         if (existsSync(config.timetableFilePath)) {
           const current = readFileSync(config.timetableFilePath, 'utf8')
           if (current) {
-            try { mkdirSync(config.timetableBackupsDir, { recursive: true }) } catch {}
+            ensureBackupsReady()
             const stamp = new Date().toISOString().replace(/[:.]/g, '-')
             writeFileSync(join(config.timetableBackupsDir, `timetable_data-${stamp}.json`), current, 'utf8')
           }

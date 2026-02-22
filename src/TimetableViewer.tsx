@@ -193,7 +193,11 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
   };
 
   const meta = data?.metadata;
-  const refs = { teachers: data?.teachers ?? {}, rooms: data?.rooms ?? {}, classes: data?.classes ?? {} };
+  const refs = useMemo(() => ({
+    teachers: data?.teachers ?? {},
+    rooms: data?.rooms ?? {},
+    classes: data?.classes ?? {},
+  }), [data?.classes, data?.rooms, data?.teachers]);
 
   useEffect(() => {
     if (!data) return
@@ -210,7 +214,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       preferredType: entityTab,
     })
     setHashIdState(resolved)
-  }, [data, entityTab, routeEntityToken])
+  }, [data, entityTab, routeEntityToken, refs])
 
   const teacherOverrideEntries = useMemo<TeacherOverrideEntry[]>(() => {
     const teachers = data?.teachers ?? {}
@@ -304,7 +308,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     setGroupHalfByClass((prev) => {
       if (nextMark === 'all') {
         if (!(activeClassId in prev)) return prev
-        const { [activeClassId]: _removed, ...rest } = prev
+        const rest = { ...prev }
+        delete rest[activeClassId]
         return rest
       }
       if (prev[activeClassId] === nextMark) return prev
