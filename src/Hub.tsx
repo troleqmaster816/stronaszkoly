@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, FileText, ListChecks } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, School } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
 import { useAuth } from "./features/auth/useAuth";
@@ -233,29 +233,31 @@ export default function Hub({ navigate }: HubProps) {
 
   return (
     <div className="relative min-h-[100svh] w-full">
-      {/* Background image */}
-      <picture>
-        <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
-        <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
-        <img
-          src="/hub-bg-right-1024.jpg"
-          srcSet={heroJpgSrcSet}
-          sizes={heroSizes}
-          decoding="async"
-          loading="eager"
-          fetchPriority="high"
-          alt="Zespół Szkół Elektronicznych im. Stanisława Staszica w Zduńskiej Woli"
-          className="absolute inset-0 h-full w-full object-cover object-top sm:object-center"
-        />
-      </picture>
-      {/* Overlay for readability */}
-      <div className="absolute inset-0 bg-black/50" />
-      {/* Subtle grid overlay to reinforce tech theme */}
-      <div className="hidden sm:block pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0">
+        {/* Background image (viewport-fixed to avoid jump on content pagination/scroll) */}
+        <picture>
+          <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
+          <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
+          <img
+            src="/hub-bg-right-1024.jpg"
+            srcSet={heroJpgSrcSet}
+            sizes={heroSizes}
+            decoding="async"
+            loading="eager"
+            fetchPriority="high"
+            alt=""
+            className="h-full w-full object-cover object-top sm:object-center"
+          />
+        </picture>
+        {/* Overlay for readability */}
+        <div className="absolute inset-0 bg-black/50" />
+        {/* Subtle grid overlay to reinforce tech theme */}
+        <div className="hidden sm:block absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
+      </div>
 
       <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
         <div className="relative z-10 mx-auto max-w-6xl px-4 py-2 flex items-center gap-3 text-white">
-          <CalendarDays className="w-5 h-5 text-zinc-200" />
+          <School className="w-5 h-5 text-zinc-200" />
           <div className="text-sm font-semibold text-zinc-100">ZSE Zduńska Wola</div>
           <div className="ml-auto">
             <Button
