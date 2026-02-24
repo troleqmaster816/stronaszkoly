@@ -233,7 +233,11 @@ export default function Hub({ navigate }: HubProps) {
 
   return (
     <div className="relative min-h-[100svh] w-full">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 h-screen overflow-hidden"
+        style={{ height: "100lvh" }}
+      >
         {/* Background image (viewport-fixed to avoid jump on content pagination/scroll) */}
         <picture>
           <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
