@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { ExternalLink, Newspaper, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -137,7 +138,7 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  const modal = (
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
       <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-8">
@@ -194,10 +195,13 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
       </div>
     </div>
   );
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }
 
 export default function NewsSection({ reloadSignal = 0 }: { reloadSignal?: number }) {
   const [selected, setSelected] = useState<Article | null>(null);
+  const modalHistoryActiveRef = useRef(false);
   const [page, setPage] = useState(1);
   const pageSize = 6;
   const { articles, loading, error } = useArticles({ reloadSignal });
@@ -206,6 +210,33 @@ export default function NewsSection({ reloadSignal = 0 }: { reloadSignal?: numbe
     const start = (page - 1) * pageSize;
     return articles.slice(start, start + pageSize);
   }, [articles, page]);
+
+  const openArticle = useCallback((article: Article) => {
+    setSelected(article);
+    if (typeof window === "undefined") return;
+    window.history.pushState({ ...(window.history.state ?? {}), __newsModal: true }, "");
+    modalHistoryActiveRef.current = true;
+  }, []);
+
+  const closeArticle = useCallback(() => {
+    setSelected(null);
+    if (typeof window === "undefined") return;
+    if (!modalHistoryActiveRef.current) return;
+    modalHistoryActiveRef.current = false;
+    window.history.back();
+  }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onPopState = () => {
+      if (!modalHistoryActiveRef.current) return;
+      modalHistoryActiveRef.current = false;
+      setSelected(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [selected]);
+
   return (
     <section className="w-full max-w-5xl mx-auto">
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -251,11 +282,11 @@ export default function NewsSection({ reloadSignal = 0 }: { reloadSignal?: numbe
       ) : (
         <div className="news-grid-row">
           {visible.map((a, idx) => (
-            <NewsCard key={a.url + idx} article={a} index={idx} onOpen={setSelected} />
+            <NewsCard key={a.url + idx} article={a} index={idx} onOpen={openArticle} />
           ))}
         </div>
       )}
-      {selected ? <ArticleModal article={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <ArticleModal article={selected} onClose={closeArticle} /> : null}
     </section>
   );
 }
