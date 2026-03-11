@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { ExternalLink, Newspaper, FileText } from "lucide-react";
+import { ExternalLink, Newspaper, FileText, X, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Article } from "./useArticles";
@@ -29,13 +29,10 @@ function hasPdfEmbed(html?: string): boolean {
 }
 function extractPdfUrl(html?: string): string | null {
   if (!html) return null;
-  // Prefer explicit link label if present
   const linkMatch = html.match(/<a[^>]+href=["']([^"']+\.pdf)(?:\?[^"']*)?["'][^>]*>\s*Pobierz\s+PDF\s*<\/a>/i);
   if (linkMatch) return linkMatch[1];
-  // Fallback: first iframe src ending with .pdf
   const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+\.pdf)(?:\?[^"']*)?["']/i);
   if (iframeMatch) return iframeMatch[1];
-  // Fallback: first anchor to .pdf
   const aMatch = html.match(/<a[^>]+href=["']([^"']+\.pdf)(?:\?[^"']*)?["']/i);
   return aMatch ? aMatch[1] : null;
 }
@@ -48,16 +45,13 @@ function extractFirstImageUrl(html?: string): string | null {
 
 function hasDocxEmbed(html?: string): boolean {
   if (!html) return false;
-  // Office web viewer pattern
   return /<iframe[^>]+src=["']https?:\/\/view\.officeapps\.live\.com\/op\/embed\.aspx\?src=[^"']+["']/i.test(html);
 }
 
 function extractDocxDirectUrl(html?: string): string | null {
   if (!html) return null;
-  // Also look for explicit link added by scraper: "Pobierz plik DOCX"
   const linkMatch = html.match(/<a[^>]+href=["']([^"']+\.(?:docx|doc))(?:\?[^"']*)?["'][^>]*>\s*Pobierz\s+plik\s+DOCX\s*<\/a>/i);
   if (linkMatch) return linkMatch[1];
-  // Fallback: parse office viewer src and decode src param if present
   const viewerMatch = html.match(/<iframe[^>]+src=["']https?:\/\/view\.officeapps\.live\.com\/op\/embed\.aspx\?src=([^"']+)["']/i);
   if (viewerMatch) {
     try { return decodeURIComponent(viewerMatch[1]); } catch { return viewerMatch[1]; }
@@ -71,6 +65,133 @@ function getExcerpt(article: Article, maxLen = 140) {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen).replace(/[,;:.!\-\s]+\S*$/, "") + "…";
 }
+
+// ── Article modal (redesigned) ────────────────────────────────────────────────
+
+function ArticleModal({ article, onClose }: { article: Article; onClose: () => void }) {
+  const date = formatArticleDate(article.date);
+  const content = useMemo(() => sanitizeArticleHtml(article.content_html), [article.content_html]);
+  const docxUrl = useMemo(() => extractDocxDirectUrl(article.content_html), [article.content_html]);
+  const pdfUrl = useMemo(() => extractPdfUrl(article.content_html), [article.content_html]);
+  const imageUrl = useMemo(() => extractFirstImageUrl(article.content_html), [article.content_html]);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const modal = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8" onClick={onClose}>
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        aria-hidden="true"
+      />
+
+      {/* Panel */}
+      <div
+        className="relative w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden"
+        style={{
+          borderRadius: '20px',
+          background: 'rgba(14,14,17,0.92)',
+          border: '1px solid rgba(255,255,255,0.09)',
+          backdropFilter: 'blur(24px) saturate(1.3)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.3)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          className="flex items-start gap-4 shrink-0 px-5 pt-5 pb-4"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <div className="flex-1 min-w-0">
+            <h3
+              className="font-bricolage text-[18px] font-semibold leading-snug m-0"
+              style={{ color: '#edeae4' }}
+            >
+              {article.title}
+            </h3>
+            {date ? (
+              <div className="mt-1 text-[12px]" style={{ color: 'var(--hub-accent)' }}>{date}</div>
+            ) : null}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {docxUrl ? (
+              <a
+                href={docxUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition"
+                style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#6ee7b7' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <Download className="w-3.5 h-3.5" /> DOCX
+              </a>
+            ) : null}
+            {pdfUrl ? (
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition"
+                style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', color: '#93c5fd' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <Download className="w-3.5 h-3.5" /> PDF
+              </a>
+            ) : null}
+            {imageUrl ? (
+              <a
+                href={imageUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition"
+                style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <Download className="w-3.5 h-3.5" /> Obraz
+              </a>
+            ) : null}
+            <button
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-lg w-8 h-8 transition"
+              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(237,234,228,0.6)' }}
+              aria-label="Zamknij"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-5 py-5">
+          <div
+            className="prose max-w-none prose-headings:mt-6 prose-headings:mb-3 prose-p:my-3 prose-li:my-1 prose-img:rounded-xl prose-a:underline"
+            style={{
+              '--tw-prose-body': '#d4d0c8',
+              '--tw-prose-headings': '#edeae4',
+              '--tw-prose-links': 'var(--hub-accent)',
+              '--tw-prose-bold': '#edeae4',
+              '--tw-prose-code': '#edeae4',
+              '--tw-prose-quotes': '#a8a29e',
+            } as React.CSSProperties}
+            dangerouslySetInnerHTML={{ __html: content }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
+}
+
+// ── Grid news card (default variant) ─────────────────────────────────────────
 
 function NewsCard({ article, index, onOpen }: { article: Article; index: number; onOpen: (a: Article) => void }) {
   const img = useMemo(() => pickFirstImage(article.content_html), [article.content_html]);
@@ -125,81 +246,166 @@ function NewsCard({ article, index, onOpen }: { article: Article; index: number;
   );
 }
 
-function ArticleModal({ article, onClose }: { article: Article; onClose: () => void }) {
-  const date = formatArticleDate(article.date);
-  const content = useMemo(() => sanitizeArticleHtml(article.content_html), [article.content_html]);
-  const docxUrl = useMemo(() => extractDocxDirectUrl(article.content_html), [article.content_html]);
-  const pdfUrl = useMemo(() => extractPdfUrl(article.content_html), [article.content_html]);
-  const imageUrl = useMemo(() => extractFirstImageUrl(article.content_html), [article.content_html]);
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  const modal = (
-    <div className="fixed inset-0 z-50" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
-      <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-8">
-        <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-zinc-900 text-zinc-50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-6">
-            <div>
-              <h3 className="m-0 text-xl font-semibold leading-snug">{article.title}</h3>
-              <div className="mt-1 text-sm text-zinc-400">{date}</div>
+// ── Sidebar news list ─────────────────────────────────────────────────────────
+
+function NewsSidebarList({
+  articles,
+  onOpen,
+}: {
+  articles: Article[]
+  onOpen: (a: Article) => void
+}) {
+  const featured = articles[0] ?? null
+  const rest = articles.slice(1)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const thumbRef = useRef<HTMLDivElement>(null)
+
+  const updateThumb = useCallback(() => {
+    const el = scrollRef.current
+    const thumb = thumbRef.current
+    const wrap = wrapRef.current
+    if (!el || !thumb || !wrap) return
+    const { scrollTop, scrollHeight, clientHeight } = el
+    const scrollable = scrollHeight - clientHeight
+    const ratio = scrollable > 0 ? scrollTop / scrollable : 0
+    const thumbH = Math.max(28, (clientHeight / scrollHeight) * clientHeight)
+    const maxTop = clientHeight - thumbH
+    thumb.style.height = thumbH + 'px'
+    thumb.style.top = (ratio * maxTop) + 'px'
+    wrap.classList.toggle('at-bottom', ratio > 0.92)
+  }, [])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateThumb, { passive: true })
+    updateThumb()
+    return () => el.removeEventListener('scroll', updateThumb)
+  }, [updateThumb])
+
+  // Re-run thumb calc when articles change
+  useEffect(() => { updateThumb() }, [articles, updateThumb])
+
+  return (
+    <>
+      {/* News header row */}
+      <div className="flex items-center justify-between px-6 shrink-0" style={{ paddingBottom: '12px' }}>
+        <div
+          className="text-[10.5px] font-semibold tracking-[0.13em] uppercase"
+          style={{ color: 'var(--hub-text-muted)' }}
+        >
+          Aktualności
+        </div>
+        {articles.length > 0 ? (
+          <div className="text-[11.5px] tracking-[0.02em]" style={{ color: 'var(--hub-text-muted)' }}>
+            {articles.length} {articles.length === 1 ? 'wpis' : articles.length < 5 ? 'wpisy' : 'wpisów'}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Featured article */}
+      {featured ? (
+        <button
+          type="button"
+          onClick={() => onOpen(featured)}
+          className="hub-news-featured hub-fade-up text-left"
+          style={{ animationDelay: '0.05s' }}
+        >
+          <div
+            className="text-[10px] font-semibold tracking-[0.1em] uppercase mb-1.5 flex items-center gap-[5px]"
+            style={{ color: 'var(--hub-accent)' }}
+          >
+            <span
+              style={{
+                width: '5px', height: '5px', borderRadius: '50%',
+                background: 'var(--hub-accent)', display: 'inline-block', flexShrink: 0,
+              }}
+            />
+            Najnowsze
+          </div>
+          <div
+            className="font-bricolage text-[14.5px] font-semibold leading-[1.35]"
+            style={{ color: 'var(--hub-text-primary)' }}
+          >
+            {featured.title}
+          </div>
+          {featured.date ? (
+            <div className="mt-[5px] text-[11px]" style={{ color: 'var(--hub-text-secondary)' }}>
+              {formatArticleDate(featured.date)}
             </div>
-            <div className="flex items-center gap-2">
-              {docxUrl ? (
-                <a
-                  href={docxUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm text-white"
+          ) : null}
+        </button>
+      ) : null}
+
+      {/* Scrollable list */}
+      <div className="hub-news-wrap" ref={wrapRef}>
+        <div className="hub-news-scroll" ref={scrollRef}>
+          {rest.map((article, idx) => (
+            <button
+              key={article.url + idx}
+              type="button"
+              onClick={() => onOpen(article)}
+              className="hub-news-item hub-fade-up"
+              style={{ animationDelay: `${0.22 + idx * 0.04}s` }}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] tracking-[0.03em]" style={{ color: 'var(--hub-text-muted)' }}>
+                  {formatArticleDate(article.date) || '—'}
+                </span>
+                <span
+                  className="text-[10.5px] flex items-center gap-[3px] opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{ color: 'var(--hub-accent)' }}
                 >
-                  Pobierz DOCX
-                </a>
-              ) : null}
-              {pdfUrl ? (
-                <a
-                  href={pdfUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white"
-                >
-                  Pobierz PDF
-                </a>
-              ) : null}
-              {imageUrl ? (
-                <a
-                  href={imageUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white"
-                >
-                  Pobierz obraz
-                </a>
-              ) : null}
-              <button
-                onClick={onClose}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+                  <ExternalLink className="w-[9px] h-[9px]" />
+                  Otwórz
+                </span>
+              </div>
+              <div
+                className="text-[13.5px] font-medium leading-[1.4] line-clamp-2"
+                style={{ color: 'var(--hub-text-primary)' }}
               >
-                Zamknij
-              </button>
-            </div>
-          </div>
-          <div className="p-4 sm:p-6">
-            <div className="prose prose-invert max-w-none prose-headings:mt-6 prose-headings:mb-3 prose-p:my-3 prose-li:my-1 prose-img:rounded-xl prose-a:text-sky-400"
-                 dangerouslySetInnerHTML={{ __html: content }} />
-          </div>
+                {article.title}
+              </div>
+              {getExcerpt(article, 90) ? (
+                <div
+                  className="mt-[3px] text-[11.5px] leading-[1.45] line-clamp-1"
+                  style={{ color: 'var(--hub-text-secondary)' }}
+                >
+                  {getExcerpt(article, 90)}
+                </div>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom scroll thumb */}
+        <div className="absolute right-[-8px] top-0 bottom-0 w-[3px]">
+          <div
+            ref={thumbRef}
+            className="absolute right-0 w-[3px] rounded-full transition-opacity"
+            style={{
+              background: 'var(--hub-accent)',
+              opacity: 0.45,
+              top: 0,
+              height: '30%',
+            }}
+          />
         </div>
       </div>
-    </div>
-  );
-  if (typeof document === "undefined") return modal;
-  return createPortal(modal, document.body);
+    </>
+  )
 }
 
-export default function NewsSection({ reloadSignal = 0 }: { reloadSignal?: number }) {
+// ── NewsSection (public API) ──────────────────────────────────────────────────
+
+export default function NewsSection({
+  reloadSignal = 0,
+  variant = 'grid',
+}: {
+  reloadSignal?: number
+  variant?: 'grid' | 'sidebar'
+}) {
   const [selected, setSelected] = useState<Article | null>(null);
   const modalHistoryActiveRef = useRef(false);
   const [page, setPage] = useState(1);
@@ -237,6 +443,45 @@ export default function NewsSection({ reloadSignal = 0 }: { reloadSignal?: numbe
     return () => window.removeEventListener("popstate", onPopState);
   }, [selected]);
 
+  // ── Sidebar variant ──────────────────────────────────────────────────────
+  if (variant === 'sidebar') {
+    if (loading) {
+      return (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div
+            className="text-[10.5px] font-semibold tracking-[0.13em] uppercase px-6 pb-3 shrink-0"
+            style={{ color: 'var(--hub-text-muted)' }}
+          >
+            Aktualności
+          </div>
+          <div className="px-3 flex flex-col gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-[10px] animate-pulse"
+                style={{ height: '56px', background: 'rgba(255,255,255,0.05)' }}
+              />
+            ))}
+          </div>
+        </div>
+      )
+    }
+    if (error) {
+      return (
+        <div className="px-6 py-3 text-[12px]" style={{ color: 'rgba(248,113,113,0.8)' }}>
+          Nie udało się wczytać aktualności
+        </div>
+      )
+    }
+    return (
+      <div className="flex-1 min-h-0 flex flex-col">
+        <NewsSidebarList articles={articles} onOpen={openArticle} />
+        {selected ? <ArticleModal article={selected} onClose={closeArticle} /> : null}
+      </div>
+    )
+  }
+
+  // ── Grid variant (default) ───────────────────────────────────────────────
   return (
     <section className="w-full max-w-5xl mx-auto">
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

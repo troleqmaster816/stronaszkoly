@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, FileText, ListChecks, School } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, School, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
 import { useAuth } from "./features/auth/useAuth";
@@ -52,6 +52,35 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.toLocaleString()
 }
 
+// ── Sidebar nav item ──────────────────────────────────────────────────────────
+
+function NavItem({
+  icon,
+  title,
+  desc,
+  onClick,
+}: {
+  icon: React.ReactNode
+  title: string
+  desc: string
+  onClick: () => void
+}) {
+  return (
+    <button type="button" onClick={onClick} className="hub-nav-item hub-fade-up w-full text-left">
+      <div className="hub-nav-icon">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[14px] font-semibold leading-[1.2]" style={{ color: 'var(--hub-text-primary)' }}>{title}</div>
+        <div className="text-[12px] mt-0.5 leading-[1.3] truncate" style={{ color: 'var(--hub-text-secondary)' }}>{desc}</div>
+      </div>
+      <div className="hub-nav-arrow">
+        <ChevronRight className="w-[14px] h-[14px]" />
+      </div>
+    </button>
+  )
+}
+
+// ── Main Hub component ────────────────────────────────────────────────────────
+
 export default function Hub({ navigate }: HubProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -99,6 +128,12 @@ export default function Hub({ navigate }: HubProps) {
   const closeProfile = () => {
     setProfileOpen(false)
     setApiKeyVisible(false)
+  }
+
+  const openProfile = () => {
+    setProfileOpen(true)
+    setApiKeyVisible(false)
+    if (isAuth) loadSingleKey()
   }
 
   useEffect(() => {
@@ -215,7 +250,6 @@ export default function Hub({ navigate }: HubProps) {
       setBackupsVisible(false)
       return
     }
-
     setBackupsVisible(true)
     if (backups === null || backupsError) {
       await loadBackups()
@@ -245,7 +279,6 @@ export default function Hub({ navigate }: HubProps) {
       const jobId = j?.data?.jobId;
       if (!jobId) { setArticlesBusy(false); return; }
       setArticlesJob({ id: jobId, status: 'queued' });
-      // Poll co 2s do zakończenia
       const poll = async () => {
         if (!mountedRef.current) return;
         try {
@@ -436,351 +469,426 @@ export default function Hub({ navigate }: HubProps) {
     return apiKeyMeta?.hasKey ? 'Klucz istnieje (ukryty)' : 'Brak klucza API'
   }, [apiKeyVisible, apiKeyMeta, singleApiKey])
 
-  return (
-    <div className="relative min-h-[100svh] w-full">
+  // ── Shared background picture ───────────────────────────────────────────────
+  const heroBg = (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 overflow-hidden"
+      style={{ height: '100lvh', zIndex: 0 }}
+    >
+      <picture>
+        <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
+        <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
+        <img
+          src={heroFallbackSrc}
+          srcSet={heroJpgSrcSet}
+          sizes={heroSizes}
+          decoding="async"
+          loading="eager"
+          fetchPriority="high"
+          alt=""
+          className="h-full w-full object-cover object-top sm:object-center"
+        />
+      </picture>
+      {/* Desktop: directional gradient darkening from left (sidebar side) */}
       <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-x-0 top-0 h-screen overflow-hidden"
-        style={{ height: "100lvh" }}
-      >
-        {/* Background image (viewport-fixed to avoid jump on content pagination/scroll) */}
-        <picture>
-          <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
-          <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
-          <img
-            src={heroFallbackSrc}
-            srcSet={heroJpgSrcSet}
-            sizes={heroSizes}
-            decoding="async"
-            loading="eager"
-            fetchPriority="high"
-            alt=""
-            className="h-full w-full object-cover object-top sm:object-center"
-          />
-        </picture>
-        {/* Overlay for readability */}
-        <div className="absolute inset-0 bg-black/50" />
-        {/* Subtle grid overlay to reinforce tech theme */}
-        <div className="hidden sm:block absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
-      </div>
+        className="hidden lg:block absolute inset-0"
+        style={{
+          background: 'linear-gradient(to right, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.36) 45%, transparent 70%)',
+        }}
+      />
+      {/* Mobile: simple overlay */}
+      <div className="lg:hidden absolute inset-0 bg-black/50" />
+      {/* Noise grain overlay (desktop) */}
+      <div
+        className="hidden lg:block absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E\")",
+          opacity: 1,
+        }}
+      />
+      {/* Mobile tech grid */}
+      <div className="hidden sm:lg:hidden absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
+    </div>
+  )
 
-      <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
-        <div className="relative z-10 mx-auto max-w-6xl px-4 py-2 flex items-center gap-3 text-white">
-          <School className="w-5 h-5 text-zinc-200" />
-          <div className="text-sm font-semibold text-zinc-100">ZSE Zduńska Wola</div>
-          <div className="ml-auto">
-            <Button
-              onClick={() => { setProfileOpen(true); setApiKeyVisible(false); if (isAuth) loadSingleKey(); }}
-              variant="outline"
-              className="border-white/30 bg-black/40 text-white hover:bg-black/60 backdrop-blur"
-            >
-              {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
-            </Button>
-          </div>
+  // ── Profile modal (shared) ──────────────────────────────────────────────────
+  const profileModal = profileOpen ? (
+    <Modal
+      onClose={closeProfile}
+      panelClassName="w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl"
+    >
+      <div className="flex max-h-[calc(100svh-2rem)] flex-col">
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-700 px-4 py-4">
+          <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
+          <Button onClick={closeProfile} variant="outline" size="sm">Zamknij</Button>
         </div>
-      </header>
-
-      {/* Content */}
-      <div className="relative z-10 mx-auto flex min-h-[calc(100svh-48px)] max-w-6xl flex-col items-center px-4 py-8 sm:py-10 text-white">
-
-        <main className="w-full">
-          {/* Symmetrical 2x2 grid on desktop, stacked on mobile */}
-          <div className="mx-auto max-w-3xl grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
-            <HubTile
-              title="Plan lekcji"
-              description="Przeglądaj interaktywny plan dla klas, nauczycieli i sal."
-              icon={<CalendarDays className="h-6 w-6" />}
-              onClick={() => navigate(getPreferredPlanPath())}
-            />
-            <HubTile
-              title="Frekwencja"
-              description="Zarządzaj obecnościami i planami zajęć."
-              icon={<ListChecks className="h-6 w-6" />}
-              onClick={() => navigate("/frekwencja")}
-            />
-            <HubTile
-              title="Harmonogram"
-              description="Wydarzenia, rady, terminy."
-              icon={<ListChecks className="h-6 w-6" />}
-              onClick={() => navigate("/harmonogram")}
-            />
-            <HubTile
-              title="Statut szkoły"
-              description="Przejrzyj statut szkoły."
-              icon={<FileText className="h-6 w-6" />}
-              onClick={() => navigate("/statut")}
-            />
-          </div>
-
-          <div className="mt-12 sm:mt-16">
-            <NewsSection reloadSignal={newsReloadSignal} />
-          </div>
-        </main>
-
-        <footer className="mt-auto w-full pt-10 text-center text-xs text-zinc-200/90">
-          © {new Date().getFullYear()} ZSE Zduńska Wola
-        </footer>
-      </div>
-
-      {/* Profile modal */}
-      {profileOpen && (
-        <Modal
-          onClose={closeProfile}
-          panelClassName="w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl"
-        >
-            <div className="flex max-h-[calc(100svh-2rem)] flex-col">
-            <div className="flex items-center justify-between gap-3 border-b border-zinc-700 px-4 py-4">
-              <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
-              <Button onClick={closeProfile} variant="outline" size="sm">Zamknij</Button>
+        <div className="overflow-y-auto px-4 py-4">
+          {!isAuth ? (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                <div className="text-sm font-medium mb-2">Logowanie</div>
+                <Input className="mb-2" placeholder="Nazwa użytkownika"
+                       value={loginForm.username} onChange={e=>setLoginForm(s=>({ ...s, username: e.target.value }))} />
+                <Input type="password" className="mb-2" placeholder="Hasło"
+                       value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
+                <Button variant="success" type="submit">Zaloguj</Button>
+              </form>
+              <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                <div className="text-sm font-medium mb-2">Rejestracja</div>
+                <Input className="mb-2" placeholder="Nazwa użytkownika"
+                       value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
+                <Input type="password" className="mb-2" placeholder="Hasło (min. 6)"
+                       value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
+                <Button variant="primary" type="submit">Zarejestruj</Button>
+              </form>
             </div>
-            <div className="overflow-y-auto px-4 py-4">
-            {!isAuth ? (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                  <div className="text-sm font-medium mb-2">Logowanie</div>
-                  <Input className="mb-2" placeholder="Nazwa użytkownika"
-                         value={loginForm.username} onChange={e=>setLoginForm(s=>({ ...s, username: e.target.value }))} />
-                  <Input type="password" className="mb-2" placeholder="Hasło"
-                         value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
-                  <Button variant="success" type="submit">Zaloguj</Button>
-                </form>
-                <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                  <div className="text-sm font-medium mb-2">Rejestracja</div>
-                  <Input className="mb-2" placeholder="Nazwa użytkownika"
-                         value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
-                  <Input type="password" className="mb-2" placeholder="Hasło (min. 6)"
-                         value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
-                  <Button variant="primary" type="submit">Zarejestruj</Button>
-                </form>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                  <div>
-                    <div className="text-sm">Zalogowano jako</div>
-                    <div className="text-lg font-semibold">{me?.username}</div>
-                  </div>
-                  <Button onClick={handleLogout} variant="danger">Wyloguj</Button>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                <div>
+                  <div className="text-sm">Zalogowano jako</div>
+                  <div className="text-lg font-semibold">{me?.username}</div>
                 </div>
+                <Button onClick={handleLogout} variant="danger">Wyloguj</Button>
+              </div>
+              <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                <div className="text-sm font-medium mb-2">Klucz API (test)</div>
+                <div className="text-xs opacity-80 mb-2">
+                  Pełny klucz można zobaczyć tylko bezpośrednio po regeneracji. Przechowuj go bezpiecznie.
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={displayedApiKey} className="flex-1 font-mono" />
+                  <Button
+                    onClick={() => {
+                      if (apiKeyVisible) { setApiKeyVisible(false); return }
+                      if (!singleApiKey) { toast.error('Pełny klucz jest dostępny tylko po regeneracji.'); return }
+                      setApiKeyVisible(true)
+                    }}
+                    variant="outline"
+                  >
+                    {apiKeyVisible ? 'Ukryj' : 'Pokaż'}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!singleApiKey || !apiKeyVisible) return
+                      try {
+                        await navigator.clipboard.writeText(singleApiKey)
+                        toast.success('Skopiowano klucz API do schowka.')
+                      } catch {
+                        toast.error('Nie udało się skopiować klucza API.')
+                      }
+                    }}
+                    disabled={!singleApiKey || !apiKeyVisible}
+                    variant="outline"
+                  >
+                    Kopiuj
+                  </Button>
+                  <Button onClick={regenSingleKey} variant="warning">Regeneruj</Button>
+                </div>
+                {apiKeyMeta?.createdAt ? (
+                  <div className="mt-2 text-[11px] opacity-70">
+                    Utworzono: {new Date(apiKeyMeta.createdAt).toLocaleString()}
+                  </div>
+                ) : null}
+                {apiKeyMeta?.requiresRotation ? (
+                  <div className="mt-1 text-[11px] text-amber-300">
+                    Wykryto stary format klucza. Zregeneruj klucz, aby dalej używać API.
+                  </div>
+                ) : null}
+              </section>
+              {isAdmin ? (
                 <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                  <div className="text-sm font-medium mb-2">Klucz API (test)</div>
-                  <div className="text-xs opacity-80 mb-2">
-                    Pełny klucz można zobaczyć tylko bezpośrednio po regeneracji. Przechowuj go bezpiecznie.
-                  </div>
+                  <div className="text-sm font-medium mb-2">Aktualności</div>
                   <div className="flex items-center gap-2">
-                    <Input readOnly value={displayedApiKey} className="flex-1 font-mono" />
-                    <Button
-                      onClick={() => {
-                        if (apiKeyVisible) {
-                          setApiKeyVisible(false)
-                          return
-                        }
-                        if (!singleApiKey) {
-                          toast.error('Pełny klucz jest dostępny tylko po regeneracji.')
-                          return
-                        }
-                        setApiKeyVisible(true)
-                      }}
-                      variant="outline"
-                    >
-                      {apiKeyVisible ? 'Ukryj' : 'Pokaż'}
+                    <Button onClick={startArticlesScrape} disabled={articlesBusy} variant={articlesBusy ? 'neutral' : 'success'}>
+                      {articlesBusy ? 'Aktualizuję…' : 'Aktualizuj artykuły'}
                     </Button>
-                    <Button
-                      onClick={async () => {
-                        if (!singleApiKey || !apiKeyVisible) return
-                        try {
-                          await navigator.clipboard.writeText(singleApiKey)
-                          toast.success('Skopiowano klucz API do schowka.')
-                        } catch {
-                          toast.error('Nie udało się skopiować klucza API.')
-                        }
-                      }}
-                      disabled={!singleApiKey || !apiKeyVisible}
-                      variant="outline"
-                    >
-                      Kopiuj
-                    </Button>
-                    <Button onClick={regenSingleKey} variant="warning">Regeneruj</Button>
+                    {articlesJob ? <span className="text-xs opacity-80">Status: {articlesJob.status}</span> : null}
                   </div>
-                  {apiKeyMeta?.createdAt ? (
-                    <div className="mt-2 text-[11px] opacity-70">
-                      Utworzono: {new Date(apiKeyMeta.createdAt).toLocaleString()}
-                    </div>
-                  ) : null}
-                  {apiKeyMeta?.requiresRotation ? (
-                    <div className="mt-1 text-[11px] text-amber-300">
-                      Wykryto stary format klucza. Zregeneruj klucz, aby dalej używać API.
-                    </div>
-                  ) : null}
+                  <div className="text-[11px] mt-2 opacity-70">Po zakończeniu zadania nowe artykuły pojawią się w sekcji aktualności.</div>
                 </section>
-                {isAdmin ? (
-                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                    <div className="text-sm font-medium mb-2">Aktualności</div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        onClick={startArticlesScrape}
-                        disabled={articlesBusy}
-                        variant={articlesBusy ? 'neutral' : 'success'}
-                      >
-                        {articlesBusy ? 'Aktualizuję…' : 'Aktualizuj artykuły'}
-                      </Button>
-                      {articlesJob ? (
-                        <span className="text-xs opacity-80">Status: {articlesJob.status}</span>
-                      ) : null}
-                    </div>
-                    <div className="text-[11px] mt-2 opacity-70">Po zakończeniu zadania nowe artykuły pojawią się w sekcji aktualności.</div>
-                  </section>
-                ) : null}
-                {isAdmin ? (
-                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                    <div className="text-sm font-medium mb-2">Plan lekcji</div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Button onClick={refreshTimetable} disabled={ttBusy} variant={ttBusy ? 'neutral' : 'primary'}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</Button>
-                      <Button onClick={() => { void toggleBackups() }} variant="outline">
-                        {backupsVisible ? 'Ukryj kopie zapasowe' : 'Pokaż kopie zapasowe'}
-                      </Button>
-                    </div>
-                    {backupsVisible && backupsError ? (
-                      <div className="text-xs text-rose-300 mb-2">{backupsError}</div>
-                    ) : null}
-                    {backupsVisible && Array.isArray(backups) ? (
-                      backups.length === 0 ? (
-                        <div className="text-xs text-zinc-400">Brak kopii zapasowych.</div>
-                      ) : (
-                        <div className="max-h-40 overflow-y-auto text-xs">
-                          {backups.map((b) => (
-                            <div key={b.filename} className="flex items-center justify-between py-1 border-b border-zinc-800 last:border-b-0">
-                              <div className="truncate pr-2">{b.filename}</div>
-                              <div className="flex items-center gap-2">
-                                <span className="opacity-70">{new Date(b.mtime).toLocaleString()}</span>
-                                <Button onClick={() => restoreBackup(b.filename)} variant="success" size="sm">Przywróć</Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    ) : null}
-                    <div className="text-[11px] mt-2 opacity-70">Przechowujemy 5 ostatnich różnych wersji planu.</div>
-                  </section>
-                ) : null}
-                {isAdmin ? (
-                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                    <div className="text-sm font-medium mb-2">Tło strony głównej</div>
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <Input
-                          key={hubBackgroundInputKey}
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setHubBackgroundFile(e.target.files?.[0] ?? null)}
-                          className="file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-sm file:text-white"
-                        />
-                        <Button
-                          onClick={uploadHubBackground}
-                          disabled={!hubBackgroundFile || hubBackgroundAction === 'upload'}
-                          variant={hubBackgroundAction === 'upload' ? 'neutral' : 'success'}
-                        >
-                          {hubBackgroundAction === 'upload' ? 'Przetwarzam…' : 'Wgraj nowe tło'}
-                        </Button>
-                        <Button
-                          onClick={() => { void loadHubBackgrounds() }}
-                          disabled={!!hubBackgroundAction}
-                          variant="outline"
-                        >
-                          Odśwież listę
-                        </Button>
-                      </div>
-                      {hubBackgroundFile ? (
-                        <div className="mt-2 text-[11px] opacity-70">
-                          Wybrano plik: {hubBackgroundFile.name}
-                        </div>
-                      ) : null}
-                    </div>
-                    {hubBackgroundError ? (
-                      <div className="mt-3 text-xs text-rose-300">{hubBackgroundError}</div>
-                    ) : null}
-                    <div className="mt-3 grid gap-2">
-                      {(hubBackgrounds?.entries || []).map((entry) => (
-                        <div
-                          key={entry.id}
-                          className={`rounded-lg border p-2 ${entry.isActive ? 'border-emerald-500/60 bg-emerald-950/20' : 'border-zinc-800 bg-zinc-900/40'}`}
-                        >
-                          <div className="flex flex-col gap-3 sm:flex-row">
-                            <div className="h-24 w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 sm:w-40">
-                              {entry.previewUrl ? (
-                                <img src={entry.previewUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                              ) : (
-                                <div className="flex h-full items-center justify-center text-xs text-zinc-500">Brak podglądu</div>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-sm font-medium">{entry.label}</div>
-                                {entry.isActive ? (
-                                  <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">Aktywne</span>
-                                ) : null}
-                                {entry.locked ? (
-                                  <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">Lock</span>
-                                ) : null}
-                              </div>
-                              <div className="mt-1 text-[11px] opacity-70">
-                                Źródło: {entry.sourceName || 'wbudowane tło'}
-                              </div>
-                              <div className="text-[11px] opacity-70">
-                                Dodano: {formatDateTime(entry.createdAt)}
-                              </div>
-                              <div className="text-[11px] opacity-70">
-                                Ostatnio wybrane: {formatDateTime(entry.lastSelectedAt)}
-                              </div>
-                              <div className="text-[11px] opacity-70">
-                                Warianty WebP: {entry.variants.webp.map((variant) => `${variant.width}px`).join(', ') || 'brak'}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2 sm:w-44 sm:flex-col sm:items-stretch">
-                              <Button
-                                onClick={() => { void activateHubBackground(entry.id) }}
-                                disabled={entry.isActive || !!hubBackgroundAction}
-                                variant={entry.isActive ? 'neutral' : 'success'}
-                                size="sm"
-                              >
-                                {entry.isActive ? 'Aktywne teraz' : 'Przywróć'}
-                              </Button>
-                              <Button
-                                onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }}
-                                disabled={!!hubBackgroundAction}
-                                variant={entry.locked ? 'warning' : 'outline'}
-                                size="sm"
-                              >
-                                {entry.locked ? 'Unlock' : 'Lock'}
-                              </Button>
-                              <Button
-                                onClick={() => { void deleteHubBackground(entry.id) }}
-                                disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1}
-                                variant="danger"
-                                size="sm"
-                                title={entry.locked ? 'Najpierw odblokuj tło, aby je usunąć.' : undefined}
-                              >
-                                Usuń
-                              </Button>
+              ) : null}
+              {isAdmin ? (
+                <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Plan lekcji</div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Button onClick={refreshTimetable} disabled={ttBusy} variant={ttBusy ? 'neutral' : 'primary'}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</Button>
+                    <Button onClick={() => { void toggleBackups() }} variant="outline">
+                      {backupsVisible ? 'Ukryj kopie zapasowe' : 'Pokaż kopie zapasowe'}
+                    </Button>
+                  </div>
+                  {backupsVisible && backupsError ? <div className="text-xs text-rose-300 mb-2">{backupsError}</div> : null}
+                  {backupsVisible && Array.isArray(backups) ? (
+                    backups.length === 0 ? (
+                      <div className="text-xs text-zinc-400">Brak kopii zapasowych.</div>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto text-xs">
+                        {backups.map((b) => (
+                          <div key={b.filename} className="flex items-center justify-between py-1 border-b border-zinc-800 last:border-b-0">
+                            <div className="truncate pr-2">{b.filename}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="opacity-70">{new Date(b.mtime).toLocaleString()}</span>
+                              <Button onClick={() => restoreBackup(b.filename)} variant="success" size="sm">Przywróć</Button>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                      {hubBackgrounds && hubBackgrounds.entries.length === 0 ? (
-                        <div className="text-xs text-zinc-400">Brak zapisanych teł.</div>
-                      ) : null}
+                        ))}
+                      </div>
+                    )
+                  ) : null}
+                  <div className="text-[11px] mt-2 opacity-70">Przechowujemy 5 ostatnich różnych wersji planu.</div>
+                </section>
+              ) : null}
+              {isAdmin ? (
+                <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Tło strony głównej</div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Input
+                        key={hubBackgroundInputKey}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setHubBackgroundFile(e.target.files?.[0] ?? null)}
+                        className="file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-sm file:text-white"
+                      />
+                      <Button onClick={uploadHubBackground} disabled={!hubBackgroundFile || hubBackgroundAction === 'upload'} variant={hubBackgroundAction === 'upload' ? 'neutral' : 'success'}>
+                        {hubBackgroundAction === 'upload' ? 'Przetwarzam…' : 'Wgraj nowe tło'}
+                      </Button>
+                      <Button onClick={() => { void loadHubBackgrounds() }} disabled={!!hubBackgroundAction} variant="outline">Odśwież listę</Button>
                     </div>
-                  </section>
-                ) : null}
+                    {hubBackgroundFile ? <div className="mt-2 text-[11px] opacity-70">Wybrano plik: {hubBackgroundFile.name}</div> : null}
+                  </div>
+                  {hubBackgroundError ? <div className="mt-3 text-xs text-rose-300">{hubBackgroundError}</div> : null}
+                  <div className="mt-3 grid gap-2">
+                    {(hubBackgrounds?.entries || []).map((entry) => (
+                      <div key={entry.id} className={`rounded-lg border p-2 ${entry.isActive ? 'border-emerald-500/60 bg-emerald-950/20' : 'border-zinc-800 bg-zinc-900/40'}`}>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <div className="h-24 w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 sm:w-40">
+                            {entry.previewUrl ? (
+                              <img src={entry.previewUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-xs text-zinc-500">Brak podglądu</div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm font-medium">{entry.label}</div>
+                              {entry.isActive ? <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">Aktywne</span> : null}
+                              {entry.locked ? <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">Lock</span> : null}
+                            </div>
+                            <div className="mt-1 text-[11px] opacity-70">Źródło: {entry.sourceName || 'wbudowane tło'}</div>
+                            <div className="text-[11px] opacity-70">Dodano: {formatDateTime(entry.createdAt)}</div>
+                            <div className="text-[11px] opacity-70">Ostatnio wybrane: {formatDateTime(entry.lastSelectedAt)}</div>
+                            <div className="text-[11px] opacity-70">Warianty WebP: {entry.variants.webp.map((v) => `${v.width}px`).join(', ') || 'brak'}</div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 sm:w-44 sm:flex-col sm:items-stretch">
+                            <Button onClick={() => { void activateHubBackground(entry.id) }} disabled={entry.isActive || !!hubBackgroundAction} variant={entry.isActive ? 'neutral' : 'success'} size="sm">
+                              {entry.isActive ? 'Aktywne teraz' : 'Przywróć'}
+                            </Button>
+                            <Button onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }} disabled={!!hubBackgroundAction} variant={entry.locked ? 'warning' : 'outline'} size="sm">
+                              {entry.locked ? 'Unlock' : 'Lock'}
+                            </Button>
+                            <Button onClick={() => { void deleteHubBackground(entry.id) }} disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1} variant="danger" size="sm" title={entry.locked ? 'Najpierw odblokuj tło, aby je usunąć.' : undefined}>
+                              Usuń
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {hubBackgrounds && hubBackgrounds.entries.length === 0 ? <div className="text-xs text-zinc-400">Brak zapisanych teł.</div> : null}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  ) : null
+
+  return (
+    <div className="relative min-h-[100svh] w-full font-instrument">
+      {heroBg}
+
+      {/* ── DESKTOP SIDEBAR LAYOUT (lg+) ─────────────────────────────────── */}
+      <aside
+        className="hub-side-in hidden lg:flex fixed left-0 top-0 bottom-0 z-10 flex-col"
+        style={{
+          width: '430px',
+          background: 'var(--hub-glass-bg)',
+          borderRight: '1px solid var(--hub-glass-border)',
+          backdropFilter: 'blur(28px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(28px) saturate(1.4)',
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-6 shrink-0"
+          style={{
+            paddingTop: '22px',
+            paddingBottom: '20px',
+            borderBottom: '1px solid var(--hub-glass-border)',
+          }}
+        >
+          {/* Logo */}
+          <div className="flex items-center gap-[11px]">
+            <div
+              className="flex items-center justify-center shrink-0"
+              style={{
+                width: '38px', height: '38px',
+                borderRadius: '10px',
+                background: 'var(--hub-accent)',
+              }}
+            >
+              <School className="w-[19px] h-[19px]" style={{ color: '#1c1305' }} />
+            </div>
+            <div>
+              <div className="font-bricolage text-[15px] font-semibold leading-[1.2] tracking-[0.01em]" style={{ color: 'var(--hub-text-primary)' }}>
+                ZSE Zduńska Wola
               </div>
-            )}
+              <div className="text-[11.5px] mt-[1px] tracking-[0.02em]" style={{ color: 'var(--hub-text-secondary)' }}>
+                Rok szkolny 2025 / 2026
+              </div>
             </div>
+          </div>
+
+          {/* User chip */}
+          <button
+            type="button"
+            onClick={openProfile}
+            className="flex items-center gap-2 shrink-0 cursor-pointer transition-all rounded-full"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--hub-glass-border)',
+              padding: '6px 13px 6px 6px',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.09)'
+              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.16)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'
+              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--hub-glass-border)'
+            }}
+          >
+            <div
+              className="flex items-center justify-center text-[11px] font-bold"
+              style={{
+                width: '26px', height: '26px',
+                borderRadius: '50%',
+                background: 'var(--hub-accent)',
+                color: '#1c1305',
+              }}
+            >
+              {isAuth ? (me?.username?.[0]?.toUpperCase() || 'U') : '?'}
             </div>
-        </Modal>
-      )}
+            <span className="text-[13px] font-medium" style={{ color: 'var(--hub-text-secondary)' }}>
+              {isAuth ? (me?.username || 'Użytkownik') : 'Gość'}
+            </span>
+          </button>
+        </div>
+
+        {/* Section label: Navigation */}
+        <div
+          className="text-[10.5px] font-semibold tracking-[0.13em] uppercase px-6 shrink-0"
+          style={{ color: 'var(--hub-text-muted)', paddingTop: '20px', paddingBottom: '10px' }}
+        >
+          Nawigacja
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex flex-col gap-[2px] px-3 shrink-0">
+          <NavItem
+            icon={<CalendarDays className="w-4 h-4" />}
+            title="Plan lekcji"
+            desc="Klasy, nauczyciele i sale"
+            onClick={() => navigate(getPreferredPlanPath())}
+          />
+          <NavItem
+            icon={<ListChecks className="w-4 h-4" />}
+            title="Frekwencja"
+            desc="Zarządzaj obecnościami i zajęciami"
+            onClick={() => navigate('/frekwencja')}
+          />
+          <NavItem
+            icon={<ListChecks className="w-4 h-4" />}
+            title="Harmonogram"
+            desc="Rady, terminy, zebrania"
+            onClick={() => navigate('/harmonogram')}
+          />
+          <NavItem
+            icon={<FileText className="w-4 h-4" />}
+            title="Statut szkoły"
+            desc="Przejrzyj regulamin"
+            onClick={() => navigate('/statut')}
+          />
+        </nav>
+
+        {/* Divider */}
+        <div className="mx-3 my-4 shrink-0" style={{ height: '1px', background: 'var(--hub-glass-border)' }} />
+
+        {/* News section (sidebar variant) */}
+        <NewsSection variant="sidebar" reloadSignal={newsReloadSignal} />
+      </aside>
+
+      {/* Footer credit (desktop) */}
+      <div
+        className="hidden lg:block fixed bottom-4 pointer-events-none"
+        style={{
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: '11px',
+          color: 'rgba(255,255,255,0.18)',
+          letterSpacing: '0.05em',
+          zIndex: 5,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        © {new Date().getFullYear()} ZSE Zduńska Wola
+      </div>
+
+      {/* ── MOBILE LAYOUT (< lg) ─────────────────────────────────────────── */}
+      <div className="lg:hidden relative z-10 flex flex-col min-h-[100svh]">
+        <header className="sticky top-0 z-40 backdrop-blur bg-zinc-950/70 border-b border-zinc-800">
+          <div className="mx-auto max-w-6xl px-4 py-2 flex items-center gap-3 text-white">
+            <School className="w-5 h-5 text-zinc-200" />
+            <div className="text-sm font-semibold text-zinc-100">ZSE Zduńska Wola</div>
+            <div className="ml-auto">
+              <Button
+                onClick={openProfile}
+                variant="outline"
+                className="border-white/30 bg-black/40 text-white hover:bg-black/60 backdrop-blur"
+              >
+                {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto flex flex-col items-center w-full max-w-6xl px-4 py-8 sm:py-10 text-white flex-1">
+          <main className="w-full">
+            <div className="mx-auto max-w-3xl grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+              <HubTile title="Plan lekcji" description="Przeglądaj interaktywny plan dla klas, nauczycieli i sal." icon={<CalendarDays className="h-6 w-6" />} onClick={() => navigate(getPreferredPlanPath())} />
+              <HubTile title="Frekwencja" description="Zarządzaj obecnościami i planami zajęć." icon={<ListChecks className="h-6 w-6" />} onClick={() => navigate('/frekwencja')} />
+              <HubTile title="Harmonogram" description="Wydarzenia, rady, terminy." icon={<ListChecks className="h-6 w-6" />} onClick={() => navigate('/harmonogram')} />
+              <HubTile title="Statut szkoły" description="Przejrzyj statut szkoły." icon={<FileText className="h-6 w-6" />} onClick={() => navigate('/statut')} />
+            </div>
+            <div className="mt-12 sm:mt-16">
+              <NewsSection reloadSignal={newsReloadSignal} />
+            </div>
+          </main>
+          <footer className="mt-auto w-full pt-10 text-center text-xs text-zinc-200/90">
+            © {new Date().getFullYear()} ZSE Zduńska Wola
+          </footer>
+        </div>
+      </div>
+
+      {profileModal}
     </div>
-  );
+  )
 }
+
+// ── HubTile (mobile only) ─────────────────────────────────────────────────────
 
 function HubTile({
   title,
@@ -788,10 +896,10 @@ function HubTile({
   icon,
   onClick,
 }: {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  onClick: () => void;
+  title: string
+  description: string
+  icon: React.ReactNode
+  onClick: () => void
 }) {
   return (
     <motion.button
@@ -803,22 +911,16 @@ function HubTile({
       transition={{ type: "spring", stiffness: 220, damping: 20, mass: 0.6 }}
       className="group relative flex h-[112px] sm:h-[120px] flex-col justify-between overflow-hidden rounded-2xl bg-white/10 p-3.5 sm:p-4 text-left text-white shadow-xl backdrop-blur-md"
     >
-      {/* gradient border glow */}
       <span className="pointer-events-none absolute inset-px rounded-2xl bg-gradient-to-br from-cyan-300/10 via-emerald-300/10 to-violet-300/10 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100" />
-      {/* sheen */}
       <span className="pointer-events-none absolute -inset-10 translate-y-10 rotate-12 bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100" />
-
       <div className="relative flex items-center gap-3">
-        <span className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-md">
-          {icon}
-        </span>
+        <span className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-md">{icon}</span>
         <span className="text-base sm:text-lg font-semibold drop-shadow-sm">{title}</span>
       </div>
-
       <div className="relative">
         <p className="text-[11px] sm:text-xs text-zinc-100/95 leading-snug max-w-sm">{description}</p>
         <span className="mt-1 inline-block text-xs text-white/90 underline-offset-2 group-hover:underline">Przejdź</span>
       </div>
     </motion.button>
-  );
+  )
 }
