@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, ShieldCheck, CalendarX } from 'lucide-react';
 import { DateBadge as DateBadgeComp } from './DateBadge';
 import { Button } from '@/components/ui/button';
@@ -140,6 +140,21 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
   useEffect(() => { try { localStorage.setItem('planner:subjectSettings', JSON.stringify(subjectSettings)); } catch { /* ignore */ } }, [subjectSettings]);
 
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const settingsPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const panel = settingsPanelRef.current;
+      const target = event.target;
+      if (!panel || !(target instanceof Node) || panel.contains(target)) return;
+      setSettingsOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [settingsOpen]);
 
   function getEffectivePolicy(keyRaw: string): SubjectPolicy {
     const key = normalizeSubjectKey(keyRaw);
@@ -325,7 +340,7 @@ export default function AbsencePlanner({ state, selectedPlanId, subjectPolicy = 
         </div>
       )}
       {plan && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-3">
+        <div ref={settingsPanelRef} className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-3">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">Ustawienia planera nieobecności</div>
             <Button onClick={()=>setSettingsOpen(o=>!o)} size="sm" className="rounded bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-xs">{settingsOpen ? 'Ukryj' : 'Pokaż'}</Button>

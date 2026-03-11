@@ -27,6 +27,7 @@ import { hashPassword, verifyPassword } from '../lib/passwords.js'
 import { createTimetableStore } from '../lib/timetableStore.js'
 import { createJobsStore } from '../lib/jobsStore.js'
 import { createSessionStore } from '../lib/sessionStore.js'
+import { createHubBackgroundStore } from '../lib/hubBackgroundStore.js'
 import {
   detectPythonCommand,
   runCommand,
@@ -68,6 +69,11 @@ export function createApp(config) {
 
   const dbStore = createDbStore({ dbPath: config.dbPath, overridesPath: config.overridesPath })
   const timetableStore = createTimetableStore({ timetableFilePath: config.timetableFilePath, ttlMs: config.timetableCacheTtlMs })
+  const hubBackgroundStore = createHubBackgroundStore({
+    manifestPath: config.hubBackgroundManifestPath,
+    publicDir: config.publicDir,
+    generatedDir: config.hubBackgroundsDir,
+  })
   const startupTimetable = timetableStore.readTimetableFile()
   const startupValidation = timetableStore.getTimetableValidationStatus()
   if (!startupTimetable) {
@@ -108,6 +114,12 @@ export function createApp(config) {
     console.warn('[server] Failed to ensure overrides file:', e)
   }
 
+  try {
+    hubBackgroundStore.ensureManifest()
+  } catch (e) {
+    console.warn('[server] Failed to ensure hub background manifest:', e)
+  }
+
   const legacyApiCatchAll = (_req, res) => {
     return problem(res, 410, 'api.legacy_disabled', 'Gone', 'Legacy API disabled. Use /v1')
   }
@@ -131,6 +143,7 @@ export function createApp(config) {
 
     ...dbStore,
     ...timetableStore,
+    hubBackgroundStore,
 
     hashPassword,
     verifyPassword,

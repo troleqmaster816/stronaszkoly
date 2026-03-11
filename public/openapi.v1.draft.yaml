@@ -31,6 +31,8 @@ tags:
     description: Asynchronous job execution and status endpoints.
   - name: Maintenance
     description: Administrative maintenance endpoints for timetable data.
+  - name: HubBackgrounds
+    description: Hub homepage background management and history endpoints.
   - name: ApiKeys
     description: API key metadata and rotation endpoints.
 security:
@@ -210,6 +212,50 @@ components:
           type: object
           additionalProperties: { type: string }
       required: [subjectOverrides, teacherNameOverrides]
+    HubBackgroundVariant:
+      type: object
+      properties:
+        width: { type: integer }
+        height: { type: integer, nullable: true }
+        url: { type: string }
+      required: [width, url]
+    HubBackgroundEntry:
+      type: object
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [legacy, generated] }
+        label: { type: string }
+        sourceName: { type: string, nullable: true }
+        locked: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        lastSelectedAt: { type: string, format: date-time }
+        previewUrl: { type: string, nullable: true }
+        webpSrcSet: { type: string }
+        jpegSrcSet: { type: string }
+        fallbackUrl: { type: string }
+        variants:
+          type: object
+          properties:
+            webp:
+              type: array
+              items: { $ref: '#/components/schemas/HubBackgroundVariant' }
+            jpeg:
+              type: array
+              items: { $ref: '#/components/schemas/HubBackgroundVariant' }
+          required: [webp, jpeg]
+        isActive: { type: boolean }
+      required: [id, kind, label, locked, createdAt, lastSelectedAt, webpSrcSet, jpegSrcSet, fallbackUrl, variants, isActive]
+    HubBackgroundState:
+      type: object
+      properties:
+        historyLimit: { type: integer }
+        activeId: { type: string }
+        active:
+          anyOf: [ { $ref: '#/components/schemas/HubBackgroundEntry' }, { type: 'null' } ]
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/HubBackgroundEntry' }
+      required: [historyLimit, activeId, active, entries]
     ApprovalToken:
       type: object
       properties:
@@ -1163,6 +1209,180 @@ paths:
               schema: { $ref: '#/components/schemas/Problem' }
         '401':
           $ref: '#/components/responses/Problem401'
+        '500':
+          $ref: '#/components/responses/Problem500'
+
+  /v1/hub-backgrounds:
+    get:
+      summary: Read homepage background state and history
+      operationId: getHubBackgrounds
+      tags: [HubBackgrounds]
+      description: Returns the active homepage background and stored background history.
+      security: []
+      responses:
+        '200':
+          description: Background state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/HubBackgroundState' }
+                required: [ok, data]
+        '500':
+          $ref: '#/components/responses/Problem500'
+    post:
+      security:
+        - CookieAuth: []
+      summary: Upload a new homepage background (admin)
+      operationId: uploadHubBackground
+      tags: [HubBackgrounds]
+      description: Uploads an image, generates responsive WebP/JPG variants including 1920px and 2560px when source resolution allows, and makes it active immediately.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+              required: [image]
+      responses:
+        '201':
+          description: Uploaded and activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/HubBackgroundState' }
+                required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '500':
+          $ref: '#/components/responses/Problem500'
+
+  /v1/hub-backgrounds/{id}/activate:
+    post:
+      security:
+        - CookieAuth: []
+      summary: Activate a stored homepage background (admin)
+      operationId: activateHubBackground
+      tags: [HubBackgrounds]
+      description: Restores a previously stored homepage background and makes it active.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/HubBackgroundState' }
+                required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '500':
+          $ref: '#/components/responses/Problem500'
+
+  /v1/hub-backgrounds/{id}/lock:
+    post:
+      security:
+        - CookieAuth: []
+      summary: Lock or unlock a stored homepage background (admin)
+      operationId: setHubBackgroundLock
+      tags: [HubBackgrounds]
+      description: Changes whether a stored background should consume one of the limited previous-background history slots with priority during pruning.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locked: { type: boolean }
+              required: [locked]
+      responses:
+        '200':
+          description: Updated lock state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/HubBackgroundState' }
+                required: [ok, data]
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '500':
+          $ref: '#/components/responses/Problem500'
+  /v1/hub-backgrounds/{id}:
+    delete:
+      security:
+        - CookieAuth: []
+      summary: Delete a stored homepage background (admin)
+      operationId: deleteHubBackground
+      tags: [HubBackgrounds]
+      description: Deletes a stored homepage background. If the active background is removed, another saved background becomes active automatically.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/HubBackgroundState' }
+                required: [ok, data]
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '409':
+          $ref: '#/components/responses/Problem409'
         '500':
           $ref: '#/components/responses/Problem500'
 

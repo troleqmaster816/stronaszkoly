@@ -174,6 +174,22 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 - Odczyt (publiczny): `GET /v1/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
 - Zapis (cookie auth + admin): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true, data: { saved: true } }`
 
+## Tło strony głównej
+
+- Odczyt aktywnego tła i historii (publiczny): `GET /v1/hub-backgrounds` → `{ ok: true, data: { historyLimit, activeId, active, entries } }`
+- Upload nowego tła (cookie auth + admin): `POST /v1/hub-backgrounds` jako `multipart/form-data` z polem `image`
+  - serwer zapisuje warianty `webp` i `jpg` w wielu szerokościach, także `1920px` i `2560px` gdy rozdzielczość źródła na to pozwala
+  - nowe tło staje się aktywne od razu po przetworzeniu
+- Przywrócenie wybranego tła (cookie auth + admin): `POST /v1/hub-backgrounds/{id}/activate`
+- Zmiana blokady historii (cookie auth + admin): `POST /v1/hub-backgrounds/{id}/lock` body `{ locked: true|false }`
+- Usunięcie zapisanego tła (cookie auth + admin): `DELETE /v1/hub-backgrounds/{id}`
+
+Uwagi:
+- Zachowywane są maksymalnie `2` poprzednie tła łącznie.
+- Tło oznaczone `locked: true` nadal liczy się do limitu tych `2` miejsc i blokuje jeden slot fallbacku.
+- Jeśli oba sloty są już zajęte przez zablokowane poprzednie tła, kolejne stare tła nie będą odkładane do historii.
+- Wszystkie mutacje administracyjne wymagają `X-CSRF-Token` przy autoryzacji cookie.
+
 ## Zadania i utrzymanie planu
 
 - `POST /v1/jobs/timetable-scrape` (admin) → `202 { ok: true, data: { jobId, statusUrl, status } }` – uruchamia asynchroniczne odświeżenie planu

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, FileText, ListChecks, School } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
@@ -14,6 +14,44 @@ type HubProps = {
   navigate: (to: string) => void;
 };
 
+type HubBackgroundVariant = {
+  width: number
+  height: number | null
+  url: string
+}
+
+type HubBackgroundEntry = {
+  id: string
+  kind: string
+  label: string
+  sourceName: string | null
+  locked: boolean
+  createdAt: string
+  lastSelectedAt: string
+  previewUrl: string | null
+  webpSrcSet: string
+  jpegSrcSet: string
+  fallbackUrl: string
+  variants: {
+    webp: HubBackgroundVariant[]
+    jpeg: HubBackgroundVariant[]
+  }
+  isActive: boolean
+}
+
+type HubBackgroundState = {
+  historyLimit: number
+  activeId: string
+  active: HubBackgroundEntry | null
+  entries: HubBackgroundEntry[]
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  const parsed = value ? new Date(value) : null
+  if (!parsed || Number.isNaN(parsed.getTime())) return 'brak danych'
+  return parsed.toLocaleString()
+}
+
 export default function Hub({ navigate }: HubProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -27,14 +65,24 @@ export default function Hub({ navigate }: HubProps) {
   const [ttBusy, setTtBusy] = useState(false);
   const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
   const [backupsError, setBackupsError] = useState<string | null>(null);
+  const [backupsVisible, setBackupsVisible] = useState(false);
+  const [hubBackgrounds, setHubBackgrounds] = useState<HubBackgroundState | null>(null);
+  const [hubBackgroundError, setHubBackgroundError] = useState<string | null>(null);
+  const [hubBackgroundFile, setHubBackgroundFile] = useState<File | null>(null);
+  const [hubBackgroundInputKey, setHubBackgroundInputKey] = useState(0);
+  const [hubBackgroundAction, setHubBackgroundAction] = useState<string | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const { isAuth, me, login, register, logout } = useAuth()
   const toast = useToast()
   const isAdmin = me?.id === 'admin'
-  const heroWebpSrcSet = '/hub-bg-right-640.webp 640w, /hub-bg-right-1024.webp 1024w, /hub-bg-right-1600.webp 1600w, /hub-bg-right-1920.webp 1920w, /hub-bg-right-2560.webp 2560w'
-  const heroJpgSrcSet = '/hub-bg-right-640.jpg 640w, /hub-bg-right-1024.jpg 1024w, /hub-bg-right-1600.jpg 1600w, /hub-bg-right-1920.jpg 1920w, /hub-bg-right-2560.jpg 2560w'
+  const defaultHeroWebpSrcSet = '/hub-bg-right-640.webp 640w, /hub-bg-right-1024.webp 1024w, /hub-bg-right-1600.webp 1600w, /hub-bg-right-1920.webp 1920w, /hub-bg-right-2560.webp 2560w'
+  const defaultHeroJpgSrcSet = '/hub-bg-right-640.jpg 640w, /hub-bg-right-1024.jpg 1024w, /hub-bg-right-1600.jpg 1600w, /hub-bg-right-1920.jpg 1920w, /hub-bg-right-2560.jpg 2560w'
   const heroSizes = '100vw'
+  const activeHubBackground = hubBackgrounds?.active
+  const heroWebpSrcSet = activeHubBackground?.webpSrcSet || defaultHeroWebpSrcSet
+  const heroJpgSrcSet = activeHubBackground?.jpegSrcSet || defaultHeroJpgSrcSet
+  const heroFallbackSrc = activeHubBackground?.fallbackUrl || '/hub-bg-right-1024.jpg'
 
   const getPreferredPlanPath = () => {
     try {
@@ -162,6 +210,18 @@ export default function Hub({ navigate }: HubProps) {
     }
   };
 
+  const toggleBackups = async () => {
+    if (backupsVisible) {
+      setBackupsVisible(false)
+      return
+    }
+
+    setBackupsVisible(true)
+    if (backups === null || backupsError) {
+      await loadBackups()
+    }
+  }
+
   const restoreBackup = async (filename: string) => {
     try {
       const res = await apiFetch('/v1/timetable/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename }) });
@@ -219,6 +279,151 @@ export default function Hub({ navigate }: HubProps) {
     }
   };
 
+  const loadHubBackgrounds = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    try {
+      const res = await apiFetch('/v1/hub-backgrounds')
+      if (!res.ok) {
+        const detail = await readErrorMessage(res, 'Nie udało się pobrać listy teł strony głównej.')
+        setHubBackgroundError(detail)
+        if (!silent && isAdmin) toast.error(detail)
+        return null
+      }
+      const j = await res.json()
+      if (!j?.ok || !j?.data) {
+        const detail = typeof j?.detail === 'string'
+          ? j.detail
+          : 'Serwer zwrócił nieprawidłową odpowiedź dla teł strony głównej.'
+        setHubBackgroundError(detail)
+        if (!silent && isAdmin) toast.error(detail)
+        return null
+      }
+      setHubBackgrounds(j.data)
+      setHubBackgroundError(null)
+      return j.data as HubBackgroundState
+    } catch {
+      const detail = 'Nie udało się pobrać listy teł strony głównej.'
+      setHubBackgroundError(detail)
+      if (!silent && isAdmin) toast.error(detail)
+      return null
+    }
+  }, [isAdmin, toast])
+
+  const uploadHubBackground = async () => {
+    if (!hubBackgroundFile) {
+      toast.error('Najpierw wybierz plik obrazu.')
+      return
+    }
+    try {
+      setHubBackgroundAction('upload')
+      setHubBackgroundError(null)
+      const formData = new FormData()
+      formData.append('image', hubBackgroundFile)
+      const res = await apiFetch('/v1/hub-backgrounds', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        toast.error(await readErrorMessage(res, 'Nie udało się wgrać nowego tła.'))
+        return
+      }
+      const j = await res.json()
+      if (!j?.ok || !j?.data) {
+        toast.error('Serwer nie zwrócił poprawnego stanu po aktualizacji tła.')
+        return
+      }
+      setHubBackgrounds(j.data)
+      setHubBackgroundError(null)
+      setHubBackgroundFile(null)
+      setHubBackgroundInputKey((value) => value + 1)
+      toast.success('Nowe tło zostało przygotowane i ustawione jako aktywne.')
+    } catch {
+      toast.error('Nie udało się wgrać nowego tła.')
+    } finally {
+      setHubBackgroundAction(null)
+    }
+  }
+
+  const activateHubBackground = async (entryId: string) => {
+    try {
+      setHubBackgroundAction(`activate:${entryId}`)
+      const res = await apiFetch(`/v1/hub-backgrounds/${encodeURIComponent(entryId)}/activate`, {
+        method: 'POST',
+      })
+      if (!res.ok) {
+        toast.error(await readErrorMessage(res, 'Nie udało się przywrócić wybranego tła.'))
+        return
+      }
+      const j = await res.json()
+      if (!j?.ok || !j?.data) {
+        toast.error('Serwer nie zwrócił poprawnego stanu po przywróceniu tła.')
+        return
+      }
+      setHubBackgrounds(j.data)
+      setHubBackgroundError(null)
+      toast.success('Wybrane tło zostało ustawione jako aktywne.')
+    } catch {
+      toast.error('Nie udało się przywrócić wybranego tła.')
+    } finally {
+      setHubBackgroundAction(null)
+    }
+  }
+
+  const setHubBackgroundLock = async (entryId: string, locked: boolean) => {
+    try {
+      setHubBackgroundAction(`lock:${entryId}`)
+      const res = await apiFetch(`/v1/hub-backgrounds/${encodeURIComponent(entryId)}/lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked }),
+      })
+      if (!res.ok) {
+        toast.error(await readErrorMessage(res, 'Nie udało się zmienić blokady tła.'))
+        return
+      }
+      const j = await res.json()
+      if (!j?.ok || !j?.data) {
+        toast.error('Serwer nie zwrócił poprawnego stanu po zmianie blokady tła.')
+        return
+      }
+      setHubBackgrounds(j.data)
+      setHubBackgroundError(null)
+      toast.success(locked ? 'Tło zostało zablokowane w historii.' : 'Tło zostało odblokowane.')
+    } catch {
+      toast.error('Nie udało się zmienić blokady tła.')
+    } finally {
+      setHubBackgroundAction(null)
+    }
+  }
+
+  const deleteHubBackground = async (entryId: string) => {
+    try {
+      setHubBackgroundAction(`delete:${entryId}`)
+      const res = await apiFetch(`/v1/hub-backgrounds/${encodeURIComponent(entryId)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        toast.error(await readErrorMessage(res, 'Nie udało się usunąć wybranego tła.'))
+        return
+      }
+      const j = await res.json()
+      if (!j?.ok || !j?.data) {
+        toast.error('Serwer nie zwrócił poprawnego stanu po usunięciu tła.')
+        return
+      }
+      setHubBackgrounds(j.data)
+      setHubBackgroundError(null)
+      toast.success('Tło zostało usunięte z zapisanych teł.')
+    } catch {
+      toast.error('Nie udało się usunąć wybranego tła.')
+    } finally {
+      setHubBackgroundAction(null)
+    }
+  }
+
+  useEffect(() => {
+    void loadHubBackgrounds({ silent: true })
+  }, [loadHubBackgrounds])
+
   const displayedApiKey = useMemo(() => {
     if (singleApiKey) {
       if (apiKeyVisible) return singleApiKey
@@ -243,7 +448,7 @@ export default function Hub({ navigate }: HubProps) {
           <source srcSet={heroWebpSrcSet} sizes={heroSizes} type="image/webp" />
           <source srcSet={heroJpgSrcSet} sizes={heroSizes} type="image/jpeg" />
           <img
-            src="/hub-bg-right-1024.jpg"
+            src={heroFallbackSrc}
             srcSet={heroJpgSrcSet}
             sizes={heroSizes}
             decoding="async"
@@ -321,12 +526,14 @@ export default function Hub({ navigate }: HubProps) {
       {profileOpen && (
         <Modal
           onClose={closeProfile}
-          panelClassName="w-[92vw] max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl"
+          panelClassName="w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl"
         >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex max-h-[calc(100svh-2rem)] flex-col">
+            <div className="flex items-center justify-between gap-3 border-b border-zinc-700 px-4 py-4">
               <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
               <Button onClick={closeProfile} variant="outline" size="sm">Zamknij</Button>
             </div>
+            <div className="overflow-y-auto px-4 py-4">
             {!isAuth ? (
               <div className="grid sm:grid-cols-2 gap-3">
                 <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
@@ -429,12 +636,14 @@ export default function Hub({ navigate }: HubProps) {
                     <div className="text-sm font-medium mb-2">Plan lekcji</div>
                     <div className="flex items-center gap-2 mb-2">
                       <Button onClick={refreshTimetable} disabled={ttBusy} variant={ttBusy ? 'neutral' : 'primary'}>{ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}</Button>
-                      <Button onClick={loadBackups} variant="outline">Pokaż kopie zapasowe</Button>
+                      <Button onClick={() => { void toggleBackups() }} variant="outline">
+                        {backupsVisible ? 'Ukryj kopie zapasowe' : 'Pokaż kopie zapasowe'}
+                      </Button>
                     </div>
-                    {backupsError ? (
+                    {backupsVisible && backupsError ? (
                       <div className="text-xs text-rose-300 mb-2">{backupsError}</div>
                     ) : null}
-                    {Array.isArray(backups) ? (
+                    {backupsVisible && Array.isArray(backups) ? (
                       backups.length === 0 ? (
                         <div className="text-xs text-zinc-400">Brak kopii zapasowych.</div>
                       ) : (
@@ -454,8 +663,119 @@ export default function Hub({ navigate }: HubProps) {
                     <div className="text-[11px] mt-2 opacity-70">Przechowujemy 5 ostatnich różnych wersji planu.</div>
                   </section>
                 ) : null}
+                {isAdmin ? (
+                  <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                    <div className="text-sm font-medium mb-2">Tło strony głównej</div>
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Input
+                          key={hubBackgroundInputKey}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setHubBackgroundFile(e.target.files?.[0] ?? null)}
+                          className="file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-sm file:text-white"
+                        />
+                        <Button
+                          onClick={uploadHubBackground}
+                          disabled={!hubBackgroundFile || hubBackgroundAction === 'upload'}
+                          variant={hubBackgroundAction === 'upload' ? 'neutral' : 'success'}
+                        >
+                          {hubBackgroundAction === 'upload' ? 'Przetwarzam…' : 'Wgraj nowe tło'}
+                        </Button>
+                        <Button
+                          onClick={() => { void loadHubBackgrounds() }}
+                          disabled={!!hubBackgroundAction}
+                          variant="outline"
+                        >
+                          Odśwież listę
+                        </Button>
+                      </div>
+                      {hubBackgroundFile ? (
+                        <div className="mt-2 text-[11px] opacity-70">
+                          Wybrano plik: {hubBackgroundFile.name}
+                        </div>
+                      ) : null}
+                    </div>
+                    {hubBackgroundError ? (
+                      <div className="mt-3 text-xs text-rose-300">{hubBackgroundError}</div>
+                    ) : null}
+                    <div className="mt-3 grid gap-2">
+                      {(hubBackgrounds?.entries || []).map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={`rounded-lg border p-2 ${entry.isActive ? 'border-emerald-500/60 bg-emerald-950/20' : 'border-zinc-800 bg-zinc-900/40'}`}
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row">
+                            <div className="h-24 w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 sm:w-40">
+                              {entry.previewUrl ? (
+                                <img src={entry.previewUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-xs text-zinc-500">Brak podglądu</div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-sm font-medium">{entry.label}</div>
+                                {entry.isActive ? (
+                                  <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">Aktywne</span>
+                                ) : null}
+                                {entry.locked ? (
+                                  <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">Lock</span>
+                                ) : null}
+                              </div>
+                              <div className="mt-1 text-[11px] opacity-70">
+                                Źródło: {entry.sourceName || 'wbudowane tło'}
+                              </div>
+                              <div className="text-[11px] opacity-70">
+                                Dodano: {formatDateTime(entry.createdAt)}
+                              </div>
+                              <div className="text-[11px] opacity-70">
+                                Ostatnio wybrane: {formatDateTime(entry.lastSelectedAt)}
+                              </div>
+                              <div className="text-[11px] opacity-70">
+                                Warianty WebP: {entry.variants.webp.map((variant) => `${variant.width}px`).join(', ') || 'brak'}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 sm:w-44 sm:flex-col sm:items-stretch">
+                              <Button
+                                onClick={() => { void activateHubBackground(entry.id) }}
+                                disabled={entry.isActive || !!hubBackgroundAction}
+                                variant={entry.isActive ? 'neutral' : 'success'}
+                                size="sm"
+                              >
+                                {entry.isActive ? 'Aktywne teraz' : 'Przywróć'}
+                              </Button>
+                              <Button
+                                onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }}
+                                disabled={!!hubBackgroundAction}
+                                variant={entry.locked ? 'warning' : 'outline'}
+                                size="sm"
+                              >
+                                {entry.locked ? 'Unlock' : 'Lock'}
+                              </Button>
+                              <Button
+                                onClick={() => { void deleteHubBackground(entry.id) }}
+                                disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1}
+                                variant="danger"
+                                size="sm"
+                                title={entry.locked ? 'Najpierw odblokuj tło, aby je usunąć.' : undefined}
+                              >
+                                Usuń
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {hubBackgrounds && hubBackgrounds.entries.length === 0 ? (
+                        <div className="text-xs text-zinc-400">Brak zapisanych teł.</div>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
               </div>
             )}
+            </div>
+            </div>
         </Modal>
       )}
     </div>

@@ -43,9 +43,10 @@ export function AdminPanel({
     <Modal
       onClose={onClose}
       overlayClassName="bg-black/70"
-      panelClassName="w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 m-4"
+      panelClassName="w-full max-w-6xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl"
     >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex max-h-[calc(100svh-2rem)] flex-col">
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-5 py-4">
           <div className="text-lg font-semibold">Panel administratora</div>
           <div className="flex items-center gap-2">
             {isAuth && (
@@ -55,6 +56,7 @@ export function AdminPanel({
           </div>
         </div>
 
+        <div className="overflow-y-auto px-5 py-4">
         {!isAuth ? (
           <form onSubmit={onLogin} className="grid gap-2">
             <div className="text-sm text-zinc-400">Zaloguj się, aby zarządzać danymi.</div>
@@ -186,6 +188,8 @@ export function AdminPanel({
             </div>
           </div>
         )}
+        </div>
+        </div>
     </Modal>
   )
 }

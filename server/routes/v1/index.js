@@ -9,6 +9,7 @@ import { registerApprovalRoutes } from './approvals.js'
 import { registerOverrideRoutes } from './overrides.js'
 import { registerJobRoutes } from './jobs.js'
 import { registerMaintenanceRoutes } from './maintenance.js'
+import { registerHubBackgroundRoutes } from './hubBackgrounds.js'
 
 export function createV1Router(deps) {
   const v1 = express.Router()
@@ -23,6 +24,7 @@ export function createV1Router(deps) {
   registerOverrideRoutes(v1, deps)
   registerJobRoutes(v1, deps)
   registerMaintenanceRoutes(v1, deps)
+  registerHubBackgroundRoutes(v1, deps)
 
   return v1
 }

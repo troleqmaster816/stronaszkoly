@@ -49,6 +49,8 @@ export function createConfig() {
     articlesScraperScript: join(serverDir, 'scripts', 'article_scraper.py'),
     timetableFilePath: join(projectRoot, 'public', 'timetable_data.json'),
     timetableBackupsDir: join(runtimeDir, 'backups', 'timetables'),
+    hubBackgroundManifestPath: join(runtimeDir, 'hub-backgrounds.json'),
+    hubBackgroundsDir: join(projectRoot, 'public', 'hub-backgrounds'),
 
     scraperTimeoutMs: Number(process.env.SCRAPER_TIMEOUT_MS || 180000),
     pipTimeoutMs: Number(process.env.PIP_TIMEOUT_MS || 300000),

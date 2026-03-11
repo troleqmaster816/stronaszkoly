@@ -47,6 +47,7 @@ server/runtime/
 public/.pip_installed_*.txt
 public/__pycache__/
 public/backups/
+public/hub-backgrounds/
 public/scraper.py.bak-*
 public/harmonogram_nowy.pdf
 smietnik/
