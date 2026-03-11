@@ -260,6 +260,8 @@ function NewsSidebarList({
   const scrollRef = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const thumbRef = useRef<HTMLDivElement>(null)
+  const [trackHovered, setTrackHovered] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   const updateThumb = useCallback(() => {
     const el = scrollRef.current
@@ -284,8 +286,62 @@ function NewsSidebarList({
     return () => el.removeEventListener('scroll', updateThumb)
   }, [updateThumb])
 
-  // Re-run thumb calc when articles change
   useEffect(() => { updateThumb() }, [articles, updateThumb])
+
+  // Global cursor override while dragging
+  useEffect(() => {
+    if (!isDragging) return
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isDragging])
+
+  const handleTrackMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const el = scrollRef.current
+    const thumb = thumbRef.current
+    if (!el || !thumb) return
+
+    const trackRect = e.currentTarget.getBoundingClientRect()
+    const clickY = e.clientY - trackRect.top
+    const thumbTop = parseFloat(thumb.style.top || '0')
+    const thumbH = parseFloat(thumb.style.height || '28')
+    const isOnThumb = clickY >= thumbTop && clickY <= thumbTop + thumbH
+
+    if (isOnThumb) {
+      // ── Drag thumb ──
+      const startY = e.clientY
+      const startScrollTop = el.scrollTop
+      const maxScrollTop = el.scrollHeight - el.clientHeight
+      const maxThumbTop = el.clientHeight - thumbH
+
+      setIsDragging(true)
+
+      const onMove = (e: MouseEvent) => {
+        const delta = e.clientY - startY
+        const scrollDelta = maxThumbTop > 0 ? (delta / maxThumbTop) * maxScrollTop : 0
+        el.scrollTop = Math.max(0, Math.min(maxScrollTop, startScrollTop + scrollDelta))
+      }
+      const onUp = () => {
+        setIsDragging(false)
+        setTrackHovered(false)
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', onUp)
+      }
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
+    } else {
+      // ── Click on track — jump to position ──
+      const maxScrollTop = el.scrollHeight - el.clientHeight
+      const maxThumbTop = el.clientHeight - thumbH
+      const targetTop = Math.max(0, Math.min(maxThumbTop, clickY - thumbH / 2))
+      const scrollTop = maxThumbTop > 0 ? (targetTop / maxThumbTop) * maxScrollTop : 0
+      el.scrollTo({ top: scrollTop, behavior: 'smooth' })
+    }
+  }, [])
 
   return (
     <>
@@ -379,14 +435,35 @@ function NewsSidebarList({
           ))}
         </div>
 
-        {/* Custom scroll thumb */}
-        <div className="absolute right-[-8px] top-0 bottom-0 w-[3px]">
+        {/* Interactive scroll track */}
+        <div
+          className="absolute right-[-10px] top-0 bottom-0 w-[20px] flex justify-center"
+          style={{ cursor: isDragging ? 'grabbing' : 'default' }}
+          onMouseEnter={() => setTrackHovered(true)}
+          onMouseLeave={() => { if (!isDragging) setTrackHovered(false) }}
+          onMouseDown={handleTrackMouseDown}
+        >
+          {/* Track background line */}
+          <div
+            className="absolute inset-y-2 rounded-full transition-all duration-200"
+            style={{
+              width: (trackHovered || isDragging) ? '3px' : '1.5px',
+              background: 'rgba(255,255,255,0.08)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+            }}
+          />
+          {/* Thumb */}
           <div
             ref={thumbRef}
-            className="absolute right-0 w-[3px] rounded-full transition-opacity"
+            className="absolute rounded-full transition-[width,opacity] duration-200"
             style={{
+              width: (trackHovered || isDragging) ? '6px' : '3px',
               background: 'var(--hub-accent)',
-              opacity: 0.45,
+              opacity: (trackHovered || isDragging) ? 0.75 : 0.4,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              cursor: isDragging ? 'grabbing' : 'grab',
               top: 0,
               height: '30%',
             }}
@@ -402,9 +479,13 @@ function NewsSidebarList({
 export default function NewsSection({
   reloadSignal = 0,
   variant = 'grid',
+  onOpenArticle,
 }: {
   reloadSignal?: number
   variant?: 'grid' | 'sidebar'
+  /** Desktop right-panel callback. When provided, sidebar variant skips the
+   *  internal ArticleModal and delegates opening to the parent. */
+  onOpenArticle?: (article: Article) => void
 }) {
   const [selected, setSelected] = useState<Article | null>(null);
   const modalHistoryActiveRef = useRef(false);
@@ -418,11 +499,15 @@ export default function NewsSection({
   }, [articles, page]);
 
   const openArticle = useCallback((article: Article) => {
+    if (onOpenArticle) {
+      onOpenArticle(article)
+      return
+    }
     setSelected(article);
     if (typeof window === "undefined") return;
     window.history.pushState({ ...(window.history.state ?? {}), __newsModal: true }, "");
     modalHistoryActiveRef.current = true;
-  }, []);
+  }, [onOpenArticle]);
 
   const closeArticle = useCallback(() => {
     setSelected(null);

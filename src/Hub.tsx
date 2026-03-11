@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, FileText, ListChecks, School, ChevronRight } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, School, ChevronRight, LogOut, KeyRound, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
 import { useAuth } from "./features/auth/useAuth";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { readErrorMessage } from "@/lib/http";
+import type { Article } from "@/features/news/useArticles";
+import { RightPanelShell, ArticlePanelContent, CloseBtn } from "@/features/hub/RightPanel";
 import { apiFetch } from "@/lib/apiClient";
 
 type HubProps = {
@@ -83,6 +85,9 @@ function NavItem({
 
 export default function Hub({ navigate }: HubProps) {
   const [profileOpen, setProfileOpen] = useState(false);
+  // Desktop right panel (replaces modal on lg+)
+  type RightPanelContent = { kind: 'article'; article: Article } | { kind: 'profile' }
+  const [rightPanel, setRightPanel] = useState<RightPanelContent | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({ username: "", password: "" });
   const [singleApiKey, setSingleApiKey] = useState<string | null>(null);
@@ -130,11 +135,21 @@ export default function Hub({ navigate }: HubProps) {
     setApiKeyVisible(false)
   }
 
+  // Desktop: open profile in right panel
+  const openProfileDesktop = () => {
+    setRightPanel({ kind: 'profile' })
+    setApiKeyVisible(false)
+    if (isAuth) loadSingleKey()
+  }
+
+  // Mobile: open profile in modal (unchanged)
   const openProfile = () => {
     setProfileOpen(true)
     setApiKeyVisible(false)
     if (isAuth) loadSingleKey()
   }
+
+  const closePanel = () => setRightPanel(null)
 
   useEffect(() => {
     return () => {
@@ -755,7 +770,7 @@ export default function Hub({ navigate }: HubProps) {
           {/* User chip */}
           <button
             type="button"
-            onClick={openProfile}
+            onClick={openProfileDesktop}
             className="flex items-center gap-2 shrink-0 cursor-pointer transition-all rounded-full"
             style={{
               background: 'rgba(255,255,255,0.05)',
@@ -827,8 +842,12 @@ export default function Hub({ navigate }: HubProps) {
         {/* Divider */}
         <div className="mx-3 my-4 shrink-0" style={{ height: '1px', background: 'var(--hub-glass-border)' }} />
 
-        {/* News section (sidebar variant) */}
-        <NewsSection variant="sidebar" reloadSignal={newsReloadSignal} />
+        {/* News section (sidebar variant — opens article in right panel) */}
+        <NewsSection
+          variant="sidebar"
+          reloadSignal={newsReloadSignal}
+          onOpenArticle={a => setRightPanel({ kind: 'article', article: a })}
+        />
       </aside>
 
       {/* Footer credit (desktop) */}
@@ -883,8 +902,370 @@ export default function Hub({ navigate }: HubProps) {
         </div>
       </div>
 
+      {/* Mobile modal (unchanged) */}
       {profileModal}
+
+      {/* ── DESKTOP RIGHT PANEL (lg+) ─────────────────────────────────── */}
+      <div className="hidden lg:block">
+        <RightPanelShell
+          open={rightPanel !== null}
+          contentKey={rightPanel?.kind === 'article' ? `article:${rightPanel.article.url}` : 'profile'}
+          onClose={closePanel}
+        >
+          {rightPanel?.kind === 'article' ? (
+            <ArticlePanelContent article={rightPanel.article} onClose={closePanel} />
+          ) : rightPanel?.kind === 'profile' ? (
+            <ProfilePanelContent
+              isAuth={isAuth}
+              me={me}
+              isAdmin={isAdmin}
+              onClose={closePanel}
+              loginForm={loginForm}
+              setLoginForm={setLoginForm}
+              registerForm={registerForm}
+              setRegisterForm={setRegisterForm}
+              handleLogin={handleLogin}
+              handleRegister={handleRegister}
+              handleLogout={handleLogout}
+              displayedApiKey={displayedApiKey}
+              apiKeyVisible={apiKeyVisible}
+              setApiKeyVisible={setApiKeyVisible}
+              singleApiKey={singleApiKey}
+              apiKeyMeta={apiKeyMeta}
+              regenSingleKey={regenSingleKey}
+              toast={toast}
+              articlesBusy={articlesBusy}
+              articlesJob={articlesJob}
+              startArticlesScrape={startArticlesScrape}
+              ttBusy={ttBusy}
+              refreshTimetable={refreshTimetable}
+              backupsVisible={backupsVisible}
+              backups={backups}
+              backupsError={backupsError}
+              toggleBackups={toggleBackups}
+              restoreBackup={restoreBackup}
+              hubBackgrounds={hubBackgrounds}
+              hubBackgroundError={hubBackgroundError}
+              hubBackgroundFile={hubBackgroundFile}
+              setHubBackgroundFile={setHubBackgroundFile}
+              hubBackgroundInputKey={hubBackgroundInputKey}
+              hubBackgroundAction={hubBackgroundAction}
+              uploadHubBackground={uploadHubBackground}
+              loadHubBackgrounds={loadHubBackgrounds}
+              activateHubBackground={activateHubBackground}
+              setHubBackgroundLock={setHubBackgroundLock}
+              deleteHubBackground={deleteHubBackground}
+            />
+          ) : null}
+        </RightPanelShell>
+      </div>
     </div>
+  )
+}
+
+// ── ProfilePanelContent (desktop right panel) ────────────────────────────────
+
+type ApiKeyMeta = { hasKey: boolean; preview: string | null; createdAt: number | null; lastUsedAt: number | null; format: string | null; requiresRotation?: boolean }
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="text-[10.5px] font-semibold tracking-[0.13em] uppercase px-1 pt-1 pb-2"
+      style={{ color: 'var(--hub-text-muted)' }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function ProfilePanelContent({
+  isAuth, me, isAdmin, onClose,
+  loginForm, setLoginForm, registerForm, setRegisterForm,
+  handleLogin, handleRegister, handleLogout,
+  displayedApiKey, apiKeyVisible, setApiKeyVisible, singleApiKey, apiKeyMeta, regenSingleKey,
+  toast,
+  articlesBusy, articlesJob, startArticlesScrape,
+  ttBusy, refreshTimetable,
+  backupsVisible, backups, backupsError, toggleBackups, restoreBackup,
+  hubBackgrounds, hubBackgroundError, hubBackgroundFile, setHubBackgroundFile,
+  hubBackgroundInputKey, hubBackgroundAction, uploadHubBackground, loadHubBackgrounds,
+  activateHubBackground, setHubBackgroundLock, deleteHubBackground,
+}: {
+  isAuth: boolean
+  me: { id: string; username: string } | null
+  isAdmin: boolean
+  onClose: () => void
+  loginForm: { username: string; password: string }
+  setLoginForm: (f: { username: string; password: string }) => void
+  registerForm: { username: string; password: string }
+  setRegisterForm: (f: { username: string; password: string }) => void
+  handleLogin: (e: React.FormEvent) => void
+  handleRegister: (e: React.FormEvent) => void
+  handleLogout: () => void
+  displayedApiKey: string
+  apiKeyVisible: boolean
+  setApiKeyVisible: (v: boolean) => void
+  singleApiKey: string | null
+  apiKeyMeta: ApiKeyMeta | null
+  regenSingleKey: () => void
+  toast: ReturnType<typeof useToast>
+  articlesBusy: boolean
+  articlesJob: { id: string; status: string } | null
+  startArticlesScrape: () => void
+  ttBusy: boolean
+  refreshTimetable: () => void
+  backupsVisible: boolean
+  backups: { filename: string; size: number; mtime: string }[] | null
+  backupsError: string | null
+  toggleBackups: () => void
+  restoreBackup: (f: string) => void
+  hubBackgrounds: HubBackgroundState | null
+  hubBackgroundError: string | null
+  hubBackgroundFile: File | null
+  setHubBackgroundFile: (f: File | null) => void
+  hubBackgroundInputKey: number
+  hubBackgroundAction: string | null
+  uploadHubBackground: () => void
+  loadHubBackgrounds: () => void
+  activateHubBackground: (id: string) => void
+  setHubBackgroundLock: (id: string, locked: boolean) => void
+  deleteHubBackground: (id: string) => void
+}) {
+  return (
+    <>
+      {/* Panel header */}
+      <div
+        className="shrink-0 px-5 pt-5 pb-4 flex items-center justify-between gap-4"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+      >
+        <div className="flex items-center gap-3">
+          {isAuth && me ? (
+            <div
+              className="flex items-center justify-center text-[15px] font-bold shrink-0"
+              style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--hub-accent)', color: '#1c1305' }}
+            >
+              {me.username[0]?.toUpperCase()}
+            </div>
+          ) : (
+            <div
+              className="flex items-center justify-center shrink-0"
+              style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <Settings className="w-4 h-4" style={{ color: 'var(--hub-text-muted)' }} />
+            </div>
+          )}
+          <div>
+            <div className="font-bricolage text-[17px] font-semibold leading-tight" style={{ color: '#edeae4' }}>
+              {isAuth ? me?.username : 'Konto'}
+            </div>
+            {isAuth && (
+              <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--hub-text-secondary)' }}>
+                {isAdmin ? 'Administrator' : 'Użytkownik'}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {isAuth && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-[7px] text-[12px] font-medium transition-opacity hover:opacity-75"
+              style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}
+            >
+              <LogOut className="w-3.5 h-3.5" /> Wyloguj
+            </button>
+          )}
+          <CloseBtn onClick={onClose} />
+        </div>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="overflow-y-auto flex-1 px-5 py-5 flex flex-col gap-5">
+
+        {!isAuth ? (
+          /* ── Logged-out: login + register ── */
+          <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleLogin} className="hub-profile-section flex flex-col gap-2">
+              <SectionLabel>Logowanie</SectionLabel>
+              <Input placeholder="Nazwa użytkownika"
+                     value={loginForm.username}
+                     onChange={e => setLoginForm({ ...loginForm, username: e.target.value })} />
+              <Input type="password" placeholder="Hasło"
+                     value={loginForm.password}
+                     onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} />
+              <Button variant="success" type="submit" className="mt-1">Zaloguj</Button>
+            </form>
+            <form onSubmit={handleRegister} className="hub-profile-section flex flex-col gap-2">
+              <SectionLabel>Rejestracja</SectionLabel>
+              <Input placeholder="Nazwa użytkownika"
+                     value={registerForm.username}
+                     onChange={e => setRegisterForm({ ...registerForm, username: e.target.value })} />
+              <Input type="password" placeholder="Hasło (min. 6)"
+                     value={registerForm.password}
+                     onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })} />
+              <Button variant="primary" type="submit" className="mt-1">Zarejestruj</Button>
+            </form>
+          </div>
+        ) : (
+          /* ── Logged-in sections ── */
+          <>
+            {/* API Key */}
+            <div className="hub-profile-section flex flex-col gap-2">
+              <SectionLabel><span className="inline-flex items-center gap-1.5"><KeyRound className="w-3 h-3 inline" /> Klucz API</span></SectionLabel>
+              <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--hub-text-secondary)' }}>
+                Pełny klucz widoczny tylko po regeneracji. Przechowuj bezpiecznie.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={displayedApiKey} className="flex-1 font-mono text-[12px]" />
+                <Button
+                  onClick={() => {
+                    if (apiKeyVisible) { setApiKeyVisible(false); return }
+                    if (!singleApiKey) { toast.error('Pełny klucz jest dostępny tylko po regeneracji.'); return }
+                    setApiKeyVisible(true)
+                  }}
+                  variant="outline" size="sm"
+                >
+                  {apiKeyVisible ? 'Ukryj' : 'Pokaż'}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!singleApiKey || !apiKeyVisible) return
+                    try { await navigator.clipboard.writeText(singleApiKey); toast.success('Skopiowano klucz API.') }
+                    catch { toast.error('Nie udało się skopiować klucza API.') }
+                  }}
+                  disabled={!singleApiKey || !apiKeyVisible}
+                  variant="outline" size="sm"
+                >
+                  Kopiuj
+                </Button>
+                <Button onClick={regenSingleKey} variant="warning" size="sm">Regeneruj</Button>
+              </div>
+              {apiKeyMeta?.createdAt ? (
+                <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>
+                  Utworzono: {new Date(apiKeyMeta.createdAt).toLocaleString()}
+                </p>
+              ) : null}
+              {apiKeyMeta?.requiresRotation ? (
+                <p className="text-[11px] text-amber-300">
+                  Wykryto stary format klucza — zregeneruj, aby dalej używać API.
+                </p>
+              ) : null}
+            </div>
+
+            {/* Admin sections */}
+            {isAdmin && (
+              <>
+                <div className="text-[10.5px] font-semibold tracking-[0.13em] uppercase px-1" style={{ color: 'var(--hub-text-muted)' }}>
+                  Panel administratora
+                </div>
+
+                {/* Aktualności */}
+                <div className="hub-profile-section flex flex-col gap-2">
+                  <SectionLabel>Aktualności</SectionLabel>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={startArticlesScrape} disabled={articlesBusy} variant={articlesBusy ? 'neutral' : 'success'}>
+                      {articlesBusy ? 'Aktualizuję…' : 'Aktualizuj artykuły'}
+                    </Button>
+                    {articlesJob ? <span className="text-[11px]" style={{ color: 'var(--hub-text-secondary)' }}>Status: {articlesJob.status}</span> : null}
+                  </div>
+                  <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Po zakończeniu nowe artykuły pojawią się w panelu bocznym.</p>
+                </div>
+
+                {/* Plan lekcji */}
+                <div className="hub-profile-section flex flex-col gap-2">
+                  <SectionLabel>Plan lekcji</SectionLabel>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button onClick={refreshTimetable} disabled={ttBusy} variant={ttBusy ? 'neutral' : 'primary'}>
+                      {ttBusy ? 'Odświeżam…' : 'Odśwież plan teraz'}
+                    </Button>
+                    <Button onClick={() => { void toggleBackups() }} variant="outline">
+                      {backupsVisible ? 'Ukryj kopie' : 'Kopie zapasowe'}
+                    </Button>
+                  </div>
+                  {backupsVisible && backupsError ? <p className="text-[11px] text-rose-300">{backupsError}</p> : null}
+                  {backupsVisible && Array.isArray(backups) ? (
+                    backups.length === 0 ? (
+                      <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Brak kopii zapasowych.</p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto rounded-lg text-[11px]" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+                        {backups.map((b) => (
+                          <div key={b.filename} className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <span className="truncate pr-2 flex-1" style={{ color: 'var(--hub-text-secondary)' }}>{b.filename}</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span style={{ color: 'var(--hub-text-muted)' }}>{new Date(b.mtime).toLocaleDateString()}</span>
+                              <Button onClick={() => restoreBackup(b.filename)} variant="success" size="sm">Przywróć</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  ) : null}
+                  <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Przechowujemy 5 ostatnich różnych wersji planu.</p>
+                </div>
+
+                {/* Tło */}
+                <div className="hub-profile-section flex flex-col gap-2">
+                  <SectionLabel>Tło strony głównej</SectionLabel>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      key={hubBackgroundInputKey}
+                      type="file"
+                      accept="image/*"
+                      onChange={e => setHubBackgroundFile(e.target.files?.[0] ?? null)}
+                      className="file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-xs file:text-white"
+                    />
+                    <Button onClick={uploadHubBackground} disabled={!hubBackgroundFile || hubBackgroundAction === 'upload'} variant={hubBackgroundAction === 'upload' ? 'neutral' : 'success'}>
+                      {hubBackgroundAction === 'upload' ? 'Przetwarzam…' : 'Wgraj'}
+                    </Button>
+                    <Button onClick={() => { void loadHubBackgrounds() }} disabled={!!hubBackgroundAction} variant="outline">Odśwież</Button>
+                  </div>
+                  {hubBackgroundFile ? <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Plik: {hubBackgroundFile.name}</p> : null}
+                  {hubBackgroundError ? <p className="text-[11px] text-rose-300">{hubBackgroundError}</p> : null}
+                  <div className="flex flex-col gap-2 mt-1">
+                    {(hubBackgrounds?.entries || []).map(entry => (
+                      <div
+                        key={entry.id}
+                        className="rounded-xl overflow-hidden"
+                        style={{ border: entry.isActive ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(255,255,255,0.07)', background: entry.isActive ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)' }}
+                      >
+                        <div className="flex gap-3 p-2">
+                          <div className="w-20 h-14 rounded-lg overflow-hidden shrink-0" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                            {entry.previewUrl
+                              ? <img src={entry.previewUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                              : <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--hub-text-muted)' }}>brak</div>
+                            }
+                          </div>
+                          <div className="flex-1 min-w-0 flex flex-col justify-between">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[12px] font-medium" style={{ color: '#edeae4' }}>{entry.label}</span>
+                              {entry.isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#6ee7b7' }}>Aktywne</span>}
+                              {entry.locked && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#fcd34d' }}>Lock</span>}
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap mt-1">
+                              <Button onClick={() => { void activateHubBackground(entry.id) }} disabled={entry.isActive || !!hubBackgroundAction} variant={entry.isActive ? 'neutral' : 'success'} size="sm">
+                                {entry.isActive ? 'Aktywne' : 'Ustaw'}
+                              </Button>
+                              <Button onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }} disabled={!!hubBackgroundAction} variant={entry.locked ? 'warning' : 'outline'} size="sm">
+                                {entry.locked ? 'Unlock' : 'Lock'}
+                              </Button>
+                              <Button onClick={() => { void deleteHubBackground(entry.id) }} disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1} variant="danger" size="sm">
+                                Usuń
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {hubBackgrounds?.entries.length === 0 && <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Brak zapisanych teł.</p>}
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </>
   )
 }
 
