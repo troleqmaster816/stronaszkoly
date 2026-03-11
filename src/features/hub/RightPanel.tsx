@@ -1,9 +1,10 @@
-import { useMemo, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useMemo, useRef } from 'react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { X, Download } from 'lucide-react'
 import { sanitizeArticleHtml } from '@/lib/sanitize'
 import type { Article } from '@/features/news/useArticles'
 import { formatArticleDate } from '@/features/news/useArticles'
+import { useOverlayFocusTrap } from '@/lib/useOverlayFocusTrap'
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
 
@@ -138,13 +139,24 @@ export function RightPanelShell({
   onClose: () => void
   children: React.ReactNode
 }) {
-  // ESC key
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+  const prefersReducedMotion = useReducedMotion()
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useOverlayFocusTrap({ active: open, containerRef: panelRef, onClose })
+
+  const backdropTransition = prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }
+  const panelInitial = prefersReducedMotion ? { x: 0, opacity: 1 } : { x: -56, opacity: 0 }
+  const panelExit = prefersReducedMotion
+    ? { x: 0, opacity: 0, transition: { duration: 0 } }
+    : { x: -56, opacity: 0, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] as const } }
+  const panelTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : { type: 'spring' as const, stiffness: 360, damping: 34, mass: 0.8 }
+  const contentInitial = prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }
+  const contentExit = prefersReducedMotion
+    ? { opacity: 0, y: 0, transition: { duration: 0 } }
+    : { opacity: 0, y: -10, transition: { duration: 0.13 } }
+  const contentTransition = prefersReducedMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' as const }
 
   return (
     <AnimatePresence>
@@ -153,10 +165,10 @@ export function RightPanelShell({
           {/* Backdrop — covers the area right of the sidebar, click closes */}
           <motion.div
             key="rp-backdrop"
-            initial={{ opacity: 0 }}
+            initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={backdropTransition}
             className="fixed top-0 bottom-0 right-0 z-[15]"
             style={{ left: '430px', background: 'rgba(0,0,0,0.28)', cursor: 'default' }}
             onClick={onClose}
@@ -165,11 +177,15 @@ export function RightPanelShell({
           {/* Panel — slides out from the sidebar's right edge */}
           <motion.div
             key="rp-panel"
-            initial={{ x: -56, opacity: 0 }}
+            ref={panelRef}
+            initial={panelInitial}
             animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -56, opacity: 0, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
-            transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.8 }}
+            exit={panelExit}
+            transition={panelTransition}
             className="fixed top-0 bottom-0 z-[20] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
             style={{
               left: '430px',
               width: 'min(580px, calc(100vw - 454px))',
@@ -189,10 +205,10 @@ export function RightPanelShell({
             <AnimatePresence mode="wait">
               <motion.div
                 key={contentKey}
-                initial={{ opacity: 0, y: 10 }}
+                initial={contentInitial}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10, transition: { duration: 0.13 } }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
+                exit={contentExit}
+                transition={contentTransition}
                 className="flex flex-col flex-1 min-h-0 overflow-hidden"
               >
                 {children}

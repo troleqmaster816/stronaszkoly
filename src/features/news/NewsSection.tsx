@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Article } from "./useArticles";
 import { formatArticleDate, useArticles } from "./useArticles";
 import { sanitizeArticleHtml } from "@/lib/sanitize";
+import { useOverlayFocusTrap } from "@/lib/useOverlayFocusTrap";
 
 function stripHtml(html?: string): string {
   if (!html) return "";
@@ -74,12 +75,9 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
   const docxUrl = useMemo(() => extractDocxDirectUrl(article.content_html), [article.content_html]);
   const pdfUrl = useMemo(() => extractPdfUrl(article.content_html), [article.content_html]);
   const imageUrl = useMemo(() => extractFirstImageUrl(article.content_html), [article.content_html]);
+  const panelRef = useRef<HTMLDivElement>(null)
 
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useOverlayFocusTrap({ active: true, containerRef: panelRef, onClose })
 
   const modal = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8" onClick={onClose}>
@@ -92,7 +90,11 @@ function ArticleModal({ article, onClose }: { article: Article; onClose: () => v
 
       {/* Panel */}
       <div
+        ref={panelRef}
         className="relative w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
         style={{
           borderRadius: '20px',
           background: 'rgba(14,14,17,0.92)',
@@ -206,7 +208,7 @@ function NewsCard({ article, index, onOpen }: { article: Article; index: number;
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
-      className="news-item block text-left p-0 m-0 bg-transparent focus:outline-none focus:ring-0 h-full w-full"
+      className="news-item block h-full w-full rounded-2xl bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/85 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
       style={{ background: "transparent", border: "none" }}
     >
       <Card className="news-card h-full overflow-hidden bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-0 shadow-lg hover:shadow-xl transition-shadow">
@@ -587,7 +589,7 @@ export default function NewsSection({
                   type="button"
                   onClick={() => setPage(p)}
                   aria-current={isActive ? "page" : undefined}
-                  className={`h-8 w-8 shrink-0 inline-flex items-center justify-center text-sm font-semibold rounded-full transition focus:outline-none ${
+                  className={`h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/85 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
                     isActive
                       ? "bg-white text-slate-900 shadow-lg ring-2 ring-white/70"
                       : "bg-white/16 text-white hover:bg-white/24 ring-1 ring-white/25"

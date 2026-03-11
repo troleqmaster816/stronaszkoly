@@ -137,6 +137,7 @@ export default function Hub({ navigate }: HubProps) {
 
   // Desktop: open profile in right panel
   const openProfileDesktop = () => {
+    setProfileOpen(false)
     setRightPanel({ kind: 'profile' })
     setApiKeyVisible(false)
     if (isAuth) loadSingleKey()
@@ -144,12 +145,32 @@ export default function Hub({ navigate }: HubProps) {
 
   // Mobile: open profile in modal (unchanged)
   const openProfile = () => {
+    setRightPanel(null)
     setProfileOpen(true)
     setApiKeyVisible(false)
     if (isAuth) loadSingleKey()
   }
 
   const closePanel = () => setRightPanel(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const desktopMedia = window.matchMedia('(min-width: 1024px)')
+    const syncResponsiveOverlays = (isDesktop: boolean) => {
+      if (isDesktop) {
+        setProfileOpen(false)
+        return
+      }
+      setRightPanel(null)
+    }
+
+    syncResponsiveOverlays(desktopMedia.matches)
+    const handleChange = (event: MediaQueryListEvent) => syncResponsiveOverlays(event.matches)
+
+    desktopMedia.addEventListener('change', handleChange)
+    return () => desktopMedia.removeEventListener('change', handleChange)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -523,7 +544,7 @@ export default function Hub({ navigate }: HubProps) {
         }}
       />
       {/* Mobile tech grid */}
-      <div className="hidden sm:lg:hidden absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
+      <div className="hidden sm:block lg:hidden absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:24px_24px] opacity-20" />
     </div>
   )
 
@@ -543,17 +564,17 @@ export default function Hub({ navigate }: HubProps) {
             <div className="grid sm:grid-cols-2 gap-3">
               <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                 <div className="text-sm font-medium mb-2">Logowanie</div>
-                <Input className="mb-2" placeholder="Nazwa użytkownika"
+                <Input className="mb-2" placeholder="Nazwa użytkownika" autoComplete="username"
                        value={loginForm.username} onChange={e=>setLoginForm(s=>({ ...s, username: e.target.value }))} />
-                <Input type="password" className="mb-2" placeholder="Hasło"
+                <Input type="password" className="mb-2" placeholder="Hasło" autoComplete="current-password"
                        value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
                 <Button variant="success" type="submit">Zaloguj</Button>
               </form>
               <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                 <div className="text-sm font-medium mb-2">Rejestracja</div>
-                <Input className="mb-2" placeholder="Nazwa użytkownika"
+                <Input className="mb-2" placeholder="Nazwa użytkownika" autoComplete="username"
                        value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
-                <Input type="password" className="mb-2" placeholder="Hasło (min. 6)"
+                <Input type="password" className="mb-2" placeholder="Hasło (min. 6)" autoComplete="new-password"
                        value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
                 <Button variant="primary" type="submit">Zarejestruj</Button>
               </form>
@@ -1088,20 +1109,20 @@ function ProfilePanelContent({
           <div className="grid grid-cols-2 gap-3">
             <form onSubmit={handleLogin} className="hub-profile-section flex flex-col gap-2">
               <SectionLabel>Logowanie</SectionLabel>
-              <Input placeholder="Nazwa użytkownika"
+              <Input placeholder="Nazwa użytkownika" autoComplete="username"
                      value={loginForm.username}
                      onChange={e => setLoginForm({ ...loginForm, username: e.target.value })} />
-              <Input type="password" placeholder="Hasło"
+              <Input type="password" placeholder="Hasło" autoComplete="current-password"
                      value={loginForm.password}
                      onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} />
               <Button variant="success" type="submit" className="mt-1">Zaloguj</Button>
             </form>
             <form onSubmit={handleRegister} className="hub-profile-section flex flex-col gap-2">
               <SectionLabel>Rejestracja</SectionLabel>
-              <Input placeholder="Nazwa użytkownika"
+              <Input placeholder="Nazwa użytkownika" autoComplete="username"
                      value={registerForm.username}
                      onChange={e => setRegisterForm({ ...registerForm, username: e.target.value })} />
-              <Input type="password" placeholder="Hasło (min. 6)"
+              <Input type="password" placeholder="Hasło (min. 6)" autoComplete="new-password"
                      value={registerForm.password}
                      onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })} />
               <Button variant="primary" type="submit" className="mt-1">Zarejestruj</Button>
