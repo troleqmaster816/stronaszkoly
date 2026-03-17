@@ -34,5 +34,3 @@ export type Overrides = {
   subjectOverrides: Record<string, string>;
   teacherNameOverrides: Record<string, string>;
 };
-
-

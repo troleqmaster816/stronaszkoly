@@ -5,6 +5,15 @@ import { migrateDbSchema } from './authKeys.js'
 export function createDbStore({ dbPath, overridesPath }) {
   const defaultOverrides = { subjectOverrides: {}, teacherNameOverrides: {} }
 
+  function sanitizeStringRecord(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    const out = {}
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry === 'string') out[key] = entry
+    }
+    return out
+  }
+
   function loadDb() {
     try {
       if (existsSync(dbPath)) {
@@ -45,8 +54,8 @@ export function createDbStore({ dbPath, overridesPath }) {
         const parsed = JSON.parse(txt)
         if (parsed && typeof parsed === 'object') {
           return {
-            subjectOverrides: parsed.subjectOverrides && typeof parsed.subjectOverrides === 'object' ? parsed.subjectOverrides : {},
-            teacherNameOverrides: parsed.teacherNameOverrides && typeof parsed.teacherNameOverrides === 'object' ? parsed.teacherNameOverrides : {},
+            subjectOverrides: sanitizeStringRecord(parsed.subjectOverrides),
+            teacherNameOverrides: sanitizeStringRecord(parsed.teacherNameOverrides),
           }
         }
       }
@@ -61,7 +70,12 @@ export function createDbStore({ dbPath, overridesPath }) {
   }
 
   function saveOverrides(data) {
-    const safe = data && typeof data === 'object' ? data : defaultOverrides
+    const safe = data && typeof data === 'object'
+      ? {
+          subjectOverrides: sanitizeStringRecord(data.subjectOverrides),
+          teacherNameOverrides: sanitizeStringRecord(data.teacherNameOverrides),
+        }
+      : defaultOverrides
     try { mkdirSync(dirname(overridesPath), { recursive: true }) } catch {}
     const tmp = overridesPath + '.' + process.pid + '.tmp'
     writeFileSync(tmp, JSON.stringify(safe, null, 2), 'utf8')

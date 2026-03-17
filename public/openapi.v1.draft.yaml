@@ -27,6 +27,8 @@ tags:
     description: One-time token approval workflow endpoints.
   - name: Overrides
     description: Subject and teacher name override management.
+  - name: HubVisibility
+    description: Hub application visibility settings.
   - name: Jobs
     description: Asynchronous job execution and status endpoints.
   - name: Maintenance
@@ -212,6 +214,14 @@ components:
           type: object
           additionalProperties: { type: string }
       required: [subjectOverrides, teacherNameOverrides]
+    HubVisibility:
+      type: object
+      properties:
+        timetable: { type: boolean }
+        attendance: { type: boolean }
+        schedule: { type: boolean }
+        statute: { type: boolean }
+      required: [timetable, attendance, schedule, statute]
     HubBackgroundVariant:
       type: object
       properties:
@@ -1267,6 +1277,60 @@ paths:
           $ref: '#/components/responses/Problem400'
         '401':
           $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '500':
+          $ref: '#/components/responses/Problem500'
+
+  /v1/hub-visibility:
+    get:
+      summary: Read hub application visibility
+      operationId: getHubVisibility
+      tags: [HubVisibility]
+      description: Returns which applications should be visible in the hub.
+      security: []
+      responses:
+        '200':
+          description: Hub visibility
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/HubVisibility' }
+                required: [ok, data]
+        '500':
+          $ref: '#/components/responses/Problem500'
+    put:
+      security:
+        - CookieAuth: []
+      summary: Replace hub application visibility (admin)
+      operationId: replaceHubVisibility
+      tags: [HubVisibility]
+      description: Replaces app visibility settings used by the hub (admin).
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HubVisibility' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      saved: { type: boolean }
+                    required: [saved]
+                required: [ok, data]
         '403':
           $ref: '#/components/responses/Problem403'
         '500':

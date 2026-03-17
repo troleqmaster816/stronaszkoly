@@ -214,6 +214,28 @@ export class ApiClient {
     }).then(r => this.handle<ApiResponse<{ saved: boolean }>>(r));
   }
 
+  // Hub visibility
+  getHubVisibility() {
+    return fetch(`${this.baseUrl}/v1/hub-visibility`, { headers: this.headers() }).then(r => this.handle<ApiResponse<{
+      timetable: boolean;
+      attendance: boolean;
+      schedule: boolean;
+      statute: boolean;
+    }>>(r));
+  }
+  putHubVisibility(data: {
+    timetable: boolean;
+    attendance: boolean;
+    schedule: boolean;
+    statute: boolean;
+  }) {
+    return fetch(`${this.baseUrl}/v1/hub-visibility`, {
+      method: "PUT",
+      headers: this.headers(),
+      body: JSON.stringify(data)
+    }).then(r => this.handle<ApiResponse<{ saved: boolean }>>(r));
+  }
+
   // Jobs
   startTimetableScrape() {
     return fetch(`${this.baseUrl}/v1/jobs/timetable-scrape`, { method: "POST", headers: this.headers() }).then(r => this.handle<ApiResponse<{ jobId: string; statusUrl: string; status: JobExecutionStatus }>>(r));

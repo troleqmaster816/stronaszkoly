@@ -16,6 +16,56 @@ type HubProps = {
   navigate: (to: string) => void;
 };
 
+const FALLBACK_HUB_BACKGROUND_CACHE_BUST = Date.now().toString(36)
+type HubAppId = 'timetable' | 'attendance' | 'schedule' | 'statute'
+type HubAppVisibility = Record<HubAppId, boolean>
+
+const DEFAULT_HUB_APP_VISIBILITY: HubAppVisibility = {
+  timetable: true,
+  attendance: true,
+  schedule: true,
+  statute: true,
+}
+
+type HubAppOption = {
+  key: HubAppId
+  title: string
+  navDescription: string
+  tileDescription: string
+  Icon: React.ComponentType<{ className?: string }>
+}
+
+const HUB_APP_OPTIONS: HubAppOption[] = [
+  {
+    key: 'timetable',
+    title: 'Plan lekcji',
+    navDescription: 'Klasy, nauczyciele i sale',
+    tileDescription: 'Przeglądaj interaktywny plan dla klas, nauczycieli i sal.',
+    Icon: CalendarDays,
+  },
+  {
+    key: 'attendance',
+    title: 'Frekwencja',
+    navDescription: 'Zarządzaj obecnościami i zajęciami',
+    tileDescription: 'Zarządzaj obecnościami i planami zajęć.',
+    Icon: ListChecks,
+  },
+  {
+    key: 'schedule',
+    title: 'Harmonogram',
+    navDescription: 'Rady, terminy, zebrania',
+    tileDescription: 'Wydarzenia, rady, terminy.',
+    Icon: ListChecks,
+  },
+  {
+    key: 'statute',
+    title: 'Statut szkoły',
+    navDescription: 'Przejrzyj regulamin',
+    tileDescription: 'Przejrzyj statut szkoły.',
+    Icon: FileText,
+  },
+]
+
 type HubBackgroundVariant = {
   width: number
   height: number | null
@@ -48,10 +98,48 @@ type HubBackgroundState = {
   entries: HubBackgroundEntry[]
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseHubAppVisibility(value: unknown): HubAppVisibility {
+  if (!isObjectRecord(value)) return { ...DEFAULT_HUB_APP_VISIBILITY }
+  return {
+    timetable: typeof value.timetable === 'boolean' ? value.timetable : true,
+    attendance: typeof value.attendance === 'boolean' ? value.attendance : true,
+    schedule: typeof value.schedule === 'boolean' ? value.schedule : true,
+    statute: typeof value.statute === 'boolean' ? value.statute : true,
+  }
+}
+
+function parseHubVisibilityPayload(value: unknown): HubAppVisibility | null {
+  if (!isObjectRecord(value)) return null
+  return parseHubAppVisibility(value)
+}
+
 function formatDateTime(value: string | null | undefined): string {
   const parsed = value ? new Date(value) : null
   if (!parsed || Number.isNaN(parsed.getTime())) return 'brak danych'
   return parsed.toLocaleString()
+}
+
+function appendVersionParam(url: string, version: string) {
+  return url.includes('?') ? `${url}&v=${version}` : `${url}?v=${version}`
+}
+
+function appendVersionToSrcSet(srcSet: string, version: string) {
+  return srcSet
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const splitIndex = item.lastIndexOf(' ')
+      if (splitIndex <= 0) return appendVersionParam(item, version)
+      const url = item.slice(0, splitIndex)
+      const descriptor = item.slice(splitIndex + 1)
+      return `${appendVersionParam(url, version)} ${descriptor}`
+    })
+    .join(', ')
 }
 
 // ── Sidebar nav item ──────────────────────────────────────────────────────────
@@ -100,6 +188,9 @@ export default function Hub({ navigate }: HubProps) {
   const [backups, setBackups] = useState<{ filename: string; size: number; mtime: string }[] | null>(null);
   const [backupsError, setBackupsError] = useState<string | null>(null);
   const [backupsVisible, setBackupsVisible] = useState(false);
+  const [hubAppVisibility, setHubAppVisibility] = useState<HubAppVisibility | null>(null)
+  const [hubVisibilityLoading, setHubVisibilityLoading] = useState(true)
+  const [hubVisibilityAction, setHubVisibilityAction] = useState<HubAppId | null>(null)
   const [hubBackgrounds, setHubBackgrounds] = useState<HubBackgroundState | null>(null);
   const [hubBackgroundError, setHubBackgroundError] = useState<string | null>(null);
   const [hubBackgroundFile, setHubBackgroundFile] = useState<File | null>(null);
@@ -114,11 +205,36 @@ export default function Hub({ navigate }: HubProps) {
   const defaultHeroJpgSrcSet = '/hub-bg-right-640.jpg 640w, /hub-bg-right-1024.jpg 1024w, /hub-bg-right-1600.jpg 1600w, /hub-bg-right-1920.jpg 1920w, /hub-bg-right-2560.jpg 2560w'
   const heroSizes = '100vw'
   const activeHubBackground = hubBackgrounds?.active
-  const heroWebpSrcSet = activeHubBackground?.webpSrcSet || defaultHeroWebpSrcSet
-  const heroJpgSrcSet = activeHubBackground?.jpegSrcSet || defaultHeroJpgSrcSet
-  const heroFallbackSrc = activeHubBackground?.fallbackUrl || '/hub-bg-right-1024.jpg'
+  const heroWebpSrcSet = activeHubBackground?.webpSrcSet
+    || appendVersionToSrcSet(defaultHeroWebpSrcSet, FALLBACK_HUB_BACKGROUND_CACHE_BUST)
+  const heroJpgSrcSet = activeHubBackground?.jpegSrcSet
+    || appendVersionToSrcSet(defaultHeroJpgSrcSet, FALLBACK_HUB_BACKGROUND_CACHE_BUST)
+  const heroFallbackSrc = activeHubBackground?.fallbackUrl
+    || appendVersionParam('/hub-bg-right-1024.jpg', FALLBACK_HUB_BACKGROUND_CACHE_BUST)
 
-  const getPreferredPlanPath = () => {
+  const loadHubVisibility = useCallback(async ({ silent = false, applyState = true }: { silent?: boolean; applyState?: boolean } = {}) => {
+    try {
+      const res = await apiFetch('/v1/hub-visibility', { cache: 'no-store' })
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, 'Nie udało się pobrać widoczności aplikacji huba.'))
+      }
+      const j = await res.json()
+      const parsed = parseHubVisibilityPayload(j?.data)
+      if (!j?.ok || !parsed) {
+        throw new Error('Serwer zwrócił nieprawidłową konfigurację widoczności aplikacji.')
+      }
+      if (applyState) setHubAppVisibility(parsed)
+      return parsed
+    } catch (error) {
+      if (applyState) setHubAppVisibility({ ...DEFAULT_HUB_APP_VISIBILITY })
+      if (!silent && isAdmin) {
+        toast.error(error instanceof Error ? error.message : 'Nie udało się pobrać widoczności aplikacji huba.')
+      }
+      return { ...DEFAULT_HUB_APP_VISIBILITY }
+    }
+  }, [isAdmin, toast])
+
+  const getPreferredPlanPath = useCallback(() => {
     try {
       const saved = (localStorage.getItem('timetable.lastPlanId') || '').trim()
       if (!saved) return '/plan'
@@ -128,7 +244,7 @@ export default function Hub({ navigate }: HubProps) {
     } catch {
       return '/plan'
     }
-  }
+  }, [])
 
   const closeProfile = () => {
     setProfileOpen(false)
@@ -348,6 +464,34 @@ export default function Hub({ navigate }: HubProps) {
     }
   };
 
+  const updateHubAppVisibility = async (appKey: HubAppId, visible: boolean) => {
+    const previousVisibility = hubAppVisibility ?? { ...DEFAULT_HUB_APP_VISIBILITY }
+    const nextVisibility: HubAppVisibility = {
+      ...previousVisibility,
+      [appKey]: visible,
+    }
+    setHubAppVisibility(nextVisibility)
+    setHubVisibilityAction(appKey)
+    try {
+      const res = await apiFetch('/v1/hub-visibility', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextVisibility),
+      })
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, 'Nie udało się zapisać widoczności aplikacji.'))
+      }
+      setHubAppVisibility(nextVisibility)
+      const label = HUB_APP_OPTIONS.find((entry) => entry.key === appKey)?.title || 'Aplikacja'
+      toast.success(visible ? `Pokazano „${label}” w hubie.` : `Ukryto „${label}” w hubie.`)
+    } catch (error) {
+      setHubAppVisibility(previousVisibility)
+      toast.error(error instanceof Error ? error.message : 'Nie udało się zapisać widoczności aplikacji.')
+    } finally {
+      setHubVisibilityAction(null)
+    }
+  }
+
   const loadHubBackgrounds = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
       const res = await apiFetch('/v1/hub-backgrounds')
@@ -490,6 +634,17 @@ export default function Hub({ navigate }: HubProps) {
   }
 
   useEffect(() => {
+    let cancelled = false
+    setHubVisibilityLoading(true)
+    void loadHubVisibility({ silent: true }).finally(() => {
+      if (!cancelled) setHubVisibilityLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [loadHubVisibility])
+
+  useEffect(() => {
     void loadHubBackgrounds({ silent: true })
   }, [loadHubBackgrounds])
 
@@ -504,6 +659,30 @@ export default function Hub({ navigate }: HubProps) {
     if (apiKeyMeta?.requiresRotation) return 'Klucz wymaga regeneracji'
     return apiKeyMeta?.hasKey ? 'Klucz istnieje (ukryty)' : 'Brak klucza API'
   }, [apiKeyVisible, apiKeyMeta, singleApiKey])
+
+  const visibleHubApps = useMemo(() => {
+    if (!hubAppVisibility) return null
+    return HUB_APP_OPTIONS
+      .filter((app) => hubAppVisibility[app.key])
+      .map((app) => ({
+        ...app,
+        onClick: () => {
+          if (app.key === 'timetable') {
+            navigate(getPreferredPlanPath())
+            return
+          }
+          if (app.key === 'attendance') {
+            navigate('/frekwencja')
+            return
+          }
+          if (app.key === 'schedule') {
+            navigate('/harmonogram')
+            return
+          }
+          navigate('/statut')
+        },
+      }))
+  }, [getPreferredPlanPath, hubAppVisibility, navigate])
 
   // ── Shared background picture ───────────────────────────────────────────────
   const heroBg = (
@@ -735,6 +914,17 @@ export default function Hub({ navigate }: HubProps) {
                   </div>
                 </section>
               ) : null}
+              {isAdmin ? (
+                <section className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Widoczność aplikacji</div>
+                  <HubVisibilitySection
+                    hubAppVisibility={hubAppVisibility}
+                    hubVisibilityLoading={hubVisibilityLoading}
+                    hubVisibilityAction={hubVisibilityAction}
+                    updateHubAppVisibility={updateHubAppVisibility}
+                  />
+                </section>
+              ) : null}
             </div>
           )}
         </div>
@@ -816,10 +1006,14 @@ export default function Hub({ navigate }: HubProps) {
                 color: '#1c1305',
               }}
             >
-              {isAuth ? (me?.username?.[0]?.toUpperCase() || 'U') : '?'}
+              {isAuth ? (
+                me?.username?.[0]?.toUpperCase() || 'U'
+              ) : (
+                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
             </div>
             <span className="text-[13px] font-medium" style={{ color: 'var(--hub-text-secondary)' }}>
-              {isAuth ? (me?.username || 'Użytkownik') : 'Gość'}
+              {isAuth ? (me?.username || 'Użytkownik') : 'Zaloguj'}
             </span>
           </button>
         </div>
@@ -834,30 +1028,23 @@ export default function Hub({ navigate }: HubProps) {
 
         {/* Nav items */}
         <nav className="flex flex-col gap-[2px] px-3 shrink-0">
-          <NavItem
-            icon={<CalendarDays className="w-4 h-4" />}
-            title="Plan lekcji"
-            desc="Klasy, nauczyciele i sale"
-            onClick={() => navigate(getPreferredPlanPath())}
-          />
-          <NavItem
-            icon={<ListChecks className="w-4 h-4" />}
-            title="Frekwencja"
-            desc="Zarządzaj obecnościami i zajęciami"
-            onClick={() => navigate('/frekwencja')}
-          />
-          <NavItem
-            icon={<ListChecks className="w-4 h-4" />}
-            title="Harmonogram"
-            desc="Rady, terminy, zebrania"
-            onClick={() => navigate('/harmonogram')}
-          />
-          <NavItem
-            icon={<FileText className="w-4 h-4" />}
-            title="Statut szkoły"
-            desc="Przejrzyj regulamin"
-            onClick={() => navigate('/statut')}
-          />
+          {hubVisibilityLoading || visibleHubApps === null ? (
+            <div className="px-3 py-2 text-[12px]" style={{ color: 'var(--hub-text-muted)' }}>
+              Ładowanie aplikacji…
+            </div>
+          ) : visibleHubApps.length > 0 ? visibleHubApps.map((app) => (
+            <NavItem
+              key={app.key}
+              icon={<app.Icon className="w-4 h-4" />}
+              title={app.title}
+              desc={app.navDescription}
+              onClick={app.onClick}
+            />
+          )) : (
+            <div className="px-3 py-2 text-[12px]" style={{ color: 'var(--hub-text-muted)' }}>
+              Administrator ukrył wszystkie aplikacje w hubie.
+            </div>
+          )}
         </nav>
 
         {/* Divider */}
@@ -899,7 +1086,7 @@ export default function Hub({ navigate }: HubProps) {
                 variant="outline"
                 className="border-white/30 bg-black/40 text-white hover:bg-black/60 backdrop-blur"
               >
-                {isAuth ? (me?.username || 'Profil') : 'Zaloguj / Rejestracja'}
+                {isAuth ? (me?.username || 'Profil') : 'Zaloguj'}
               </Button>
             </div>
           </div>
@@ -907,12 +1094,29 @@ export default function Hub({ navigate }: HubProps) {
 
         <div className="mx-auto flex flex-col items-center w-full max-w-6xl px-4 py-8 sm:py-10 text-white flex-1">
           <main className="w-full">
-            <div className="mx-auto max-w-3xl grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
-              <HubTile title="Plan lekcji" description="Przeglądaj interaktywny plan dla klas, nauczycieli i sal." icon={<CalendarDays className="h-6 w-6" />} onClick={() => navigate(getPreferredPlanPath())} />
-              <HubTile title="Frekwencja" description="Zarządzaj obecnościami i planami zajęć." icon={<ListChecks className="h-6 w-6" />} onClick={() => navigate('/frekwencja')} />
-              <HubTile title="Harmonogram" description="Wydarzenia, rady, terminy." icon={<ListChecks className="h-6 w-6" />} onClick={() => navigate('/harmonogram')} />
-              <HubTile title="Statut szkoły" description="Przejrzyj statut szkoły." icon={<FileText className="h-6 w-6" />} onClick={() => navigate('/statut')} />
-            </div>
+            {hubVisibilityLoading || visibleHubApps === null ? (
+              <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-black/35 px-5 py-8 text-center shadow-xl backdrop-blur-md">
+                <div className="text-lg font-semibold text-white">Ładowanie aplikacji</div>
+                <p className="mt-2 text-sm text-zinc-200/90">Trwa pobieranie konfiguracji huba.</p>
+              </div>
+            ) : visibleHubApps.length > 0 ? (
+              <div className="mx-auto max-w-3xl grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+                {visibleHubApps.map((app) => (
+                  <HubTile
+                    key={app.key}
+                    title={app.title}
+                    description={app.tileDescription}
+                    icon={<app.Icon className="h-6 w-6" />}
+                    onClick={app.onClick}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-black/35 px-5 py-8 text-center shadow-xl backdrop-blur-md">
+                <div className="text-lg font-semibold text-white">Brak aktywnych aplikacji</div>
+                <p className="mt-2 text-sm text-zinc-200/90">Administrator ukrył wszystkie pozycje w hubie.</p>
+              </div>
+            )}
             <div className="mt-12 sm:mt-16">
               <NewsSection reloadSignal={newsReloadSignal} />
             </div>
@@ -958,6 +1162,10 @@ export default function Hub({ navigate }: HubProps) {
               articlesBusy={articlesBusy}
               articlesJob={articlesJob}
               startArticlesScrape={startArticlesScrape}
+              hubAppVisibility={hubAppVisibility}
+              hubVisibilityLoading={hubVisibilityLoading}
+              hubVisibilityAction={hubVisibilityAction}
+              updateHubAppVisibility={updateHubAppVisibility}
               ttBusy={ttBusy}
               refreshTimetable={refreshTimetable}
               backupsVisible={backupsVisible}
@@ -999,6 +1207,55 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
+function HubVisibilitySection({
+  hubAppVisibility,
+  hubVisibilityLoading,
+  hubVisibilityAction,
+  updateHubAppVisibility,
+}: {
+  hubAppVisibility: HubAppVisibility | null
+  hubVisibilityLoading: boolean
+  hubVisibilityAction: HubAppId | null
+  updateHubAppVisibility: (appKey: HubAppId, visible: boolean) => void | Promise<void>
+}) {
+  if (hubVisibilityLoading || !hubAppVisibility) {
+    return (
+      <p className="px-1 text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>
+        Ładowanie konfiguracji widoczności aplikacji…
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {HUB_APP_OPTIONS.map((app) => {
+        const visible = hubAppVisibility[app.key]
+        const isSaving = hubVisibilityAction === app.key
+        return (
+          <div
+            key={app.key}
+            className="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+            style={{ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}
+          >
+            <div className="min-w-0 text-[12.5px] font-medium" style={{ color: visible ? '#edeae4' : 'var(--hub-text-secondary)' }}>
+              {app.title}
+            </div>
+            <Button
+              onClick={() => updateHubAppVisibility(app.key, !visible)}
+              disabled={isSaving}
+              variant={visible ? 'outline' : 'success'}
+              size="sm"
+              className="h-7 shrink-0 px-2.5 text-[11px]"
+            >
+              {isSaving ? 'Zapis…' : visible ? 'Ukryj' : 'Pokaż'}
+            </Button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ProfilePanelContent({
   isAuth, me, isAdmin, onClose,
   loginForm, setLoginForm, registerForm, setRegisterForm,
@@ -1006,6 +1263,7 @@ function ProfilePanelContent({
   displayedApiKey, apiKeyVisible, setApiKeyVisible, singleApiKey, apiKeyMeta, regenSingleKey,
   toast,
   articlesBusy, articlesJob, startArticlesScrape,
+  hubAppVisibility, hubVisibilityLoading, hubVisibilityAction, updateHubAppVisibility,
   ttBusy, refreshTimetable,
   backupsVisible, backups, backupsError, toggleBackups, restoreBackup,
   hubBackgrounds, hubBackgroundError, hubBackgroundFile, setHubBackgroundFile,
@@ -1033,6 +1291,10 @@ function ProfilePanelContent({
   articlesBusy: boolean
   articlesJob: { id: string; status: string } | null
   startArticlesScrape: () => void
+  hubAppVisibility: HubAppVisibility | null
+  hubVisibilityLoading: boolean
+  hubVisibilityAction: HubAppId | null
+  updateHubAppVisibility: (appKey: HubAppId, visible: boolean) => void | Promise<void>
   ttBusy: boolean
   refreshTimetable: () => void
   backupsVisible: boolean
@@ -1280,6 +1542,16 @@ function ProfilePanelContent({
                     ))}
                     {hubBackgrounds?.entries.length === 0 && <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Brak zapisanych teł.</p>}
                   </div>
+                </div>
+
+                <div className="hub-profile-section flex flex-col gap-2">
+                  <SectionLabel>Widoczność aplikacji</SectionLabel>
+                  <HubVisibilitySection
+                    hubAppVisibility={hubAppVisibility}
+                    hubVisibilityLoading={hubVisibilityLoading}
+                    hubVisibilityAction={hubVisibilityAction}
+                    updateHubAppVisibility={updateHubAppVisibility}
+                  />
                 </div>
               </>
             )}

@@ -44,6 +44,7 @@ export function createConfig() {
     distDir: join(projectRoot, 'dist'),
     dbPath: join(serverDir, 'data.json'),
     overridesPath: join(projectRoot, 'public', 'overrides.json'),
+    hubVisibilityPath: join(runtimeDir, 'hub-visibility.json'),
     requirementsPath: join(serverDir, 'scripts', 'requirements.txt'),
     timetableScraperScript: join(serverDir, 'scripts', 'scraper.py'),
     articlesScraperScript: join(serverDir, 'scripts', 'article_scraper.py'),

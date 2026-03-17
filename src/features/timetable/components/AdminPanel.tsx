@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import type { Overrides } from '@/types/schedule'
 
 type TeacherEntry = { id: string | null; shortName: string; originalName: string }
 
@@ -28,8 +29,8 @@ export function AdminPanel({
   onLogout: () => void
   refreshing: boolean
   onRefresh: () => void
-  overrides: { subjectOverrides: Record<string,string>; teacherNameOverrides: Record<string,string> }
-  setOverrides: React.Dispatch<React.SetStateAction<{ subjectOverrides: Record<string,string>; teacherNameOverrides: Record<string,string> }>>
+  overrides: Overrides
+  setOverrides: React.Dispatch<React.SetStateAction<Overrides>>
   subjectKeys: string[]
   subjectFilter: string
   setSubjectFilter: (v: string) => void
@@ -183,7 +184,13 @@ export function AdminPanel({
               </div>
               <div className="flex items-center gap-2">
                 <Button onClick={() => { void onSaveOverrides() }} variant="success">Zapisz nadpisania</Button>
-                <Button onClick={() => { setOverrides({ subjectOverrides: {}, teacherNameOverrides: {} }); }} variant="outline">Wyczyść wszystko</Button>
+                <Button onClick={() => {
+                  setOverrides((current) => ({
+                    ...current,
+                    subjectOverrides: {},
+                    teacherNameOverrides: {},
+                  }))
+                }} variant="outline">Wyczyść nadpisania nazw</Button>
               </div>
             </div>
           </div>

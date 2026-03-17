@@ -7,7 +7,7 @@ import { CalendarDays, Filter, Search, Clock, X, ChevronDown, ChevronUp } from "
 import { motion, AnimatePresence } from "framer-motion";
 
 // Ciemne style kategorii – spójne z motywem planu lekcji
-const CATEGORY_STYLES = {
+const CATEGORY_BADGE_STYLES = {
   "Rada Pedagogiczna": "bg-indigo-900/40 text-indigo-200 border-indigo-800",
   "Wywiadówka": "bg-amber-900/40 text-amber-200 border-amber-800",
   "Praktyki": "bg-emerald-900/40 text-emerald-200 border-emerald-800",
@@ -18,7 +18,18 @@ const CATEGORY_STYLES = {
   "Organizacja": "bg-teal-900/40 text-teal-200 border-teal-800",
 } as const;
 
-type Category = keyof typeof CATEGORY_STYLES;
+const CATEGORY_FILTER_ACTIVE_STYLES: Record<keyof typeof CATEGORY_BADGE_STYLES, string> = {
+  "Rada Pedagogiczna": "bg-indigo-700 text-white border-indigo-500",
+  "Wywiadówka": "bg-amber-600 text-white border-amber-400",
+  "Praktyki": "bg-emerald-700 text-white border-emerald-500",
+  "Egzamin": "bg-rose-700 text-white border-rose-500",
+  "Dni wolne": "bg-sky-700 text-white border-sky-500",
+  "Termin/Deadline": "bg-zinc-600 text-white border-zinc-400",
+  "Wydarzenie": "bg-fuchsia-700 text-white border-fuchsia-500",
+  "Organizacja": "bg-teal-700 text-white border-teal-500",
+}
+
+type Category = keyof typeof CATEGORY_BADGE_STYLES;
 
 type EventItem = {
   id: string;
@@ -29,7 +40,7 @@ type EventItem = {
   category: Category;
 };
 
-const ALL_CATEGORIES = Object.keys(CATEGORY_STYLES) as Category[];
+const ALL_CATEGORIES = Object.keys(CATEGORY_BADGE_STYLES) as Category[];
 
 const EVENTS: EventItem[] = [
   // Wrzesień 2025
@@ -166,6 +177,9 @@ export default function SchedulePage() {
   const [onlyMonth, setOnlyMonth] = useState<string | null>(null);
   const [hideEarlierMonths, setHideEarlierMonths] = useState(true);
   const [expandedPastMonths, setExpandedPastMonths] = useState<Set<string>>(new Set());
+  const filtersButtonRef = useRef<HTMLDivElement | null>(null);
+  const filtersPanelRef = useRef<HTMLDivElement | null>(null);
+  const [filtersPanelStyle, setFiltersPanelStyle] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Daty referencyjne (początek dnia lokalnie)
   const todayStart = useMemo(() => {
@@ -267,6 +281,49 @@ export default function SchedulePage() {
     }
   }, [hasAutoScrolled]);
 
+  useEffect(() => {
+    if (!filtersOpen) return;
+
+    const updatePosition = () => {
+      const trigger = filtersButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 16;
+      const desiredWidth = Math.min(720, window.innerWidth - viewportPadding * 2);
+      const left = Math.min(
+        Math.max(viewportPadding, rect.right - desiredWidth),
+        window.innerWidth - desiredWidth - viewportPadding
+      );
+      const top = Math.min(rect.bottom + 10, window.innerHeight - 120);
+      setFiltersPanelStyle({ top, left, width: desiredWidth });
+    };
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (filtersPanelRef.current?.contains(target)) return;
+      if (filtersButtonRef.current?.contains(target)) return;
+      setFiltersOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [filtersOpen]);
+
   function toggleCat(cat: Category) {
     setActiveCats((prev) => (prev.length === 1 && prev[0] === cat ? ALL_CATEGORIES : [cat]));
   }
@@ -293,31 +350,53 @@ export default function SchedulePage() {
           <CalendarDays className="w-5 h-5 text-zinc-200" />
           <div className="font-semibold">Harmonogram - Rok szkolny 2025/2026</div>
           <div className="ml-auto">
-            <Button
-              type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              className="rounded-xl border-zinc-700 bg-zinc-900 text-zinc-100 shadow-sm"
-              aria-label="Pokaż/ukryj filtry"
-              aria-expanded={filtersOpen}
-            >
-              <Filter className="h-4 w-4" /> Filtry
-            </Button>
+            <div ref={filtersButtonRef}>
+              <Button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={`rounded-xl shadow-sm transition ${
+                  filtersOpen
+                    ? "border-cyan-500/60 bg-cyan-500/12 text-cyan-100 shadow-[0_10px_30px_rgba(34,211,238,0.16)]"
+                    : "border-zinc-700 bg-zinc-900 text-zinc-100"
+                }`}
+                aria-label="Pokaż/ukryj filtry"
+                aria-expanded={filtersOpen}
+              >
+                <Filter className="h-4 w-4" /> Filtry
+              </Button>
+            </div>
           </div>
         </div>
       </header>
       <div className="mx-auto max-w-6xl p-6">
-        
-        {/* Inline, slide-down filters panel with smooth height tween */}
-        <AnimatePresence initial={false}>
-          {filtersOpen && (
-            <motion.div
-              key="filters-panel"
-              className="mb-6 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-sm"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-            >
+        <AnimatePresence>
+          {filtersOpen && filtersPanelStyle ? (
+            <>
+              <motion.div
+                key="filters-backdrop"
+                className="fixed inset-0 z-40 bg-black/20"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setFiltersOpen(false)}
+              />
+              <motion.div
+                key="filters-panel"
+                ref={filtersPanelRef}
+                className="fixed z-50 overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+                style={{
+                  top: filtersPanelStyle.top,
+                  left: filtersPanelStyle.left,
+                  width: filtersPanelStyle.width,
+                  maxHeight: "min(70vh, calc(100vh - 96px))",
+                }}
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-cyan-400/8 via-white/[0.02] to-transparent" />
+                <div className="relative max-h-[min(70vh,calc(100vh-96px))] overflow-y-auto pr-1">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-4">
                 <div className="relative w-full">
@@ -326,7 +405,7 @@ export default function SchedulePage() {
                     placeholder="Szukaj (np. matura, rada, praktyki)"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="pl-9 rounded-2xl bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
+                    className="pl-9 rounded-2xl border-zinc-600 bg-black/35 text-zinc-100 placeholder:text-zinc-500"
                   />
                 </div>
                 <div>
@@ -339,7 +418,7 @@ export default function SchedulePage() {
                         size="sm"
                         className={`border px-3 py-1.5 text-sm rounded-full transition ${
                           activeCats.includes(cat)
-                            ? CATEGORY_STYLES[cat] + " ring-1 ring-black/0"
+                            ? CATEGORY_FILTER_ACTIVE_STYLES[cat] + " font-semibold"
                             : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800"
                         }`}
                       >
@@ -359,7 +438,7 @@ export default function SchedulePage() {
                       size="sm"
                       className={`rounded-full border text-xs transition ${
                         hideEarlierMonths
-                          ? "border-emerald-700 bg-emerald-900/30 text-emerald-200"
+                          ? "border-emerald-400 bg-emerald-700 text-white font-semibold"
                           : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
                       }`}
                       title="Ukryj wcześniejsze miesiące i pokaż bieżący oraz kolejne"
@@ -370,7 +449,11 @@ export default function SchedulePage() {
                       type="button"
                       onClick={() => setOnlyMonth(null)}
                       size="sm"
-                      className="rounded-full border-zinc-700 bg-zinc-900 text-xs text-zinc-300 hover:bg-zinc-800"
+                      className={`rounded-full border text-xs ${
+                        onlyMonth === null
+                          ? "border-cyan-400 bg-cyan-700 text-white font-semibold"
+                          : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                      }`}
                     >
                       Pokaż wszystkie
                     </Button>
@@ -390,9 +473,9 @@ export default function SchedulePage() {
                         onClick={() => setOnlyMonth((cur) => (cur === m ? null : m))}
                         className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition ${
                           active
-                            ? "border-emerald-700 bg-emerald-900/30 text-emerald-200"
+                            ? "border-emerald-400 bg-emerald-700 text-white font-semibold"
                             : isNow
-                              ? "border-zinc-600 bg-zinc-800/70 text-zinc-100"
+                              ? "border-cyan-500 bg-cyan-900/50 text-cyan-100"
                               : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
                         }`}
                         title={`${monthLabel(m)}${active ? " – filtr aktywny" : " – kliknij, aby filtrować"}`}
@@ -417,9 +500,9 @@ export default function SchedulePage() {
                         onClick={() => setOnlyMonth((cur) => (cur === m ? null : m))}
                         className={`rounded-full border px-3 py-1.5 text-sm transition ${
                           active
-                            ? "border-emerald-700 bg-emerald-900/30 text-emerald-200"
+                            ? "border-emerald-400 bg-emerald-700 text-white font-semibold"
                             : isNow
-                              ? "border-zinc-600 bg-zinc-800/70 text-zinc-100"
+                              ? "border-cyan-500 bg-cyan-900/50 text-cyan-100"
                               : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
                         }`}
                         title={`${monthLabel(m)}${active ? " – filtr aktywny" : " – kliknij, aby filtrować"}`}
@@ -432,8 +515,10 @@ export default function SchedulePage() {
                 </div>
               </div>
             </div>
-            </motion.div>
-          )}
+                </div>
+              </motion.div>
+            </>
+          ) : null}
         </AnimatePresence>
 
         {onlyMonth && (
@@ -518,7 +603,7 @@ export default function SchedulePage() {
                             </div>
                           </div>
                           <span
-                            className={`border px-3 py-1.5 text-sm rounded-full transition ${CATEGORY_STYLES[ev.category]} ring-1 ring-black/0 whitespace-nowrap`}
+                            className={`border px-3 py-1.5 text-sm rounded-full transition ${CATEGORY_BADGE_STYLES[ev.category]} ring-1 ring-black/0 whitespace-nowrap`}
                           >
                             {ev.category}
                           </span>
@@ -571,7 +656,7 @@ export default function SchedulePage() {
                               </div>
                             </div>
                             <span
-                              className={`border px-3 py-1.5 text-sm rounded-full transition ${CATEGORY_STYLES[ev.category]} ring-1 ring-black/0 whitespace-nowrap`}
+                              className={`border px-3 py-1.5 text-sm rounded-full transition ${CATEGORY_BADGE_STYLES[ev.category]} ring-1 ring-black/0 whitespace-nowrap`}
                             >
                               {ev.category}
                             </span>

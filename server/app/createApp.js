@@ -1,5 +1,5 @@
 import express from 'express'
-import { basename, join } from 'node:path'
+import { basename, join, relative } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import swaggerUi from 'swagger-ui-express'
 import yaml from 'js-yaml'
@@ -28,6 +28,7 @@ import { createTimetableStore } from '../lib/timetableStore.js'
 import { createJobsStore } from '../lib/jobsStore.js'
 import { createSessionStore } from '../lib/sessionStore.js'
 import { createHubBackgroundStore } from '../lib/hubBackgroundStore.js'
+import { createHubVisibilityStore } from '../lib/hubVisibilityStore.js'
 import {
   detectPythonCommand,
   runCommand,
@@ -68,6 +69,10 @@ export function createApp(config) {
   }
 
   const dbStore = createDbStore({ dbPath: config.dbPath, overridesPath: config.overridesPath })
+  const hubVisibilityStore = createHubVisibilityStore({
+    hubVisibilityPath: config.hubVisibilityPath,
+    legacyOverridesPath: config.overridesPath,
+  })
   const timetableStore = createTimetableStore({ timetableFilePath: config.timetableFilePath, ttlMs: config.timetableCacheTtlMs })
   const hubBackgroundStore = createHubBackgroundStore({
     manifestPath: config.hubBackgroundManifestPath,
@@ -115,6 +120,12 @@ export function createApp(config) {
   }
 
   try {
+    hubVisibilityStore.ensureHubVisibilityFile()
+  } catch (e) {
+    console.warn('[server] Failed to ensure hub visibility file:', e)
+  }
+
+  try {
     hubBackgroundStore.ensureManifest()
   } catch (e) {
     console.warn('[server] Failed to ensure hub background manifest:', e)
@@ -142,6 +153,7 @@ export function createApp(config) {
     requireAdmin,
 
     ...dbStore,
+    ...hubVisibilityStore,
     ...timetableStore,
     hubBackgroundStore,
 
@@ -184,7 +196,14 @@ export function createApp(config) {
         cacheControl: true,
         setHeaders: (res, path) => {
           const file = basename(path).toLowerCase()
+          const publicRelativePath = relative(config.publicDir, path).replace(/\\/g, '/').toLowerCase()
           if (file === 'articles.json' || file === 'overrides.json') {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+            res.setHeader('Pragma', 'no-cache')
+            res.setHeader('Expires', '0')
+            return
+          }
+          if (/^hub-bg-right-\d+\.(webp|jpg|jpeg)$/.test(publicRelativePath)) {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
             res.setHeader('Pragma', 'no-cache')
             res.setHeader('Expires', '0')

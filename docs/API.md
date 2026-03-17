@@ -174,6 +174,12 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 - Odczyt (publiczny): `GET /v1/overrides` → `{ ok: true, data: { subjectOverrides, teacherNameOverrides } }`
 - Zapis (cookie auth + admin): `PUT /v1/overrides` body `{ subjectOverrides, teacherNameOverrides }` → `{ ok: true, data: { saved: true } }`
 
+## Widoczność aplikacji w hubie
+
+- Odczyt (publiczny): `GET /v1/hub-visibility` → `{ ok: true, data: { timetable, attendance, schedule, statute } }`
+- Zapis (cookie auth + admin): `PUT /v1/hub-visibility` body `{ timetable, attendance, schedule, statute }` → `{ ok: true, data: { saved: true } }`
+- Te flagi sterują widocznością kafli i pozycji nawigacji w hubie. Nie blokują bezpośrednich wejść na trasy.
+
 ## Tło strony głównej
 
 - Odczyt aktywnego tła i historii (publiczny): `GET /v1/hub-backgrounds` → `{ ok: true, data: { historyLimit, activeId, active, entries } }`

@@ -10,6 +10,7 @@ import { registerOverrideRoutes } from './overrides.js'
 import { registerJobRoutes } from './jobs.js'
 import { registerMaintenanceRoutes } from './maintenance.js'
 import { registerHubBackgroundRoutes } from './hubBackgrounds.js'
+import { registerHubVisibilityRoutes } from './hubVisibility.js'
 
 export function createV1Router(deps) {
   const v1 = express.Router()
@@ -25,6 +26,7 @@ export function createV1Router(deps) {
   registerJobRoutes(v1, deps)
   registerMaintenanceRoutes(v1, deps)
   registerHubBackgroundRoutes(v1, deps)
+  registerHubVisibilityRoutes(v1, deps)
 
   return v1
 }
