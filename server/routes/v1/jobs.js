@@ -150,4 +150,72 @@ export function registerJobRoutes(v1, {
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }
   })
+
+  v1.post('/jobs/documents-scrape', requireAuth, requireAdmin, requireCsrfIfCookieAuth, async (req, res) => {
+    try {
+      const running = jobsStore.findActive('documents')
+      if (running) {
+        return res.status(202).json({
+          ok: true,
+          data: { jobId: running.id, statusUrl: `/v1/jobs/${running.id}`, status: running.status },
+        })
+      }
+
+      const job = jobsStore.createJob({ kind: 'documents' })
+      jobsStore.setJob(job)
+
+      res.status(202).json({
+        ok: true,
+        data: { jobId: job.id, statusUrl: `/v1/jobs/${job.id}`, status: job.status },
+      })
+
+      ;(async () => {
+        let timedOut = false
+        try {
+          job.status = 'running'
+          job.startedAt = new Date().toISOString()
+
+          const pythonCmd = process.env.PYTHON_PATH || detectPythonCommand()
+          if (!pythonCmd) throw new Error('Brak interpretera Pythona')
+
+          const deps = await ensurePythonDepsInstalled({
+            pythonCmd,
+            requirementsPath: config.requirementsPath,
+            scriptsDir: config.scriptsDir,
+            pipMarkersDir: config.pipMarkersDir,
+            pipTimeoutMs: config.pipTimeoutMs,
+          })
+          if (deps && deps.error) throw new Error(deps.error)
+
+          const script = process.platform === 'win32' && pythonCmd === 'py'
+            ? ['-3', config.documentsScraperScript]
+            : [config.documentsScraperScript]
+          const run = await runCommand(pythonCmd, script, {
+            cwd: config.scriptsDir,
+            env: process.env,
+            timeoutMs: config.scraperTimeoutMs,
+          })
+          const runResult = parseStructuredJobOutput(run.stdout)
+          if (run.timedOut) {
+            timedOut = true
+            throw new Error(`Scraper timeout after ${config.scraperTimeoutMs}ms`)
+          }
+          if (run.code !== 0) throw new Error((runResult && (runResult.detail || runResult.error)) || run.stderr.slice(-4000))
+          if (runResult && runResult.ok === false) throw new Error(runResult.detail || runResult.error || 'Scraper failed')
+
+          job.status = 'succeeded'
+          job.finishedAt = new Date().toISOString()
+          job.result = runResult
+        } catch (e) {
+          job.status = timedOut ? 'timeout' : 'failed'
+          job.finishedAt = new Date().toISOString()
+          job.error = String(e)
+        } finally {
+          jobsStore.cleanupJobs()
+        }
+      })()
+    } catch (e) {
+      problem(res, 500, 'server.error', 'Internal Server Error', String(e))
+    }
+  })
 }

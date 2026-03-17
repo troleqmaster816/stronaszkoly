@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, FileText, ListChecks, School, ChevronRight, LogOut, KeyRound, Settings } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, School, ChevronRight, LogOut, KeyRound, Settings, FolderOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
 import { useAuth } from "./features/auth/useAuth";
@@ -16,7 +16,7 @@ type HubProps = {
   navigate: (to: string) => void;
 };
 
-type HubAppId = 'timetable' | 'attendance' | 'schedule' | 'statute'
+type HubAppId = 'timetable' | 'attendance' | 'schedule' | 'statute' | 'documents'
 type HubAppVisibility = Record<HubAppId, boolean>
 
 const DEFAULT_HUB_APP_VISIBILITY: HubAppVisibility = {
@@ -24,6 +24,7 @@ const DEFAULT_HUB_APP_VISIBILITY: HubAppVisibility = {
   attendance: true,
   schedule: true,
   statute: true,
+  documents: false,
 }
 
 type HubAppOption = {
@@ -62,6 +63,13 @@ const HUB_APP_OPTIONS: HubAppOption[] = [
     navDescription: 'Przejrzyj regulamin',
     tileDescription: 'Przejrzyj statut szkoły.',
     Icon: FileText,
+  },
+  {
+    key: 'documents',
+    title: 'Dokumenty',
+    navDescription: 'Regulaminy i plany nauczania',
+    tileDescription: 'Przeglądaj dokumenty szkolne i ramowe plany nauczania.',
+    Icon: FolderOpen,
   },
 ]
 
@@ -120,6 +128,7 @@ function parseHubAppVisibility(value: unknown): HubAppVisibility {
     attendance: typeof value.attendance === 'boolean' ? value.attendance : true,
     schedule: typeof value.schedule === 'boolean' ? value.schedule : true,
     statute: typeof value.statute === 'boolean' ? value.statute : true,
+    documents: typeof value.documents === 'boolean' ? value.documents : false,
   }
 }
 
@@ -826,6 +835,10 @@ export default function Hub({ navigate }: HubProps) {
           }
           if (app.key === 'schedule') {
             navigate('/harmonogram')
+            return
+          }
+          if (app.key === 'documents') {
+            navigate('/dokumenty')
             return
           }
           navigate('/statut')

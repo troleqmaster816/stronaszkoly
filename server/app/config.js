@@ -48,6 +48,7 @@ export function createConfig() {
     requirementsPath: join(serverDir, 'scripts', 'requirements.txt'),
     timetableScraperScript: join(serverDir, 'scripts', 'scraper.py'),
     articlesScraperScript: join(serverDir, 'scripts', 'article_scraper.py'),
+    documentsScraperScript: join(serverDir, 'scripts', 'documents_scraper.py'),
     timetableFilePath: join(projectRoot, 'public', 'timetable_data.json'),
     timetableBackupsDir: join(runtimeDir, 'backups', 'timetables'),
     hubBackgroundManifestPath: join(runtimeDir, 'hub-backgrounds.json'),

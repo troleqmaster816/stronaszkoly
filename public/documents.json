@@ -1,0 +1,363 @@
+{
+  "scrapedAt": "2026-03-17T14:50:02Z",
+  "sourceUrl": "https://zse-zdwola.pl/regulaminy-dla-ucznia/",
+  "categoryLabels": {
+    "regulaminy": "Regulaminy",
+    "procedury": "Procedury",
+    "wnioski": "Wnioski i załączniki",
+    "ochrona-danych": "Ochrona danych",
+    "statut": "Statut",
+    "programy": "Programy",
+    "inne": "Inne dokumenty"
+  },
+  "documents": [
+    {
+      "title": "Statut",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/statut_2023.pdf",
+      "format": "pdf",
+      "category": "statut"
+    },
+    {
+      "title": "Regulamin Korzystania z biblioteki",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/5biblioteka.pdf",
+      "format": "pdf",
+      "category": "regulaminy"
+    },
+    {
+      "title": "Regulamin Zwalniania Uczniów z zajęć wychowania fizycznego",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wf_regulamin_-zwalniania.pdf",
+      "format": "pdf",
+      "category": "regulaminy",
+      "attachmentGroups": [
+        {
+          "label": "Uczniowie niepełnoletni",
+          "items": [
+            {
+              "title": "załącznik nr 1",
+              "variants": [
+                {
+                  "label": "PDF",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wf_zwolnienie_niepelnoletni_zalacznik1.pdf",
+                  "format": "pdf"
+                },
+                {
+                  "label": "DOCX",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/wf_zwolnienie_niepelnoletni_zalacznik1.docx",
+                  "format": "docx"
+                }
+              ]
+            },
+            {
+              "title": "załącznik nr 2",
+              "variants": [
+                {
+                  "label": "PDF",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wf_zwolnienie_niepelnoletni_zalacznik2.pdf",
+                  "format": "pdf"
+                },
+                {
+                  "label": "DOCX",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/wf_zwolnienie_niepelnoletni_zalacznik2.docx",
+                  "format": "docx"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Uczniowie pełnoletni",
+          "items": [
+            {
+              "title": "załącznik nr 4",
+              "variants": [
+                {
+                  "label": "PDF",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wf_zwolnienie_pelnoletni_zalacznik4.pdf",
+                  "format": "pdf"
+                },
+                {
+                  "label": "DOCX",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/wf_zwolnienie_pelnoletni_zalacznik4.docx",
+                  "format": "docx"
+                }
+              ]
+            },
+            {
+              "title": "załącznik nr 5",
+              "variants": [
+                {
+                  "label": "PDF",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wf_zwolnienie_pelnoletni_zalacznik5.pdf",
+                  "format": "pdf"
+                },
+                {
+                  "label": "DOCX",
+                  "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/wf_zwolnienie_pelnoletni_zalacznik5.docx",
+                  "format": "docx"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Regulamin Studniówki",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/regulamin_studniowki_zse2.pdf",
+      "format": "pdf",
+      "category": "regulaminy",
+      "variants": [
+        {
+          "label": "PDF",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/regulamin_studniowki_zse2.pdf",
+          "format": "pdf"
+        },
+        {
+          "label": "DOCX",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/regulamin_studniowki_zse2.docx",
+          "format": "docx"
+        }
+      ]
+    },
+    {
+      "title": "Regulamin przyznawania nagród Rady Rodziców",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/regulaminpryznawania-nagrd-rady-rodzicw.pdf",
+      "format": "pdf",
+      "category": "regulaminy",
+      "variants": [
+        {
+          "label": "PDF",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/regulaminpryznawania-nagrd-rady-rodzicw.pdf",
+          "format": "pdf"
+        },
+        {
+          "label": "DOCX",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/regulaminpryznawania-nagrd-rady-rodzicw.docx",
+          "format": "docx"
+        }
+      ]
+    },
+    {
+      "title": "Wniosek o nagrodę Rady Rodziców",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wniosek-o-nagrod-rady-rodzicw.pdf",
+      "format": "pdf",
+      "category": "wnioski",
+      "variants": [
+        {
+          "label": "PDF",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/wniosek-o-nagrod-rady-rodzicw.pdf",
+          "format": "pdf"
+        },
+        {
+          "label": "DOCX",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/wniosek-o-nagrod-rady-rodzicw.docx",
+          "format": "docx"
+        }
+      ]
+    },
+    {
+      "title": "Wzór identyfikatora szkolnego",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/10/wzor_identyfikatora-1.docx",
+      "format": "docx",
+      "category": "inne"
+    },
+    {
+      "title": "RODO",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/informacja_dla_rodzicow_RODO.pdf",
+      "format": "pdf",
+      "category": "ochrona-danych"
+    },
+    {
+      "title": "Procedura organizowania i udzielania ppp",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/procedura-organizowania-i-udzielania-ppp.pdf",
+      "format": "pdf",
+      "category": "procedury",
+      "variants": [
+        {
+          "label": "PDF",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/procedura-organizowania-i-udzielania-ppp.pdf",
+          "format": "pdf"
+        },
+        {
+          "label": "DOCX",
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/11/procedura-organizowania-i-udzielania-ppp.docx",
+          "format": "docx"
+        }
+      ]
+    },
+    {
+      "title": "Procedury oceniania uczniów ze specjalnymi potrzebami edukacyjnymi",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2025/01/Procedury-oceniania-uczniow-ze-specjalnymi-potrzebami-edukacyjnymi.docx",
+      "format": "docx",
+      "category": "procedury"
+    },
+    {
+      "title": "Procedura zwalniania z zajęć rewalidacyjnych",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2025/01/Procedura-zwalniania-z-zajec-rewalidacyjnych.docx",
+      "format": "docx",
+      "category": "procedury"
+    },
+    {
+      "title": "Procedura postępowania w przypadku powrotu ucznia do szkoły po hospitalizacji",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/2025/01/Procedura-postepowania-w-przypadku-powrotu-ucznia-do-szkoly-po-hospitalizacji.odt",
+      "format": "odt",
+      "category": "procedury"
+    },
+    {
+      "title": "Procedura dostosowania egzaminów zewnętrznych",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/dokumenty/pdez.pdf",
+      "format": "pdf",
+      "category": "procedury"
+    },
+    {
+      "title": "Standardy ochrony małoletnich",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/dokumenty/som.pdf",
+      "format": "pdf",
+      "category": "inne"
+    },
+    {
+      "title": "Program wychowawczo – profilaktyczny",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/dokumenty/pwp.pdf",
+      "format": "pdf",
+      "category": "programy"
+    },
+    {
+      "title": "Sprzeciw od wydania mLegitymacji",
+      "url": "https://zse-zdwola.pl/wp-content/uploads/dokumenty/mLegitymacja_sprzeciw.docx",
+      "format": "docx",
+      "category": "inne"
+    }
+  ],
+  "teachingPlans": {
+    "TP": {
+      "name": "Technik Programista",
+      "code": "351406",
+      "classes": [
+        {
+          "classNum": 1,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/1TP.pdf",
+          "title": "1TP.pdf · Technik Programista"
+        },
+        {
+          "classNum": 2,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/2TP.pdf",
+          "title": "2TP.pdf · Technik Programista"
+        },
+        {
+          "classNum": 3,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/3TP.pdf",
+          "title": "3TP.pdf · Technik Programista"
+        },
+        {
+          "classNum": 4,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/4TP.pdf",
+          "title": "4TP.pdf · Technik Programista"
+        }
+      ]
+    },
+    "TI": {
+      "name": "Technik Informatyk",
+      "code": "351203",
+      "classes": [
+        {
+          "classNum": 1,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/1TI.pdf",
+          "title": "1TI.pdf · Technik Informatyk"
+        },
+        {
+          "classNum": 2,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/2TI.pdf",
+          "title": "2TI.pdf · Technik Informatyk"
+        },
+        {
+          "classNum": 3,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/3TI.pdf",
+          "title": "3TI.pdf · Technik Informatyk"
+        },
+        {
+          "classNum": 4,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/4TI.pdf",
+          "title": "4TI.pdf · Technik Informatyk"
+        },
+        {
+          "classNum": 5,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/5TI.pdf",
+          "title": "5TI.pdf · Technik Informatyk"
+        }
+      ]
+    },
+    "TA": {
+      "name": "Technik Automatyk",
+      "code": "311909",
+      "classes": [
+        {
+          "classNum": 1,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/1TA.pdf",
+          "title": "1TA.pdf · Technik Automatyk"
+        },
+        {
+          "classNum": 2,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/2TA.pdf",
+          "title": "2TA.pdf · Technik Automatyk"
+        },
+        {
+          "classNum": 3,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/3TA.pdf",
+          "title": "3TA.pdf · Technik Automatyk"
+        },
+        {
+          "classNum": 5,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/5TA.pdf",
+          "title": "5TA.pdf · Technik Automatyk"
+        }
+      ]
+    },
+    "TE": {
+      "name": "Technik Elektronik",
+      "code": "311408",
+      "classes": [
+        {
+          "classNum": 1,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/1TE.pdf",
+          "title": "1TE.pdf · Technik Elektronik"
+        },
+        {
+          "classNum": 2,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/2TE.pdf",
+          "title": "2TE.pdf · Technik Elektronik"
+        },
+        {
+          "classNum": 3,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/3TE.pdf",
+          "title": "3TE.pdf · Technik Elektronik"
+        },
+        {
+          "classNum": 4,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/4TE.pdf",
+          "title": "4TE.pdf · Technik Elektronik"
+        },
+        {
+          "classNum": 5,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/5TE.pdf",
+          "title": "5TE.pdf · Technik Elektronik"
+        }
+      ]
+    },
+    "TG": {
+      "name": "Technik Grafiki i Poligrafii Cyfrowej",
+      "code": "311943",
+      "classes": [
+        {
+          "classNum": 1,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/1TG.pdf",
+          "title": "1TG.pdf · Technik Grafiki i Poligrafii Cyfrowej"
+        },
+        {
+          "classNum": 2,
+          "url": "https://zse-zdwola.pl/wp-content/uploads/2024/06/2TG.pdf",
+          "title": "2TG.pdf · Technik Grafiki i Poligrafii Cyfrowej"
+        }
+      ]
+    }
+  }
+}
