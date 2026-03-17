@@ -6,7 +6,7 @@ const DEFAULT_HUB_VISIBILITY = {
   attendance: true,
   schedule: true,
   statute: true,
-  documents: false,
+  documents: true,
 }
 
 function sanitizeHubVisibility(value) {
@@ -18,7 +18,7 @@ function sanitizeHubVisibility(value) {
     attendance: typeof value.attendance === 'boolean' ? value.attendance : true,
     schedule: typeof value.schedule === 'boolean' ? value.schedule : true,
     statute: typeof value.statute === 'boolean' ? value.statute : true,
-    documents: typeof value.documents === 'boolean' ? value.documents : false,
+    documents: typeof value.documents === 'boolean' ? value.documents : true,
   }
 }
 

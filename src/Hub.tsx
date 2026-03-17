@@ -24,7 +24,7 @@ const DEFAULT_HUB_APP_VISIBILITY: HubAppVisibility = {
   attendance: true,
   schedule: true,
   statute: true,
-  documents: false,
+  documents: true,
 }
 
 type HubAppOption = {
@@ -128,7 +128,7 @@ function parseHubAppVisibility(value: unknown): HubAppVisibility {
     attendance: typeof value.attendance === 'boolean' ? value.attendance : true,
     schedule: typeof value.schedule === 'boolean' ? value.schedule : true,
     statute: typeof value.statute === 'boolean' ? value.statute : true,
-    documents: typeof value.documents === 'boolean' ? value.documents : false,
+    documents: typeof value.documents === 'boolean' ? value.documents : true,
   }
 }
 
