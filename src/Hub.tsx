@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, FileText, ListChecks, School, ChevronRight, LogOut, KeyRound, Settings, FolderOpen } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, School, ChevronRight, LogOut, KeyRound, Settings, FolderOpen, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsSection from "./features/news/NewsSection";
 import { useAuth } from "./features/auth/useAuth";
@@ -16,7 +16,7 @@ type HubProps = {
   navigate: (to: string) => void;
 };
 
-type HubAppId = 'timetable' | 'attendance' | 'schedule' | 'statute' | 'documents'
+type HubAppId = 'timetable' | 'attendance' | 'schedule' | 'statute' | 'documents' | 'edziennik'
 type HubAppVisibility = Record<HubAppId, boolean>
 
 const DEFAULT_HUB_APP_VISIBILITY: HubAppVisibility = {
@@ -25,6 +25,7 @@ const DEFAULT_HUB_APP_VISIBILITY: HubAppVisibility = {
   schedule: true,
   statute: true,
   documents: true,
+  edziennik: true,
 }
 
 type HubAppOption = {
@@ -33,6 +34,7 @@ type HubAppOption = {
   navDescription: string
   tileDescription: string
   Icon: React.ComponentType<{ className?: string }>
+  externalUrl?: string
 }
 
 const HUB_APP_OPTIONS: HubAppOption[] = [
@@ -70,6 +72,14 @@ const HUB_APP_OPTIONS: HubAppOption[] = [
     navDescription: 'Regulaminy i plany nauczania',
     tileDescription: 'Przeglądaj dokumenty szkolne i ramowe plany nauczania.',
     Icon: FolderOpen,
+  },
+  {
+    key: 'edziennik',
+    title: 'E-dziennik',
+    navDescription: 'Dziennik elektroniczny VULCAN',
+    tileDescription: 'Otwórz dziennik elektroniczny UONET+.',
+    Icon: BookOpen,
+    externalUrl: 'https://uonetplus.vulcan.net.pl/powiatzdunskowolski/',
   },
 ]
 
@@ -129,6 +139,7 @@ function parseHubAppVisibility(value: unknown): HubAppVisibility {
     schedule: typeof value.schedule === 'boolean' ? value.schedule : true,
     statute: typeof value.statute === 'boolean' ? value.statute : true,
     documents: typeof value.documents === 'boolean' ? value.documents : true,
+    edziennik: typeof value.edziennik === 'boolean' ? value.edziennik : true,
   }
 }
 
@@ -825,6 +836,10 @@ export default function Hub({ navigate }: HubProps) {
       .map((app) => ({
         ...app,
         onClick: () => {
+          if (app.externalUrl) {
+            window.open(app.externalUrl, '_blank', 'noopener,noreferrer')
+            return
+          }
           if (app.key === 'timetable') {
             navigate(getPreferredPlanPath())
             return

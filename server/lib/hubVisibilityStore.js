@@ -7,6 +7,7 @@ const DEFAULT_HUB_VISIBILITY = {
   schedule: true,
   statute: true,
   documents: true,
+  edziennik: true,
 }
 
 function sanitizeHubVisibility(value) {
@@ -19,6 +20,7 @@ function sanitizeHubVisibility(value) {
     schedule: typeof value.schedule === 'boolean' ? value.schedule : true,
     statute: typeof value.statute === 'boolean' ? value.statute : true,
     documents: typeof value.documents === 'boolean' ? value.documents : true,
+    edziennik: typeof value.edziennik === 'boolean' ? value.edziennik : true,
   }
 }
 
