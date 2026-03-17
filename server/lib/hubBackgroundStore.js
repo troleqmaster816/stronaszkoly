@@ -221,6 +221,12 @@ export function createHubBackgroundStore({
   publicDir,
   generatedDir,
 }) {
+  function buildClientBackgroundVersion(entry) {
+    if (!entry) return null
+    const stamp = toEpochMs(entry.lastSelectedAt || entry.createdAt || '')
+    return `${entry.id}-${stamp || 0}`
+  }
+
   function saveManifest(manifest) {
     try { mkdirSync(dirname(manifestPath), { recursive: true }) } catch {}
     const tmpPath = `${manifestPath}.${process.pid}.tmp`
@@ -509,6 +515,7 @@ export function createHubBackgroundStore({
       const activeEntry = manifest.entries.find((entry) => entry.id === manifest.activeId) || null
       return {
         activeSpecialBackgroundId: activeEntry?.kind === 'special' ? activeEntry.id : null,
+        activeBackgroundVersion: buildClientBackgroundVersion(activeEntry),
       }
     },
     uploadBackground,

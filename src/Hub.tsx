@@ -162,6 +162,13 @@ function readActiveSpecialBackgroundId() {
   return value ? value : null
 }
 
+function readActiveBackgroundVersion() {
+  if (typeof window === 'undefined') return null
+  const meta = document.querySelector('meta[name="hub-active-background-version"]')
+  const value = meta?.getAttribute('content')?.trim()
+  return value ? value : null
+}
+
 function formatSpecialClockTime(date: Date) {
   return new Intl.DateTimeFormat('pl-PL', {
     hour: '2-digit',
@@ -327,7 +334,7 @@ export default function Hub({ navigate }: HubProps) {
   const toast = useToast()
   const isAdmin = me?.id === 'admin'
   const [activeSpecialBackgroundId, setActiveSpecialBackgroundId] = useState(() => readActiveSpecialBackgroundId())
-  const [heroRefreshToken, setHeroRefreshToken] = useState<string | null>(null)
+  const [heroRefreshToken, setHeroRefreshToken] = useState<string | null>(() => readActiveBackgroundVersion())
   const defaultHeroWebpSrcSet = '/hub-bg-right-640.webp 640w, /hub-bg-right-1024.webp 1024w, /hub-bg-right-1600.webp 1600w, /hub-bg-right-1920.webp 1920w, /hub-bg-right-2560.webp 2560w'
   const defaultHeroJpgSrcSet = '/hub-bg-right-640.jpg 640w, /hub-bg-right-1024.jpg 1024w, /hub-bg-right-1600.jpg 1600w, /hub-bg-right-1920.jpg 1920w, /hub-bg-right-2560.jpg 2560w'
   const heroSizes = '100vw'
@@ -396,8 +403,11 @@ export default function Hub({ navigate }: HubProps) {
 
   const syncHeroBackgroundRuntime = useCallback((state: HubBackgroundState | null | undefined) => {
     const nextSpecialId = state?.active?.kind === 'special' ? state.active.id : null
+    const nextVersionToken = state?.active
+      ? `${state.active.id}-${Date.parse(state.active.lastSelectedAt || state.active.createdAt || '') || Date.now()}`
+      : Date.now().toString(36)
     setActiveSpecialBackgroundId(nextSpecialId)
-    setHeroRefreshToken(Date.now().toString(36))
+    setHeroRefreshToken(nextVersionToken)
   }, [])
 
   useEffect(() => {

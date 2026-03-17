@@ -234,8 +234,14 @@ export function createApp(config) {
           const htmlTemplate = readFileSync(join(config.distDir, 'index.html'), 'utf8')
           const bootstrap = hubBackgroundStore.getClientState()
           const activeSpecialBackground = String(bootstrap.activeSpecialBackgroundId || '')
+          const activeBackgroundVersion = String(bootstrap.activeBackgroundVersion || '')
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+          res.setHeader('Pragma', 'no-cache')
+          res.setHeader('Expires', '0')
           res.type('html').send(
-            htmlTemplate.replace('__HUB_ACTIVE_SPECIAL_BACKGROUND_TOKEN__', activeSpecialBackground)
+            htmlTemplate
+              .replace('__HUB_ACTIVE_SPECIAL_BACKGROUND_TOKEN__', activeSpecialBackground)
+              .replace('__HUB_ACTIVE_BACKGROUND_VERSION_TOKEN__', activeBackgroundVersion)
           )
         } catch {
           next()
