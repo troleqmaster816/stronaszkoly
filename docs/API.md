@@ -183,6 +183,7 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 ## Tło strony głównej
 
 - Odczyt aktywnego tła i historii (publiczny): `GET /v1/hub-backgrounds` → `{ ok: true, data: { historyLimit, activeId, active, entries } }`
+  - każdy wpis historii może mieć `protected: true`, co oznacza tło systemowe/specjalne, którego nie można usunąć ani odblokować
 - Upload nowego tła (cookie auth + admin): `POST /v1/hub-backgrounds` jako `multipart/form-data` z polem `image`
   - serwer zapisuje warianty `webp` i `jpg` w wielu szerokościach, także `1920px` i `2560px` gdy rozdzielczość źródła na to pozwala
   - nowe tło staje się aktywne od razu po przetworzeniu
@@ -193,6 +194,7 @@ Uwaga: przy `accept` serwer wykona `toggle` lub `set present:true/false` dla wsk
 Uwagi:
 - Zachowywane są maksymalnie `2` poprzednie tła łącznie.
 - Tło oznaczone `locked: true` nadal liczy się do limitu tych `2` miejsc i blokuje jeden slot fallbacku.
+- Tło oznaczone `protected: true` jest wpisem systemowym. Można je aktywować, ale nie można go usunąć ani zmienić jego blokady.
 - Jeśli oba sloty są już zajęte przez zablokowane poprzednie tła, kolejne stare tła nie będą odkładane do historii.
 - Wszystkie mutacje administracyjne wymagają `X-CSRF-Token` przy autoryzacji cookie.
 

@@ -16,7 +16,6 @@ type HubProps = {
   navigate: (to: string) => void;
 };
 
-const FALLBACK_HUB_BACKGROUND_CACHE_BUST = Date.now().toString(36)
 type HubAppId = 'timetable' | 'attendance' | 'schedule' | 'statute'
 type HubAppVisibility = Record<HubAppId, boolean>
 
@@ -66,6 +65,17 @@ const HUB_APP_OPTIONS: HubAppOption[] = [
   },
 ]
 
+const SPECIAL_HUB_BACKGROUND_ID = 'special-ela-clock'
+const SPECIAL_CLOCK_TIME_ZONE = 'Europe/Warsaw'
+const SPECIAL_CLOCK_SOURCE_WIDTH = 5468
+const SPECIAL_CLOCK_SOURCE_HEIGHT = 3136
+const SPECIAL_CLOCK_BOX = {
+  x: 2215,
+  y: 2121,
+  width: 460,
+  height: 109,
+}
+
 type HubBackgroundVariant = {
   width: number
   height: number | null
@@ -78,6 +88,7 @@ type HubBackgroundEntry = {
   label: string
   sourceName: string | null
   locked: boolean
+  protected: boolean
   createdAt: string
   lastSelectedAt: string
   previewUrl: string | null
@@ -123,11 +134,13 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.toLocaleString()
 }
 
-function appendVersionParam(url: string, version: string) {
+function appendVersionParam(url: string, version: string | null) {
+  if (!version) return url
   return url.includes('?') ? `${url}&v=${version}` : `${url}?v=${version}`
 }
 
-function appendVersionToSrcSet(srcSet: string, version: string) {
+function appendVersionToSrcSet(srcSet: string, version: string | null) {
+  if (!version) return srcSet
   return srcSet
     .split(',')
     .map((item) => item.trim())
@@ -140,6 +153,117 @@ function appendVersionToSrcSet(srcSet: string, version: string) {
       return `${appendVersionParam(url, version)} ${descriptor}`
     })
     .join(', ')
+}
+
+function readActiveSpecialBackgroundId() {
+  if (typeof window === 'undefined') return null
+  const meta = document.querySelector('meta[name="hub-active-special-background"]')
+  const value = meta?.getAttribute('content')?.trim()
+  return value ? value : null
+}
+
+function formatSpecialClockTime(date: Date) {
+  return new Intl.DateTimeFormat('pl-PL', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: SPECIAL_CLOCK_TIME_ZONE,
+  }).format(date)
+}
+
+function getSpecialClockRect(viewportWidth: number, viewportHeight: number) {
+  if (!viewportWidth || !viewportHeight) return null
+  const scale = Math.max(
+    viewportWidth / SPECIAL_CLOCK_SOURCE_WIDTH,
+    viewportHeight / SPECIAL_CLOCK_SOURCE_HEIGHT
+  )
+  const renderedWidth = SPECIAL_CLOCK_SOURCE_WIDTH * scale
+  const renderedHeight = SPECIAL_CLOCK_SOURCE_HEIGHT * scale
+  const offsetX = (viewportWidth - renderedWidth) / 2
+  const offsetY = (viewportHeight - renderedHeight) / 2
+  return {
+    left: offsetX + SPECIAL_CLOCK_BOX.x * scale,
+    top: offsetY + SPECIAL_CLOCK_BOX.y * scale,
+    width: SPECIAL_CLOCK_BOX.width * scale,
+    height: SPECIAL_CLOCK_BOX.height * scale,
+  }
+}
+
+const CLOCK_LED_COLOR = '#7da875'
+
+function SpecialHubClockOverlay({ activeSpecialBackgroundId }: { activeSpecialBackgroundId: string | null }) {
+  const [now, setNow] = useState(() => formatSpecialClockTime(new Date()))
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 0 : window.innerWidth,
+    height: typeof window === 'undefined' ? 0 : window.innerHeight,
+  }))
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateViewport = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+    }
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
+
+  useEffect(() => {
+    if (activeSpecialBackgroundId !== SPECIAL_HUB_BACKGROUND_ID) return
+    const tick = () => setNow(formatSpecialClockTime(new Date()))
+    tick()
+    const timer = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timer)
+  }, [activeSpecialBackgroundId])
+
+  if (activeSpecialBackgroundId !== SPECIAL_HUB_BACKGROUND_ID) return null
+  if (viewport.width < 1024 || !viewport.height) return null
+
+  const rect = getSpecialClockRect(viewport.width, viewport.height)
+  if (!rect) return null
+
+  const dotGap = Math.max(2, Math.round(rect.height / 18))
+  const dotRadius = dotGap * 0.38
+
+  return (
+    <div
+      className="pointer-events-none absolute overflow-hidden"
+      style={{
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        background: '#080a07',
+      }}
+    >
+      <div
+        className="absolute flex items-center justify-center"
+        style={{
+          inset: 0,
+          fontFamily: "'Latino Gothic', sans-serif",
+          fontWeight: 'bold',
+          WebkitTextStroke: '0.5px currentColor',
+          color: CLOCK_LED_COLOR,
+          fontSize: `${Math.min(rect.height * 1.1, rect.width * 0.21)}px`,
+          lineHeight: 1,
+          letterSpacing: '0.04em',
+          filter: 'drop-shadow(0 0 1px rgba(125,168,117,0.3))',
+        }}
+      >
+        {now}
+      </div>
+      <div
+        className="absolute"
+        style={{
+          inset: 0,
+          backgroundImage: `radial-gradient(circle, transparent ${dotRadius}px, rgba(8,10,7,0.55) ${dotRadius + 0.4}px)`,
+          backgroundSize: `${dotGap}px ${dotGap}px`,
+          mixBlendMode: 'darken',
+        }}
+      />
+    </div>
+  )
 }
 
 // ── Sidebar nav item ──────────────────────────────────────────────────────────
@@ -192,6 +316,7 @@ export default function Hub({ navigate }: HubProps) {
   const [hubVisibilityLoading, setHubVisibilityLoading] = useState(true)
   const [hubVisibilityAction, setHubVisibilityAction] = useState<HubAppId | null>(null)
   const [hubBackgrounds, setHubBackgrounds] = useState<HubBackgroundState | null>(null);
+  const [hubBackgroundsLoading, setHubBackgroundsLoading] = useState(false);
   const [hubBackgroundError, setHubBackgroundError] = useState<string | null>(null);
   const [hubBackgroundFile, setHubBackgroundFile] = useState<File | null>(null);
   const [hubBackgroundInputKey, setHubBackgroundInputKey] = useState(0);
@@ -201,16 +326,14 @@ export default function Hub({ navigate }: HubProps) {
   const { isAuth, me, login, register, logout } = useAuth()
   const toast = useToast()
   const isAdmin = me?.id === 'admin'
+  const [activeSpecialBackgroundId, setActiveSpecialBackgroundId] = useState(() => readActiveSpecialBackgroundId())
+  const [heroRefreshToken, setHeroRefreshToken] = useState<string | null>(null)
   const defaultHeroWebpSrcSet = '/hub-bg-right-640.webp 640w, /hub-bg-right-1024.webp 1024w, /hub-bg-right-1600.webp 1600w, /hub-bg-right-1920.webp 1920w, /hub-bg-right-2560.webp 2560w'
   const defaultHeroJpgSrcSet = '/hub-bg-right-640.jpg 640w, /hub-bg-right-1024.jpg 1024w, /hub-bg-right-1600.jpg 1600w, /hub-bg-right-1920.jpg 1920w, /hub-bg-right-2560.jpg 2560w'
   const heroSizes = '100vw'
-  const activeHubBackground = hubBackgrounds?.active
-  const heroWebpSrcSet = activeHubBackground?.webpSrcSet
-    || appendVersionToSrcSet(defaultHeroWebpSrcSet, FALLBACK_HUB_BACKGROUND_CACHE_BUST)
-  const heroJpgSrcSet = activeHubBackground?.jpegSrcSet
-    || appendVersionToSrcSet(defaultHeroJpgSrcSet, FALLBACK_HUB_BACKGROUND_CACHE_BUST)
-  const heroFallbackSrc = activeHubBackground?.fallbackUrl
-    || appendVersionParam('/hub-bg-right-1024.jpg', FALLBACK_HUB_BACKGROUND_CACHE_BUST)
+  const heroWebpSrcSet = appendVersionToSrcSet(defaultHeroWebpSrcSet, heroRefreshToken)
+  const heroJpgSrcSet = appendVersionToSrcSet(defaultHeroJpgSrcSet, heroRefreshToken)
+  const heroFallbackSrc = appendVersionParam('/hub-bg-right-1024.jpg', heroRefreshToken)
 
   const loadHubVisibility = useCallback(async ({ silent = false, applyState = true }: { silent?: boolean; applyState?: boolean } = {}) => {
     try {
@@ -268,6 +391,14 @@ export default function Hub({ navigate }: HubProps) {
   }
 
   const closePanel = () => setRightPanel(null)
+
+  const isAdminBackgroundPanelVisible = isAdmin && (profileOpen || rightPanel?.kind === 'profile')
+
+  const syncHeroBackgroundRuntime = useCallback((state: HubBackgroundState | null | undefined) => {
+    const nextSpecialId = state?.active?.kind === 'special' ? state.active.id : null
+    setActiveSpecialBackgroundId(nextSpecialId)
+    setHeroRefreshToken(Date.now().toString(36))
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -493,6 +624,7 @@ export default function Hub({ navigate }: HubProps) {
   }
 
   const loadHubBackgrounds = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    setHubBackgroundsLoading(true)
     try {
       const res = await apiFetch('/v1/hub-backgrounds')
       if (!res.ok) {
@@ -512,12 +644,15 @@ export default function Hub({ navigate }: HubProps) {
       }
       setHubBackgrounds(j.data)
       setHubBackgroundError(null)
+      setActiveSpecialBackgroundId(j.data.active?.kind === 'special' ? j.data.active.id : null)
       return j.data as HubBackgroundState
     } catch {
       const detail = 'Nie udało się pobrać listy teł strony głównej.'
       setHubBackgroundError(detail)
       if (!silent && isAdmin) toast.error(detail)
       return null
+    } finally {
+      setHubBackgroundsLoading(false)
     }
   }, [isAdmin, toast])
 
@@ -548,6 +683,7 @@ export default function Hub({ navigate }: HubProps) {
       setHubBackgroundError(null)
       setHubBackgroundFile(null)
       setHubBackgroundInputKey((value) => value + 1)
+      syncHeroBackgroundRuntime(j.data)
       toast.success('Nowe tło zostało przygotowane i ustawione jako aktywne.')
     } catch {
       toast.error('Nie udało się wgrać nowego tła.')
@@ -573,6 +709,7 @@ export default function Hub({ navigate }: HubProps) {
       }
       setHubBackgrounds(j.data)
       setHubBackgroundError(null)
+      syncHeroBackgroundRuntime(j.data)
       toast.success('Wybrane tło zostało ustawione jako aktywne.')
     } catch {
       toast.error('Nie udało się przywrócić wybranego tła.')
@@ -625,6 +762,7 @@ export default function Hub({ navigate }: HubProps) {
       }
       setHubBackgrounds(j.data)
       setHubBackgroundError(null)
+      syncHeroBackgroundRuntime(j.data)
       toast.success('Tło zostało usunięte z zapisanych teł.')
     } catch {
       toast.error('Nie udało się usunąć wybranego tła.')
@@ -645,8 +783,9 @@ export default function Hub({ navigate }: HubProps) {
   }, [loadHubVisibility])
 
   useEffect(() => {
+    if (!isAdminBackgroundPanelVisible || hubBackgrounds) return
     void loadHubBackgrounds({ silent: true })
-  }, [loadHubBackgrounds])
+  }, [hubBackgrounds, isAdminBackgroundPanelVisible, loadHubBackgrounds])
 
   const displayedApiKey = useMemo(() => {
     if (singleApiKey) {
@@ -705,6 +844,7 @@ export default function Hub({ navigate }: HubProps) {
           className="h-full w-full object-cover object-top sm:object-center"
         />
       </picture>
+      <SpecialHubClockOverlay activeSpecialBackgroundId={activeSpecialBackgroundId} />
       {/* Desktop: directional gradient darkening from left (sidebar side) */}
       <div
         className="hidden lg:block absolute inset-0"
@@ -873,6 +1013,7 @@ export default function Hub({ navigate }: HubProps) {
                     </div>
                     {hubBackgroundFile ? <div className="mt-2 text-[11px] opacity-70">Wybrano plik: {hubBackgroundFile.name}</div> : null}
                   </div>
+                  {hubBackgroundsLoading && !hubBackgrounds ? <div className="mt-3 text-xs text-zinc-400">Ładowanie zapisanych teł…</div> : null}
                   {hubBackgroundError ? <div className="mt-3 text-xs text-rose-300">{hubBackgroundError}</div> : null}
                   <div className="mt-3 grid gap-2">
                     {(hubBackgrounds?.entries || []).map((entry) => (
@@ -889,6 +1030,7 @@ export default function Hub({ navigate }: HubProps) {
                             <div className="flex flex-wrap items-center gap-2">
                               <div className="text-sm font-medium">{entry.label}</div>
                               {entry.isActive ? <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">Aktywne</span> : null}
+                              {entry.protected ? <span className="rounded-full border border-cyan-400/50 bg-cyan-400/10 px-2 py-0.5 text-[11px] text-cyan-100">Tło specjalne</span> : null}
                               {entry.locked ? <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">Lock</span> : null}
                             </div>
                             <div className="mt-1 text-[11px] opacity-70">Źródło: {entry.sourceName || 'wbudowane tło'}</div>
@@ -900,12 +1042,20 @@ export default function Hub({ navigate }: HubProps) {
                             <Button onClick={() => { void activateHubBackground(entry.id) }} disabled={entry.isActive || !!hubBackgroundAction} variant={entry.isActive ? 'neutral' : 'success'} size="sm">
                               {entry.isActive ? 'Aktywne teraz' : 'Przywróć'}
                             </Button>
-                            <Button onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }} disabled={!!hubBackgroundAction} variant={entry.locked ? 'warning' : 'outline'} size="sm">
-                              {entry.locked ? 'Unlock' : 'Lock'}
-                            </Button>
-                            <Button onClick={() => { void deleteHubBackground(entry.id) }} disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1} variant="danger" size="sm" title={entry.locked ? 'Najpierw odblokuj tło, aby je usunąć.' : undefined}>
-                              Usuń
-                            </Button>
+                            {!entry.protected ? (
+                              <Button onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }} disabled={!!hubBackgroundAction} variant={entry.locked ? 'warning' : 'outline'} size="sm">
+                                {entry.locked ? 'Unlock' : 'Lock'}
+                              </Button>
+                            ) : null}
+                            {!entry.protected ? (
+                              <Button onClick={() => { void deleteHubBackground(entry.id) }} disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1} variant="danger" size="sm" title={entry.locked ? 'Najpierw odblokuj tło, aby je usunąć.' : undefined}>
+                                Usuń
+                              </Button>
+                            ) : (
+                              <div className="rounded-md border border-cyan-400/35 bg-cyan-400/10 px-2 py-1 text-center text-[11px] text-cyan-100">
+                                Wpis systemowy
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1174,6 +1324,7 @@ export default function Hub({ navigate }: HubProps) {
               toggleBackups={toggleBackups}
               restoreBackup={restoreBackup}
               hubBackgrounds={hubBackgrounds}
+              hubBackgroundsLoading={hubBackgroundsLoading}
               hubBackgroundError={hubBackgroundError}
               hubBackgroundFile={hubBackgroundFile}
               setHubBackgroundFile={setHubBackgroundFile}
@@ -1266,7 +1417,7 @@ function ProfilePanelContent({
   hubAppVisibility, hubVisibilityLoading, hubVisibilityAction, updateHubAppVisibility,
   ttBusy, refreshTimetable,
   backupsVisible, backups, backupsError, toggleBackups, restoreBackup,
-  hubBackgrounds, hubBackgroundError, hubBackgroundFile, setHubBackgroundFile,
+  hubBackgrounds, hubBackgroundsLoading, hubBackgroundError, hubBackgroundFile, setHubBackgroundFile,
   hubBackgroundInputKey, hubBackgroundAction, uploadHubBackground, loadHubBackgrounds,
   activateHubBackground, setHubBackgroundLock, deleteHubBackground,
 }: {
@@ -1303,6 +1454,7 @@ function ProfilePanelContent({
   toggleBackups: () => void
   restoreBackup: (f: string) => void
   hubBackgrounds: HubBackgroundState | null
+  hubBackgroundsLoading: boolean
   hubBackgroundError: string | null
   hubBackgroundFile: File | null
   setHubBackgroundFile: (f: File | null) => void
@@ -1504,6 +1656,7 @@ function ProfilePanelContent({
                     <Button onClick={() => { void loadHubBackgrounds() }} disabled={!!hubBackgroundAction} variant="outline">Odśwież</Button>
                   </div>
                   {hubBackgroundFile ? <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Plik: {hubBackgroundFile.name}</p> : null}
+                  {hubBackgroundsLoading && !hubBackgrounds ? <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>Ładowanie zapisanych teł…</p> : null}
                   {hubBackgroundError ? <p className="text-[11px] text-rose-300">{hubBackgroundError}</p> : null}
                   <div className="flex flex-col gap-2 mt-1">
                     {(hubBackgrounds?.entries || []).map(entry => (
@@ -1523,18 +1676,27 @@ function ProfilePanelContent({
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[12px] font-medium" style={{ color: '#edeae4' }}>{entry.label}</span>
                               {entry.isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#6ee7b7' }}>Aktywne</span>}
+                              {entry.protected && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(34,211,238,0.14)', border: '1px solid rgba(34,211,238,0.32)', color: '#cffafe' }}>Tło specjalne</span>}
                               {entry.locked && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#fcd34d' }}>Lock</span>}
                             </div>
                             <div className="flex gap-1.5 flex-wrap mt-1">
                               <Button onClick={() => { void activateHubBackground(entry.id) }} disabled={entry.isActive || !!hubBackgroundAction} variant={entry.isActive ? 'neutral' : 'success'} size="sm">
                                 {entry.isActive ? 'Aktywne' : 'Ustaw'}
                               </Button>
-                              <Button onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }} disabled={!!hubBackgroundAction} variant={entry.locked ? 'warning' : 'outline'} size="sm">
-                                {entry.locked ? 'Unlock' : 'Lock'}
-                              </Button>
-                              <Button onClick={() => { void deleteHubBackground(entry.id) }} disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1} variant="danger" size="sm">
-                                Usuń
-                              </Button>
+                              {!entry.protected ? (
+                                <Button onClick={() => { void setHubBackgroundLock(entry.id, !entry.locked) }} disabled={!!hubBackgroundAction} variant={entry.locked ? 'warning' : 'outline'} size="sm">
+                                  {entry.locked ? 'Unlock' : 'Lock'}
+                                </Button>
+                              ) : null}
+                              {!entry.protected ? (
+                                <Button onClick={() => { void deleteHubBackground(entry.id) }} disabled={!!hubBackgroundAction || entry.locked || (hubBackgrounds?.entries.length || 0) <= 1} variant="danger" size="sm">
+                                  Usuń
+                                </Button>
+                              ) : (
+                                <div className="rounded-md px-2 py-1 text-[10px]" style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.26)', color: '#cffafe' }}>
+                                  Wpis systemowy
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

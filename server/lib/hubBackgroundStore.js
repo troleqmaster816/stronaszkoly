@@ -4,6 +4,9 @@ import { dirname, join, relative } from 'node:path'
 import sharp from 'sharp'
 
 const LEGACY_ENTRY_ID = 'legacy-default'
+const SPECIAL_ENTRY_ID = 'special-ela-clock'
+const SPECIAL_ENTRY_DIR = 'hub-backgrounds/special-ela-clock'
+const SPECIAL_SOURCE_NAME = 'ela-wiekszy-widok-special.png'
 const MAX_PREVIOUS_HISTORY = 2
 const TARGET_WIDTHS = [640, 1024, 1600, 1920, 2560]
 
@@ -20,6 +23,8 @@ function sortEntries(entries, activeId) {
   return [...entries].sort((a, b) => {
     if (a.id === activeId) return -1
     if (b.id === activeId) return 1
+    if (a.kind === 'special' && b.kind !== 'special') return -1
+    if (b.kind === 'special' && a.kind !== 'special') return 1
     const bySelected = toEpochMs(b.lastSelectedAt) - toEpochMs(a.lastSelectedAt)
     if (bySelected !== 0) return bySelected
     return toEpochMs(b.createdAt) - toEpochMs(a.createdAt)
@@ -35,6 +40,20 @@ function createLegacyVariants(publicDir, ext) {
   return TARGET_WIDTHS
     .map((width) => {
       const filePath = join(publicDir, `hub-bg-right-${width}.${ext}`)
+      if (!existsSync(filePath)) return null
+      return {
+        width,
+        height: null,
+        url: toPublicUrl(publicDir, filePath),
+      }
+    })
+    .filter(Boolean)
+}
+
+function createFixedVariants(publicDir, dirPath, ext) {
+  return TARGET_WIDTHS
+    .map((width) => {
+      const filePath = join(publicDir, dirPath, `hub-bg-right-${width}.${ext}`)
       if (!existsSync(filePath)) return null
       return {
         width,
@@ -71,6 +90,40 @@ function createLegacyEntry(publicDir) {
   }
 }
 
+function createSpecialEntry(publicDir) {
+  const webp = createFixedVariants(publicDir, SPECIAL_ENTRY_DIR, 'webp')
+  const jpeg = createFixedVariants(publicDir, SPECIAL_ENTRY_DIR, 'jpg')
+  if (webp.length === 0 && jpeg.length === 0) return null
+
+  let createdAt = new Date(0).toISOString()
+  try {
+    const samplePath = join(publicDir, SPECIAL_ENTRY_DIR, 'hub-bg-right-1024.jpg')
+    if (existsSync(samplePath)) createdAt = new Date(statSync(samplePath).mtimeMs).toISOString()
+  } catch {}
+
+  return {
+    id: SPECIAL_ENTRY_ID,
+    kind: 'special',
+    label: 'Tlo specjalne: Ela + zegar',
+    sourceName: SPECIAL_SOURCE_NAME,
+    locked: true,
+    protected: true,
+    createdAt,
+    lastSelectedAt: createdAt,
+    variants: {
+      webp,
+      jpeg,
+    },
+  }
+}
+
+function mergeSystemEntries(entries, systemEntries) {
+  const systemIds = new Set(systemEntries.map((entry) => entry.id))
+  return entries
+    .filter((entry) => !systemIds.has(entry.id))
+    .concat(systemEntries)
+}
+
 function normalizeVariantList(list) {
   if (!Array.isArray(list)) return []
   return list
@@ -94,10 +147,11 @@ function normalizeEntry(entry) {
   if (!id) return null
   return {
     id,
-    kind: entry.kind === 'generated' ? 'generated' : 'legacy',
+    kind: entry.kind === 'generated' || entry.kind === 'special' ? entry.kind : 'legacy',
     label: String(entry.label || id).trim() || id,
     sourceName: String(entry.sourceName || '').trim() || null,
     locked: entry.locked === true,
+    protected: entry.protected === true,
     createdAt: (() => {
       const value = String(entry.createdAt || '').trim()
       return value || new Date(0).toISOString()
@@ -197,21 +251,23 @@ export function createHubBackgroundStore({
 
   function loadManifest() {
     const legacyEntry = createLegacyEntry(publicDir)
+    const specialEntry = createSpecialEntry(publicDir)
+    const systemEntries = [legacyEntry, specialEntry].filter(Boolean)
     try {
       if (existsSync(manifestPath)) {
         const raw = JSON.parse(readFileSync(manifestPath, 'utf8'))
-        const entries = Array.isArray(raw?.entries)
+        const entries = mergeSystemEntries(
+          Array.isArray(raw?.entries)
           ? raw.entries.map(normalizeEntry).filter(Boolean)
-          : []
-        if (entries.length === 0 && legacyEntry) {
-          entries.push(legacyEntry)
-        }
+          : [],
+          systemEntries
+        )
         const activeId = String(raw?.activeId || '').trim()
         const normalized = {
           version: 1,
           activeId: entries.some((entry) => entry.id === activeId)
             ? activeId
-            : (legacyEntry?.id || entries[0]?.id || ''),
+            : (legacyEntry?.id || specialEntry?.id || entries[0]?.id || ''),
           entries,
         }
         if (!normalized.activeId && legacyEntry) normalized.activeId = legacyEntry.id
@@ -219,10 +275,10 @@ export function createHubBackgroundStore({
       }
     } catch {}
 
-    const fallbackEntries = legacyEntry ? [legacyEntry] : []
+    const fallbackEntries = systemEntries
     const manifest = {
       version: 1,
-      activeId: legacyEntry?.id || '',
+      activeId: legacyEntry?.id || specialEntry?.id || '',
       entries: fallbackEntries,
     }
     saveManifest(manifest)
@@ -237,9 +293,13 @@ export function createHubBackgroundStore({
     const previousEntries = manifest.entries.filter((entry) => entry.id !== manifest.activeId)
     const keptPreviousEntries = sortPreviousEntries(previousEntries)
       .slice(0, MAX_PREVIOUS_HISTORY)
+    const protectedIds = manifest.entries
+      .filter((entry) => entry.protected)
+      .map((entry) => entry.id)
 
     const keepIds = new Set(
       [manifest.activeId]
+        .concat(protectedIds)
         .concat(keptPreviousEntries.map((entry) => entry.id))
         .filter(Boolean)
     )
@@ -268,6 +328,7 @@ export function createHubBackgroundStore({
       label: entry.label,
       sourceName: entry.sourceName,
       locked: entry.locked,
+      protected: entry.protected === true,
       createdAt: entry.createdAt,
       lastSelectedAt: entry.lastSelectedAt,
       previewUrl: pickPreviewUrl(entry),
@@ -389,6 +450,11 @@ export function createHubBackgroundStore({
       error.code = 'background.not_found'
       throw error
     }
+    if (target.protected) {
+      const error = new Error('Tlo specjalne jest zarzadzane przez system i nie mozna zmienic jego blokady.')
+      error.code = 'background.protected'
+      throw error
+    }
     target.locked = locked === true
     saveManifest(pruneManifest(manifest))
     return toPublicState(loadManifest())
@@ -401,6 +467,11 @@ export function createHubBackgroundStore({
     if (!target) {
       const error = new Error('Wybrane tlo nie istnieje.')
       error.code = 'background.not_found'
+      throw error
+    }
+    if (target.protected) {
+      const error = new Error('Tla specjalnego nie mozna usunac.')
+      error.code = 'background.protected'
       throw error
     }
     if (target.locked) {
@@ -433,6 +504,13 @@ export function createHubBackgroundStore({
   return {
     ensureManifest,
     getState: () => toPublicState(loadManifest()),
+    getClientState: () => {
+      const manifest = loadManifest()
+      const activeEntry = manifest.entries.find((entry) => entry.id === manifest.activeId) || null
+      return {
+        activeSpecialBackgroundId: activeEntry?.kind === 'special' ? activeEntry.id : null,
+      }
+    },
     uploadBackground,
     activateBackground,
     setBackgroundLocked,

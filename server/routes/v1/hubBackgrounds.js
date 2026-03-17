@@ -78,6 +78,9 @@ export function registerHubBackgroundRoutes(v1, {
       if (e && typeof e === 'object' && e.code === 'background.not_found') {
         return problem(res, 404, 'background.not_found', 'Not Found', String(e.message || e))
       }
+      if (e && typeof e === 'object' && e.code === 'background.protected') {
+        return problem(res, 409, 'background.protected', 'Conflict', String(e.message || e))
+      }
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }
   })
@@ -91,6 +94,9 @@ export function registerHubBackgroundRoutes(v1, {
       if (e && typeof e === 'object' && e.code === 'background.not_found') {
         return problem(res, 404, 'background.not_found', 'Not Found', String(e.message || e))
       }
+      if (e && typeof e === 'object' && e.code === 'background.protected') {
+        return problem(res, 409, 'background.protected', 'Conflict', String(e.message || e))
+      }
       problem(res, 500, 'server.error', 'Internal Server Error', String(e))
     }
   })
@@ -102,6 +108,9 @@ export function registerHubBackgroundRoutes(v1, {
     } catch (e) {
       if (e && typeof e === 'object' && e.code === 'background.not_found') {
         return problem(res, 404, 'background.not_found', 'Not Found', String(e.message || e))
+      }
+      if (e && typeof e === 'object' && e.code === 'background.protected') {
+        return problem(res, 409, 'background.protected', 'Conflict', String(e.message || e))
       }
       if (e && typeof e === 'object' && e.code === 'background.locked') {
         return problem(res, 409, 'background.locked', 'Conflict', String(e.message || e))

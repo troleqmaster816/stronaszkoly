@@ -233,10 +233,11 @@ components:
       type: object
       properties:
         id: { type: string }
-        kind: { type: string, enum: [legacy, generated] }
+        kind: { type: string, enum: [legacy, generated, special] }
         label: { type: string }
         sourceName: { type: string, nullable: true }
         locked: { type: boolean }
+        protected: { type: boolean }
         createdAt: { type: string, format: date-time }
         lastSelectedAt: { type: string, format: date-time }
         previewUrl: { type: string, nullable: true }
@@ -254,7 +255,7 @@ components:
               items: { $ref: '#/components/schemas/HubBackgroundVariant' }
           required: [webp, jpeg]
         isActive: { type: boolean }
-      required: [id, kind, label, locked, createdAt, lastSelectedAt, webpSrcSet, jpegSrcSet, fallbackUrl, variants, isActive]
+      required: [id, kind, label, locked, protected, createdAt, lastSelectedAt, webpSrcSet, jpegSrcSet, fallbackUrl, variants, isActive]
     HubBackgroundState:
       type: object
       properties:

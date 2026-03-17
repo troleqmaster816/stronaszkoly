@@ -231,7 +231,12 @@ export function createApp(config) {
       app.get('*', (req, res, next) => {
         if (req.path.startsWith('/v1') || req.path.startsWith('/api') || req.path.startsWith('/docs')) return next()
         try {
-          res.sendFile(join(config.distDir, 'index.html'))
+          const htmlTemplate = readFileSync(join(config.distDir, 'index.html'), 'utf8')
+          const bootstrap = hubBackgroundStore.getClientState()
+          const activeSpecialBackground = String(bootstrap.activeSpecialBackgroundId || '')
+          res.type('html').send(
+            htmlTemplate.replace('__HUB_ACTIVE_SPECIAL_BACKGROUND_TOKEN__', activeSpecialBackground)
+          )
         } catch {
           next()
         }
