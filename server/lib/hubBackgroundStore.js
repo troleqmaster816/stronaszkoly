@@ -3,7 +3,6 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, 
 import { dirname, join, relative } from 'node:path'
 import sharp from 'sharp'
 
-const LEGACY_ENTRY_ID = 'legacy-default'
 const SPECIAL_ENTRY_ID = 'special-ela-clock'
 const SPECIAL_ENTRY_DIR = 'hub-backgrounds/special-ela-clock'
 const SPECIAL_SOURCE_NAME = 'ela-wiekszy-widok-special.png'
@@ -36,20 +35,6 @@ function toPublicUrl(publicDir, filePath) {
   return `/${rel}`
 }
 
-function createLegacyVariants(publicDir, ext) {
-  return TARGET_WIDTHS
-    .map((width) => {
-      const filePath = join(publicDir, `hub-bg-right-${width}.${ext}`)
-      if (!existsSync(filePath)) return null
-      return {
-        width,
-        height: null,
-        url: toPublicUrl(publicDir, filePath),
-      }
-    })
-    .filter(Boolean)
-}
-
 function createFixedVariants(publicDir, dirPath, ext) {
   return TARGET_WIDTHS
     .map((width) => {
@@ -62,32 +47,6 @@ function createFixedVariants(publicDir, dirPath, ext) {
       }
     })
     .filter(Boolean)
-}
-
-function createLegacyEntry(publicDir) {
-  const webp = createLegacyVariants(publicDir, 'webp')
-  const jpeg = createLegacyVariants(publicDir, 'jpg')
-  if (webp.length === 0 && jpeg.length === 0) return null
-
-  let createdAt = new Date(0).toISOString()
-  try {
-    const samplePath = join(publicDir, 'hub-bg-right-1024.jpg')
-    if (existsSync(samplePath)) createdAt = new Date(statSync(samplePath).mtimeMs).toISOString()
-  } catch {}
-
-  return {
-    id: LEGACY_ENTRY_ID,
-    kind: 'legacy',
-    label: 'Dotychczasowe tlo',
-    sourceName: 'hub-bg-right',
-    locked: false,
-    createdAt,
-    lastSelectedAt: createdAt,
-    variants: {
-      webp,
-      jpeg,
-    },
-  }
 }
 
 function createSpecialEntry(publicDir) {
@@ -106,7 +65,7 @@ function createSpecialEntry(publicDir) {
     kind: 'special',
     label: 'Tlo specjalne: Ela + zegar',
     sourceName: SPECIAL_SOURCE_NAME,
-    locked: true,
+    locked: false,
     protected: true,
     createdAt,
     lastSelectedAt: createdAt,
@@ -145,9 +104,11 @@ function normalizeEntry(entry) {
   if (!entry || typeof entry !== 'object') return null
   const id = String(entry.id || '').trim()
   if (!id) return null
+  if (id === SPECIAL_ENTRY_ID) return null
+  if (entry.kind !== 'generated') return null
   return {
     id,
-    kind: entry.kind === 'generated' || entry.kind === 'special' ? entry.kind : 'legacy',
+    kind: 'generated',
     label: String(entry.label || id).trim() || id,
     sourceName: String(entry.sourceName || '').trim() || null,
     locked: entry.locked === true,
@@ -256,9 +217,8 @@ export function createHubBackgroundStore({
   }
 
   function loadManifest() {
-    const legacyEntry = createLegacyEntry(publicDir)
     const specialEntry = createSpecialEntry(publicDir)
-    const systemEntries = [legacyEntry, specialEntry].filter(Boolean)
+    const systemEntries = [specialEntry].filter(Boolean)
     try {
       if (existsSync(manifestPath)) {
         const raw = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -273,10 +233,10 @@ export function createHubBackgroundStore({
           version: 1,
           activeId: entries.some((entry) => entry.id === activeId)
             ? activeId
-            : (legacyEntry?.id || specialEntry?.id || entries[0]?.id || ''),
+            : (specialEntry?.id || entries[0]?.id || ''),
           entries,
         }
-        if (!normalized.activeId && legacyEntry) normalized.activeId = legacyEntry.id
+        if (!normalized.activeId && specialEntry) normalized.activeId = specialEntry.id
         return normalized
       }
     } catch {}
@@ -284,7 +244,7 @@ export function createHubBackgroundStore({
     const fallbackEntries = systemEntries
     const manifest = {
       version: 1,
-      activeId: legacyEntry?.id || specialEntry?.id || '',
+      activeId: specialEntry?.id || '',
       entries: fallbackEntries,
     }
     saveManifest(manifest)
@@ -296,7 +256,7 @@ export function createHubBackgroundStore({
     const activeEntry = manifest.entries.find((entry) => entry.id === activeId) || null
     if (!activeEntry && manifest.entries[0]) manifest.activeId = manifest.entries[0].id
 
-    const previousEntries = manifest.entries.filter((entry) => entry.id !== manifest.activeId)
+    const previousEntries = manifest.entries.filter((entry) => entry.id !== manifest.activeId && !entry.protected)
     const keptPreviousEntries = sortPreviousEntries(previousEntries)
       .slice(0, MAX_PREVIOUS_HISTORY)
     const protectedIds = manifest.entries

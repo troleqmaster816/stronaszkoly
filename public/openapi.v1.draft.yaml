@@ -233,7 +233,7 @@ components:
       type: object
       properties:
         id: { type: string }
-        kind: { type: string, enum: [legacy, generated, special] }
+        kind: { type: string, enum: [generated, special] }
         label: { type: string }
         sourceName: { type: string, nullable: true }
         locked: { type: boolean }
@@ -1228,7 +1228,7 @@ paths:
       summary: Read homepage background state and history
       operationId: getHubBackgrounds
       tags: [HubBackgrounds]
-      description: Returns the active homepage background and stored background history.
+      description: Returns the active homepage background, saved user-uploaded history, and any protected system backgrounds.
       security: []
       responses:
         '200':
@@ -1378,7 +1378,7 @@ paths:
       summary: Lock or unlock a stored homepage background (admin)
       operationId: setHubBackgroundLock
       tags: [HubBackgrounds]
-      description: Changes whether a stored background should consume one of the limited previous-background history slots with priority during pruning.
+      description: Changes whether a saved user background should be prioritized within the limited previous-background history slots during pruning. Protected system backgrounds do not consume those slots and cannot be locked or unlocked.
       parameters:
         - $ref: '#/components/parameters/CsrfToken'
         - name: id

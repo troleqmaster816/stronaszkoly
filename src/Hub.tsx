@@ -102,7 +102,7 @@ type HubBackgroundVariant = {
 
 type HubBackgroundEntry = {
   id: string
-  kind: string
+  kind: 'generated' | 'special'
   label: string
   sourceName: string | null
   locked: boolean
@@ -1069,7 +1069,7 @@ export default function Hub({ navigate }: HubProps) {
                               <div className="text-sm font-medium">{entry.label}</div>
                               {entry.isActive ? <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">Aktywne</span> : null}
                               {entry.protected ? <span className="rounded-full border border-cyan-400/50 bg-cyan-400/10 px-2 py-0.5 text-[11px] text-cyan-100">Tło specjalne</span> : null}
-                              {entry.locked ? <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">Lock</span> : null}
+                              {!entry.protected && entry.locked ? <span className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">Lock</span> : null}
                             </div>
                             <div className="mt-1 text-[11px] opacity-70">Źródło: {entry.sourceName || 'wbudowane tło'}</div>
                             <div className="text-[11px] opacity-70">Dodano: {formatDateTime(entry.createdAt)}</div>
@@ -1680,6 +1680,9 @@ function ProfilePanelContent({
                 {/* Tło */}
                 <div className="hub-profile-section flex flex-col gap-2">
                   <SectionLabel>Tło strony głównej</SectionLabel>
+                  <p className="text-[11px]" style={{ color: 'var(--hub-text-muted)' }}>
+                    Przechowujemy maksymalnie 2 poprzednie tła użytkownika. Tło specjalne jest wpisem systemowym i nie zużywa slotu historii.
+                  </p>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Input
                       key={hubBackgroundInputKey}
@@ -1715,7 +1718,7 @@ function ProfilePanelContent({
                               <span className="text-[12px] font-medium" style={{ color: '#edeae4' }}>{entry.label}</span>
                               {entry.isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#6ee7b7' }}>Aktywne</span>}
                               {entry.protected && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(34,211,238,0.14)', border: '1px solid rgba(34,211,238,0.32)', color: '#cffafe' }}>Tło specjalne</span>}
-                              {entry.locked && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#fcd34d' }}>Lock</span>}
+                              {!entry.protected && entry.locked && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#fcd34d' }}>Lock</span>}
                             </div>
                             <div className="flex gap-1.5 flex-wrap mt-1">
                               <Button onClick={() => { void activateHubBackground(entry.id) }} disabled={entry.isActive || !!hubBackgroundAction} variant={entry.isActive ? 'neutral' : 'success'} size="sm">
