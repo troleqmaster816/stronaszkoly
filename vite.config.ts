@@ -15,6 +15,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Keep the pre-Vite-8 browser support baseline after the toolchain upgrade.
+    target: ['chrome107', 'edge107', 'firefox104', 'safari16'],
+  },
   server: {
     host: true, // nasłuchiwanie na 0.0.0.0
     allowedHosts,

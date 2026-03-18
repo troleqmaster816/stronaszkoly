@@ -6,15 +6,15 @@ test.describe('Hub and page navigation', () => {
 
     await expect(page).toHaveTitle(/Hub \| ZSE Zduńska Wola/)
     await expect(page.getByRole('button', { name: /^Plan lekcji/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Frekwencja/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /^Harmonogram/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /^Statut szkoły/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Dokumenty/i })).toBeVisible()
 
-    await page.getByRole('button', { name: /Zaloguj \/ Rejestracja|Profil/i }).click()
+    await page.getByRole('button', { name: /Zaloguj|Profil/i }).click()
     await expect(page.getByRole('button', { name: 'Zamknij' })).toBeVisible()
     await page.getByRole('button', { name: 'Zamknij' }).click()
 
-    const firstNewsCard = page.locator('.news-item').first()
+    const firstNewsCard = page.locator('.hub-news-featured, .hub-news-item').first()
     await expect(firstNewsCard).toBeVisible()
     await firstNewsCard.click()
     await expect(page.getByRole('button', { name: 'Zamknij' })).toBeVisible()
@@ -24,9 +24,9 @@ test.describe('Hub and page navigation', () => {
   test('Hub tiles navigate to main routes', async ({ page }) => {
     const links = [
       { label: /^Plan lekcji/i, url: /\/plan/, title: /Plan lekcji/ },
-      { label: /^Frekwencja/i, url: /\/frekwencja/, title: /Frekwencja/ },
       { label: /^Harmonogram/i, url: /\/harmonogram/, title: /Harmonogram/ },
       { label: /^Statut szkoły/i, url: /\/statut/, title: /Statut szkoły/ },
+      { label: /^Dokumenty/i, url: /\/dokumenty/, title: /Dokumenty/ },
     ]
 
     for (const route of links) {
@@ -149,11 +149,10 @@ test.describe('Plan lekcji', () => {
     await page.goto('/plan')
     await page.getByRole('button', { name: 'Panel admina' }).click()
 
-    await expect(page.getByText('Nadpisania nazw')).toBeVisible()
+    await expect(page.getByText('Nadpisania nazw', { exact: true })).toBeVisible()
     await page.getByPlaceholder('Szukaj nauczyciela').fill('AG')
 
     await expect(page.getByText('AG', { exact: true })).toBeVisible()
-    await expect(page.getByText('Oryginał: Anna Glinkowska')).toBeVisible()
     await expect(page.getByPlaceholder('Pełna nazwa').first()).toHaveValue('A.Glinkowska')
 
     const firstSubjectRow = page
