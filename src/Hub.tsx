@@ -348,6 +348,7 @@ export default function Hub({ navigate }: HubProps) {
   const [hubBackgroundFile, setHubBackgroundFile] = useState<File | null>(null);
   const [hubBackgroundInputKey, setHubBackgroundInputKey] = useState(0);
   const [hubBackgroundAction, setHubBackgroundAction] = useState<string | null>(null);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const { isAuth, me, login, register, logout } = useAuth()
@@ -447,6 +448,14 @@ export default function Hub({ navigate }: HubProps) {
 
     desktopMedia.addEventListener('change', handleChange)
     return () => desktopMedia.removeEventListener('change', handleChange)
+  }, [])
+
+  useEffect(() => {
+    apiFetch('/v1/config').then(r => r.json()).then(j => {
+      if (j?.ok && typeof j?.data?.registrationEnabled === 'boolean') {
+        setRegistrationEnabled(j.data.registrationEnabled)
+      }
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -913,12 +922,12 @@ export default function Hub({ navigate }: HubProps) {
     >
       <div className="flex max-h-[calc(100svh-2rem)] flex-col">
         <div className="flex items-center justify-between gap-3 border-b border-zinc-700 px-4 py-4">
-          <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : 'Zaloguj się lub zarejestruj'}</div>
+          <div className="text-lg font-semibold">{isAuth ? 'Mój profil' : registrationEnabled ? 'Zaloguj się lub zarejestruj' : 'Zaloguj się'}</div>
           <Button onClick={closeProfile} variant="outline" size="sm">Zamknij</Button>
         </div>
         <div className="overflow-y-auto px-4 py-4">
           {!isAuth ? (
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${registrationEnabled ? 'sm:grid-cols-2' : ''}`}>
               <form onSubmit={handleLogin} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
                 <div className="text-sm font-medium mb-2">Logowanie</div>
                 <Input className="mb-2" placeholder="Nazwa użytkownika" autoComplete="username"
@@ -927,14 +936,16 @@ export default function Hub({ navigate }: HubProps) {
                        value={loginForm.password} onChange={e=>setLoginForm(s=>({ ...s, password: e.target.value }))} />
                 <Button variant="success" type="submit">Zaloguj</Button>
               </form>
-              <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                <div className="text-sm font-medium mb-2">Rejestracja</div>
-                <Input className="mb-2" placeholder="Nazwa użytkownika" autoComplete="username"
-                       value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
-                <Input type="password" className="mb-2" placeholder="Hasło (min. 6)" autoComplete="new-password"
-                       value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
-                <Button variant="primary" type="submit">Zarejestruj</Button>
-              </form>
+              {registrationEnabled && (
+                <form onSubmit={handleRegister} className="rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                  <div className="text-sm font-medium mb-2">Rejestracja</div>
+                  <Input className="mb-2" placeholder="Nazwa użytkownika" autoComplete="username"
+                         value={registerForm.username} onChange={e=>setRegisterForm(s=>({ ...s, username: e.target.value }))} />
+                  <Input type="password" className="mb-2" placeholder="Hasło (min. 6)" autoComplete="new-password"
+                         value={registerForm.password} onChange={e=>setRegisterForm(s=>({ ...s, password: e.target.value }))} />
+                  <Button variant="primary" type="submit">Zarejestruj</Button>
+                </form>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -1333,6 +1344,7 @@ export default function Hub({ navigate }: HubProps) {
               me={me}
               isAdmin={isAdmin}
               onClose={closePanel}
+              registrationEnabled={registrationEnabled}
               loginForm={loginForm}
               setLoginForm={setLoginForm}
               registerForm={registerForm}
@@ -1447,6 +1459,7 @@ function HubVisibilitySection({
 
 function ProfilePanelContent({
   isAuth, me, isAdmin, onClose,
+  registrationEnabled,
   loginForm, setLoginForm, registerForm, setRegisterForm,
   handleLogin, handleRegister, handleLogout,
   displayedApiKey, apiKeyVisible, setApiKeyVisible, singleApiKey, apiKeyMeta, regenSingleKey,
@@ -1463,6 +1476,7 @@ function ProfilePanelContent({
   me: { id: string; username: string } | null
   isAdmin: boolean
   onClose: () => void
+  registrationEnabled: boolean
   loginForm: { username: string; password: string }
   setLoginForm: (f: { username: string; password: string }) => void
   registerForm: { username: string; password: string }
@@ -1558,7 +1572,7 @@ function ProfilePanelContent({
 
         {!isAuth ? (
           /* ── Logged-out: login + register ── */
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid gap-3 ${registrationEnabled ? 'grid-cols-2' : ''}`}>
             <form onSubmit={handleLogin} className="hub-profile-section flex flex-col gap-2">
               <SectionLabel>Logowanie</SectionLabel>
               <Input placeholder="Nazwa użytkownika" autoComplete="username"
@@ -1569,16 +1583,18 @@ function ProfilePanelContent({
                      onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} />
               <Button variant="success" type="submit" className="mt-1">Zaloguj</Button>
             </form>
-            <form onSubmit={handleRegister} className="hub-profile-section flex flex-col gap-2">
-              <SectionLabel>Rejestracja</SectionLabel>
-              <Input placeholder="Nazwa użytkownika" autoComplete="username"
-                     value={registerForm.username}
-                     onChange={e => setRegisterForm({ ...registerForm, username: e.target.value })} />
-              <Input type="password" placeholder="Hasło (min. 6)" autoComplete="new-password"
-                     value={registerForm.password}
-                     onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })} />
-              <Button variant="primary" type="submit" className="mt-1">Zarejestruj</Button>
-            </form>
+            {registrationEnabled && (
+              <form onSubmit={handleRegister} className="hub-profile-section flex flex-col gap-2">
+                <SectionLabel>Rejestracja</SectionLabel>
+                <Input placeholder="Nazwa użytkownika" autoComplete="username"
+                       value={registerForm.username}
+                       onChange={e => setRegisterForm({ ...registerForm, username: e.target.value })} />
+                <Input type="password" placeholder="Hasło (min. 6)" autoComplete="new-password"
+                       value={registerForm.password}
+                       onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })} />
+                <Button variant="primary" type="submit" className="mt-1">Zarejestruj</Button>
+              </form>
+            )}
           </div>
         ) : (
           /* ── Logged-in sections ── */

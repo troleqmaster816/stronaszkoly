@@ -51,6 +51,10 @@ export function registerAuthRoutes(v1, {
     res.json({ ok: true, data: { loggedOut: true } })
   })
 
+  v1.get('/config', (req, res) => {
+    res.json({ ok: true, data: { registrationEnabled } })
+  })
+
   v1.post('/register', registerLimiter, (req, res) => {
     try {
       if (!registrationEnabled) {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -26,6 +26,9 @@ type UseOverlayFocusTrapArgs = {
 }
 
 export function useOverlayFocusTrap({ active, containerRef, onClose }: UseOverlayFocusTrapArgs) {
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!active) return
 
@@ -42,9 +45,9 @@ export function useOverlayFocusTrap({ active, containerRef, onClose }: UseOverla
 
     const rafId = window.requestAnimationFrame(focusInitialTarget)
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && onClose) {
+      if (event.key === 'Escape' && onCloseRef.current) {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
 
@@ -86,5 +89,5 @@ export function useOverlayFocusTrap({ active, containerRef, onClose }: UseOverla
       document.removeEventListener('keydown', handleKeyDown)
       previousActive?.focus()
     }
-  }, [active, containerRef, onClose])
+  }, [active, containerRef])
 }
