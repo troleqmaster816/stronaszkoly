@@ -19,14 +19,14 @@ const CATEGORY_BADGE_STYLES = {
 } as const;
 
 const CATEGORY_FILTER_ACTIVE_STYLES: Record<keyof typeof CATEGORY_BADGE_STYLES, string> = {
-  "Rada Pedagogiczna": "bg-indigo-700 text-white border-indigo-500",
-  "Wywiadówka": "bg-amber-600 text-white border-amber-400",
-  "Praktyki": "bg-emerald-700 text-white border-emerald-500",
-  "Egzamin": "bg-rose-700 text-white border-rose-500",
-  "Dni wolne": "bg-sky-700 text-white border-sky-500",
-  "Termin/Deadline": "bg-zinc-600 text-white border-zinc-400",
-  "Wydarzenie": "bg-fuchsia-700 text-white border-fuchsia-500",
-  "Organizacja": "bg-teal-700 text-white border-teal-500",
+  "Rada Pedagogiczna": "!bg-indigo-900/60 !text-indigo-200 !border-indigo-500",
+  "Wywiadówka": "!bg-amber-900/60 !text-amber-200 !border-amber-500",
+  "Praktyki": "!bg-emerald-900/60 !text-emerald-200 !border-emerald-500",
+  "Egzamin": "!bg-rose-900/60 !text-rose-200 !border-rose-500",
+  "Dni wolne": "!bg-sky-900/60 !text-sky-200 !border-sky-500",
+  "Termin/Deadline": "!bg-zinc-700/60 !text-zinc-200 !border-zinc-500",
+  "Wydarzenie": "!bg-fuchsia-900/60 !text-fuchsia-200 !border-fuchsia-500",
+  "Organizacja": "!bg-teal-900/60 !text-teal-200 !border-teal-500",
 }
 
 type Category = keyof typeof CATEGORY_BADGE_STYLES;
@@ -354,10 +354,10 @@ export default function SchedulePage() {
               <Button
                 type="button"
                 onClick={() => setFiltersOpen((v) => !v)}
-                className={`rounded-xl shadow-sm transition ${
+                className={`rounded-xl transition-all ${
                   filtersOpen
-                    ? "border-cyan-500/60 bg-cyan-500/12 text-cyan-100 shadow-[0_10px_30px_rgba(34,211,238,0.16)]"
-                    : "border-zinc-700 bg-zinc-900 text-zinc-100"
+                    ? "!border-cyan-500/70 !bg-cyan-900/40 !text-cyan-100 ring-1 ring-cyan-500/30"
+                    : "!border-zinc-700 !bg-zinc-900 !text-zinc-100"
                 }`}
                 aria-label="Pokaż/ukryj filtry"
                 aria-expanded={filtersOpen}
@@ -416,10 +416,10 @@ export default function SchedulePage() {
                         key={cat}
                         onClick={() => toggleCat(cat)}
                         size="sm"
-                        className={`border px-3 py-1.5 text-sm rounded-full transition ${
+                        className={`border px-3 py-1.5 text-sm rounded-full transition-all ${
                           activeCats.includes(cat)
                             ? CATEGORY_FILTER_ACTIVE_STYLES[cat] + " font-semibold"
-                            : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800"
+                            : "!bg-zinc-900/50 !text-zinc-500 !border-zinc-700 hover:!text-zinc-300 hover:!bg-zinc-800 opacity-60"
                         }`}
                       >
                         {cat}
@@ -436,10 +436,10 @@ export default function SchedulePage() {
                       type="button"
                       onClick={() => setHideEarlierMonths((v) => !v)}
                       size="sm"
-                      className={`rounded-full border text-xs transition ${
+                      className={`rounded-full border text-xs transition-all ${
                         hideEarlierMonths
-                          ? "border-emerald-400 bg-emerald-700 text-white font-semibold"
-                          : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                          ? "!border-emerald-600 !bg-emerald-900/60 !text-emerald-200 font-semibold"
+                          : "!border-zinc-700 !bg-zinc-900/50 !text-zinc-500 opacity-60 hover:!text-zinc-300 hover:!bg-zinc-800 hover:opacity-100"
                       }`}
                       title="Ukryj wcześniejsze miesiące i pokaż bieżący oraz kolejne"
                     >
@@ -449,10 +449,10 @@ export default function SchedulePage() {
                       type="button"
                       onClick={() => setOnlyMonth(null)}
                       size="sm"
-                      className={`rounded-full border text-xs ${
+                      className={`rounded-full border text-xs transition-all ${
                         onlyMonth === null
-                          ? "border-cyan-400 bg-cyan-700 text-white font-semibold"
-                          : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                          ? "!border-cyan-600 !bg-cyan-900/60 !text-cyan-200 font-semibold"
+                          : "!border-zinc-700 !bg-zinc-900/50 !text-zinc-500 opacity-60 hover:!text-zinc-300 hover:!bg-zinc-800 hover:opacity-100"
                       }`}
                     >
                       Pokaż wszystkie
@@ -471,12 +471,12 @@ export default function SchedulePage() {
                         type="button"
                         size="sm"
                         onClick={() => setOnlyMonth((cur) => (cur === m ? null : m))}
-                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition ${
+                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-all ${
                           active
-                            ? "border-emerald-400 bg-emerald-700 text-white font-semibold"
+                            ? "!border-emerald-600 !bg-emerald-900/60 !text-emerald-200 font-semibold"
                             : isNow
-                              ? "border-cyan-500 bg-cyan-900/50 text-cyan-100"
-                              : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                              ? "!border-cyan-500 !bg-cyan-900/50 !text-cyan-100"
+                              : "!border-zinc-700 !bg-zinc-900/50 !text-zinc-500 opacity-60 hover:!text-zinc-300 hover:!bg-zinc-800 hover:opacity-100"
                         }`}
                         title={`${monthLabel(m)}${active ? " – filtr aktywny" : " – kliknij, aby filtrować"}`}
                       >
@@ -498,12 +498,12 @@ export default function SchedulePage() {
                         type="button"
                         size="sm"
                         onClick={() => setOnlyMonth((cur) => (cur === m ? null : m))}
-                        className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-all ${
                           active
-                            ? "border-emerald-400 bg-emerald-700 text-white font-semibold"
+                            ? "!border-emerald-600 !bg-emerald-900/60 !text-emerald-200 font-semibold"
                             : isNow
-                              ? "border-cyan-500 bg-cyan-900/50 text-cyan-100"
-                              : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                              ? "!border-cyan-500 !bg-cyan-900/50 !text-cyan-100"
+                              : "!border-zinc-700 !bg-zinc-900/50 !text-zinc-500 opacity-60 hover:!text-zinc-300 hover:!bg-zinc-800 hover:opacity-100"
                         }`}
                         title={`${monthLabel(m)}${active ? " – filtr aktywny" : " – kliknij, aby filtrować"}`}
                       >

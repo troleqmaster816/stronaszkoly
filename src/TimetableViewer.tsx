@@ -481,6 +481,18 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     [isMobile, layoutProfile.shellMaxWidth]
   )
 
+  // Szerokość kontenera ustalona na max (wszystkie dni) – nie zmienia się przy odznaczaniu dni
+  const containerStyle = useMemo(() => {
+    if (isMobile) return undefined
+    const fullDayCount = daysInData.length || 5
+    const maxWidth = computeAdaptiveLayoutProfile({
+      viewportWidth,
+      dayCount: fullDayCount,
+      lessons: activeLessons,
+    }).shellMaxWidth
+    return { maxWidth: `${Math.round(maxWidth)}px` }
+  }, [isMobile, daysInData.length, viewportWidth, activeLessons])
+
   const goTo = useCallback((id: string) => {
     const nextKind = idToKind(id)
     if (nextKind === 'class') setEntityTab('classes')
@@ -827,7 +839,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       )}
       {/* Minimal header – ukryty na mobile, bez tytułu, tylko akcje na desktop */}
       <header className={headerClassName}>
-        <div className={`${shellClassName} py-2 flex items-center gap-3`} style={shellStyle}>
+        <div className={`${shellClassName} py-2 flex items-center gap-3`} style={containerStyle}>
           {!isMobile && <CalendarDays className="w-5 h-5 text-zinc-200" />}
           {!isMobile && <div className="text-sm font-semibold text-zinc-200">Plan lekcji</div>}
           {/* Mobile: nazwa planu + nawigacja po dniach w top barze */}
@@ -915,7 +927,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </div>
       </header>
 
-      <main className={`relative z-10 ${shellClassName} py-6`} style={shellStyle}>
+      <main className={`relative z-10 ${shellClassName} py-6`} style={containerStyle}>
         <div className="print:hidden">
         {/* Loader / błąd / upload lokalny */}
         {loading && (
@@ -980,7 +992,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         )}
 
         {data && renderId && hasRenderTimetable && (
-          <section className="mt-1 relative">
+          <section className="mt-1 relative" style={shellStyle}>
             {showTransitionOverlay && (
               <div className="absolute inset-0 z-20 flex items-start justify-center rounded-xl border border-zinc-700/60 bg-zinc-950/45 pt-3 backdrop-blur-[1px]">
                 <div className="rounded-full border border-zinc-700 bg-zinc-900/95 px-3 py-1 text-xs text-zinc-200 shadow-sm">
@@ -1086,7 +1098,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 rounded-t-2xl p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={`${shellClassName} grid gap-3`} style={shellStyle}>
+            <div className={`${shellClassName} grid gap-3`} style={containerStyle}>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-zinc-400">Ustawienia planu</div>
                 <button
@@ -1183,7 +1195,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         </React.Suspense>
       )}
       {/* Stopka – ukryta w trybie druku, żeby nie wymuszać drugiej strony */}
-      <footer className={`relative z-10 block print:hidden ${shellClassName} py-8 text-xs text-zinc-400`} style={shellStyle}>
+      <footer className={`relative z-10 block print:hidden ${shellClassName} py-8 text-xs text-zinc-400`} style={containerStyle}>
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {meta?.generation_date_from_page && (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-700 bg-emerald-900/70 px-2 py-1 text-emerald-100 shadow-sm shadow-emerald-950/60">

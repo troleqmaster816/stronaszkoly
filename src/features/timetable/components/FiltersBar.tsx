@@ -25,10 +25,10 @@ function FiltersBarImpl({
           return (
             <button
               key={d}
-              className={`px-3 py-1.5 rounded-full text-sm border transition ${
+              className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
                 on
-                  ? 'bg-zinc-800 text-zinc-100 border-zinc-600 shadow'
-                  : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100'
+                  ? 'bg-zinc-700 text-zinc-100 border-zinc-600 font-medium'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-700/60 hover:text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800/60'
               }`}
               onClick={() => onToggleDay(d)}
             >
@@ -38,9 +38,9 @@ function FiltersBarImpl({
         })}
       </div>
       {availableGroupMarks.length > 0 && (
-        <div className="ml-auto inline-flex rounded-full bg-zinc-800 p-1">
+        <div className="ml-auto inline-flex rounded-full bg-zinc-900 border border-zinc-700/60 p-1 gap-0.5">
           <button
-            className={`px-3 py-1.5 rounded-full text-sm transition ${groupHalf === 'all' ? 'bg-zinc-900 border border-zinc-700' : 'text-zinc-300 hover:text-zinc-100'}`}
+            className={`px-3 py-1.5 rounded-full text-sm transition-all ${groupHalf === 'all' ? 'bg-zinc-700 text-zinc-100 border border-zinc-500 font-medium' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'}`}
             onClick={() => setGroupHalf('all')}
             title="Pokaż wszystkie"
           >
@@ -49,7 +49,7 @@ function FiltersBarImpl({
           {availableGroupMarks.map((m) => (
             <button
               key={m}
-              className={`px-3 py-1.5 rounded-full text-sm transition ${groupHalf === m ? 'bg-zinc-900 border border-zinc-700' : 'text-zinc-300 hover:text-zinc-100'}`}
+              className={`px-3 py-1.5 rounded-full text-sm transition-all ${groupHalf === m ? 'bg-zinc-700 text-zinc-100 border border-zinc-500 font-medium' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'}`}
               onClick={() => setGroupHalf(m)}
               title={`Filtr grupy ${m}`}
             >
