@@ -642,8 +642,8 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     const subjectTextSize = layoutProfile.density === 'comfortable' ? 'text-[15px]' : 'text-[14px]'
     const timeTextSize = 'text-[11px]'
     const chipTextSize = 'text-[11px]'
-    const chipPadding = layoutProfile.density === 'tight' ? 'px-1.5 py-0.5' : 'px-2 py-0.5'
-
+    const chipPadding = isMobile ? 'px-2.5 py-[0.375rem]' : 'px-2 py-1'
+    const chipMinHeight = isMobile ? 'min-h-[34px]' : ''
     const classFull = l.group?.name ?? ''
     const teacherFull = l.teacher?.name || ''
     const roomFull = l.room?.name ?? ''
@@ -668,7 +668,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       return (
         <button
           type="button"
-          className={`inline-flex min-w-0 items-center justify-center rounded-lg border px-2 py-1 ${chipTextSize} leading-none whitespace-nowrap transition ${theme}`}
+          className={`inline-flex min-w-0 items-center justify-center rounded-lg border ${chipPadding} ${chipMinHeight} ${chipTextSize} leading-none whitespace-nowrap touch-manipulation transition ${theme}`}
           title={fullText}
           aria-label={fullText}
           onClick={onClick}
@@ -706,18 +706,23 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
           </div>
         </div>
 
-        <div className="mt-1 flex flex-wrap gap-1">
+        <div className={`mt-1 flex flex-wrap ${isMobile ? 'gap-[0.3125rem]' : 'gap-1'}`}>
           {l.group ? renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id)) : null}
           {l.teacher ? renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id)) : null}
           {l.room ? renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id)) : null}
         </div>
       </article>
     );
-  }, [goTo, layoutProfile.chipLayoutMode, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
+  }, [goTo, isMobile, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
 
   const renderMergedCard = useCallback((lessons: Lesson[], key: React.Key) => {
     const cardPadding = layoutProfile.density === 'comfortable' ? 'p-2.5' : 'p-2'
     const subjectTextSize = layoutProfile.density === 'comfortable' ? 'text-[15px]' : 'text-[14px]'
+    const chipTextSize = 'text-[11px]'
+    const chipPadding = isMobile ? 'px-2.5 py-[0.375rem]' : 'px-2 py-1'
+    const chipMinHeight = isMobile ? 'min-h-[34px]' : ''
+    const chipGap = isMobile ? 'gap-[0.3125rem]' : 'gap-1'
+    const mergedRowSubjectTextSize = isMobile ? 'text-[12px]' : 'text-[13px]'
 
     const processed = lessons.map((l) => {
       const normalizedKey = normalizeSubjectKey(l.subject)
@@ -756,21 +761,21 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {allSameSubject && (
           <div className="mt-1.5 flex flex-col divide-y divide-zinc-700/40">
             {processed.map(({ l, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
-              <div key={idx} className="flex flex-wrap items-center gap-1 py-1 first:pt-0 last:pb-0">
+              <div key={idx} className={`flex flex-wrap items-center ${chipGap} py-1 first:pt-0 last:pb-0`}>
                 {half && (
-                  <span className="shrink-0 whitespace-nowrap rounded-lg border border-amber-800 bg-amber-900/40 px-2 py-1 text-[11px] leading-none text-amber-200">
+                  <span className={`shrink-0 whitespace-nowrap rounded-lg border border-amber-800 bg-amber-900/40 ${chipPadding} ${chipMinHeight} ${chipTextSize} inline-flex items-center leading-none text-amber-200`}>
                     {half}
                   </span>
                 )}
                 {l.teacher && (
-                  <button type="button" onClick={() => goTo(l.teacher!.id)} title={`Przejdź do planu nauczyciela ${teacherFull}`}
-                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-emerald-800 bg-emerald-900/40 px-2 py-1 text-[11px] leading-none text-emerald-200 transition hover:bg-emerald-900/60">
+                  <button type="button" onClick={() => goTo(l.teacher!.id)} title={`Przejdź do planu nauczyciela ${teacherFull}`} aria-label={`Przejdź do planu nauczyciela ${teacherFull}`}
+                    className={`inline-flex items-center whitespace-nowrap rounded-lg border border-emerald-800 bg-emerald-900/40 ${chipPadding} ${chipMinHeight} ${chipTextSize} touch-manipulation leading-none text-emerald-200 transition hover:bg-emerald-900/60`}>
                     {teacherLabel}
                   </button>
                 )}
                 {l.room && (
-                  <button type="button" onClick={() => goTo(l.room!.id)} title={`Przejdź do planu sali ${roomBase || roomLabel}`}
-                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-violet-800 bg-violet-900/40 px-2 py-1 text-[11px] leading-none text-violet-200 transition hover:bg-violet-900/60">
+                  <button type="button" onClick={() => goTo(l.room!.id)} title={`Przejdź do planu sali ${roomBase || roomLabel}`} aria-label={`Przejdź do planu sali ${roomBase || roomLabel}`}
+                    className={`inline-flex items-center whitespace-nowrap rounded-lg border border-violet-800 bg-violet-900/40 ${chipPadding} ${chipMinHeight} ${chipTextSize} touch-manipulation leading-none text-violet-200 transition hover:bg-violet-900/60`}>
                     {roomLabel}
                   </button>
                 )}
@@ -781,24 +786,24 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         {!allSameSubject && (
           <div className="mt-2 flex flex-col divide-y divide-zinc-700/40">
             {processed.map(({ l, subjectDisplay, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
-              <div key={idx} className="flex flex-wrap items-center gap-1 py-1 first:pt-0 last:pb-0">
+              <div key={idx} className={`flex flex-wrap items-center ${chipGap} py-1 first:pt-0 last:pb-0`}>
                 {half && (
-                  <span className="shrink-0 whitespace-nowrap rounded-lg border border-amber-800 bg-amber-900/40 px-2 py-1 text-[11px] font-medium leading-none text-amber-200">
+                  <span className={`shrink-0 whitespace-nowrap rounded-lg border border-amber-800 bg-amber-900/40 ${chipPadding} ${chipMinHeight} ${chipTextSize} inline-flex items-center font-medium leading-none text-amber-200`}>
                     {half}
                   </span>
                 )}
-                <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-50">
+                <span className={`min-w-0 truncate ${mergedRowSubjectTextSize} font-semibold text-zinc-50`}>
                   {subjectDisplay}
                 </span>
                 {l.teacher && (
-                  <button type="button" onClick={() => goTo(l.teacher!.id)} title={`Przejdź do planu nauczyciela ${teacherFull}`}
-                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-emerald-800 bg-emerald-900/40 px-2 py-1 text-[11px] leading-none text-emerald-200 transition hover:bg-emerald-900/60">
+                  <button type="button" onClick={() => goTo(l.teacher!.id)} title={`Przejdź do planu nauczyciela ${teacherFull}`} aria-label={`Przejdź do planu nauczyciela ${teacherFull}`}
+                    className={`inline-flex items-center whitespace-nowrap rounded-lg border border-emerald-800 bg-emerald-900/40 ${chipPadding} ${chipMinHeight} ${chipTextSize} touch-manipulation leading-none text-emerald-200 transition hover:bg-emerald-900/60`}>
                     {teacherLabel}
                   </button>
                 )}
                 {l.room && (
-                  <button type="button" onClick={() => goTo(l.room!.id)} title={`Przejdź do planu sali ${roomBase || roomLabel}`}
-                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-violet-800 bg-violet-900/40 px-2 py-1 text-[11px] leading-none text-violet-200 transition hover:bg-violet-900/60">
+                  <button type="button" onClick={() => goTo(l.room!.id)} title={`Przejdź do planu sali ${roomBase || roomLabel}`} aria-label={`Przejdź do planu sali ${roomBase || roomLabel}`}
+                    className={`inline-flex items-center whitespace-nowrap rounded-lg border border-violet-800 bg-violet-900/40 ${chipPadding} ${chipMinHeight} ${chipTextSize} touch-manipulation leading-none text-violet-200 transition hover:bg-violet-900/60`}>
                     {roomLabel}
                   </button>
                 )}
@@ -808,7 +813,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
         )}
       </article>
     )
-  }, [goTo, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
+  }, [goTo, isMobile, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
 
   const onRenderLesson = useCallback((l: Lesson, key: React.Key) => {
     if (isClassView && groupHalf === 'all') {
