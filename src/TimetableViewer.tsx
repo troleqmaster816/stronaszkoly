@@ -668,7 +668,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       return (
         <button
           type="button"
-          className={`inline-flex min-w-0 items-center justify-center rounded-lg border ${chipPadding} ${chipTextSize} leading-none whitespace-nowrap transition ${theme}`}
+          className={`inline-flex min-w-0 items-center justify-center rounded-lg border px-2 py-1 ${chipTextSize} leading-none whitespace-nowrap transition ${theme}`}
           title={fullText}
           aria-label={fullText}
           onClick={onClick}
@@ -692,7 +692,7 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
               </div>
               {half && (
                 <span
-                  className="shrink-0 rounded-lg border border-amber-800 bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200"
+                  className="shrink-0 rounded-md border border-amber-800 bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200"
                   title="Lekcja w grupie"
                 >
                   {half}
@@ -703,53 +703,13 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             <div className={`mt-0.5 text-zinc-400 ${timeTextSize}`}>
               {l.time || '(czas nieznany)'}
             </div>
-
-            {layoutProfile.chipLayoutMode === 'inline' ? (
-              <div className="mt-1 hidden gap-1.5 md:grid [grid-template-columns:minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
-                {l.group ? (
-                  renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id))
-                ) : (
-                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
-                )}
-                {l.teacher ? (
-                  renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id))
-                ) : (
-                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
-                )}
-                {l.room ? (
-                  renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id))
-                ) : (
-                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
-                )}
-              </div>
-            ) : (
-              <div className="mt-1 hidden gap-1.5 md:grid md:grid-cols-2">
-                {l.group ? (
-                  <div className="col-span-2">
-                    {renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id))}
-                  </div>
-                ) : (
-                  <span className="col-span-2 h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
-                )}
-                {l.teacher ? (
-                  renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id))
-                ) : (
-                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
-                )}
-                {l.room ? (
-                  renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id))
-                ) : (
-                  <span className="h-6 rounded-lg border border-zinc-800/60 bg-zinc-950/40" aria-hidden="true" />
-                )}
-              </div>
-            )}
-
-            <div className="mt-1 flex flex-wrap gap-1 md:hidden">
-              {l.group ? renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id)) : null}
-              {l.teacher ? renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id)) : null}
-              {l.room ? renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id)) : null}
-            </div>
           </div>
+        </div>
+
+        <div className="mt-1 flex flex-wrap gap-1">
+          {l.group ? renderChip('class', classLabel, `Przejdź do planu klasy ${classFull}`, () => goTo(l.group!.id)) : null}
+          {l.teacher ? renderChip('teacher', teacherLabel, `Przejdź do planu nauczyciela ${teacherFull}`, () => goTo(l.teacher!.id)) : null}
+          {l.room ? renderChip('room', roomLabel, `Przejdź do planu sali ${roomBase || roomLabel}`, () => goTo(l.room!.id)) : null}
         </div>
       </article>
     );
@@ -793,42 +753,59 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             <div className="text-[11px] text-zinc-400">{firstLesson.time || '(czas nieznany)'}</div>
           </div>
         </div>
-        <div className="mt-2 flex flex-col divide-y divide-zinc-700/40">
-          {processed.map(({ l, subjectDisplay, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
-            <div key={idx} className="flex flex-wrap items-center gap-1 py-1 first:pt-0 last:pb-0">
-              {half && (
-                <span className="shrink-0 whitespace-nowrap rounded-md border border-amber-800 bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200">
-                  {half}
-                </span>
-              )}
-              {!allSameSubject && (
+        {allSameSubject && (
+          <div className="mt-1.5 flex flex-col divide-y divide-zinc-700/40">
+            {processed.map(({ l, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
+              <div key={idx} className="flex flex-wrap items-center gap-1 py-1 first:pt-0 last:pb-0">
+                {half && (
+                  <span className="shrink-0 whitespace-nowrap rounded-lg border border-amber-800 bg-amber-900/40 px-2 py-1 text-[11px] leading-none text-amber-200">
+                    {half}
+                  </span>
+                )}
+                {l.teacher && (
+                  <button type="button" onClick={() => goTo(l.teacher!.id)} title={`Przejdź do planu nauczyciela ${teacherFull}`}
+                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-emerald-800 bg-emerald-900/40 px-2 py-1 text-[11px] leading-none text-emerald-200 transition hover:bg-emerald-900/60">
+                    {teacherLabel}
+                  </button>
+                )}
+                {l.room && (
+                  <button type="button" onClick={() => goTo(l.room!.id)} title={`Przejdź do planu sali ${roomBase || roomLabel}`}
+                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-violet-800 bg-violet-900/40 px-2 py-1 text-[11px] leading-none text-violet-200 transition hover:bg-violet-900/60">
+                    {roomLabel}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {!allSameSubject && (
+          <div className="mt-2 flex flex-col divide-y divide-zinc-700/40">
+            {processed.map(({ l, subjectDisplay, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
+              <div key={idx} className="flex flex-wrap items-center gap-1 py-1 first:pt-0 last:pb-0">
+                {half && (
+                  <span className="shrink-0 whitespace-nowrap rounded-lg border border-amber-800 bg-amber-900/40 px-2 py-1 text-[11px] font-medium leading-none text-amber-200">
+                    {half}
+                  </span>
+                )}
                 <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-50">
                   {subjectDisplay}
                 </span>
-              )}
-              {l.teacher && (
-                <button
-                  type="button"
-                  onClick={() => goTo(l.teacher!.id)}
-                  title={`Przejdź do planu nauczyciela ${teacherFull}`}
-                  className="inline-flex items-center whitespace-nowrap rounded-md border border-emerald-800 bg-emerald-900/40 px-1.5 py-0.5 text-[11px] leading-none text-emerald-200 transition hover:bg-emerald-900/60"
-                >
-                  {teacherLabel}
-                </button>
-              )}
-              {l.room && (
-                <button
-                  type="button"
-                  onClick={() => goTo(l.room!.id)}
-                  title={`Przejdź do planu sali ${roomBase || roomLabel}`}
-                  className="inline-flex items-center whitespace-nowrap rounded-md border border-violet-800 bg-violet-900/40 px-1.5 py-0.5 text-[11px] leading-none text-violet-200 transition hover:bg-violet-900/60"
-                >
-                  {roomLabel}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+                {l.teacher && (
+                  <button type="button" onClick={() => goTo(l.teacher!.id)} title={`Przejdź do planu nauczyciela ${teacherFull}`}
+                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-emerald-800 bg-emerald-900/40 px-2 py-1 text-[11px] leading-none text-emerald-200 transition hover:bg-emerald-900/60">
+                    {teacherLabel}
+                  </button>
+                )}
+                {l.room && (
+                  <button type="button" onClick={() => goTo(l.room!.id)} title={`Przejdź do planu sali ${roomBase || roomLabel}`}
+                    className="inline-flex items-center whitespace-nowrap rounded-lg border border-violet-800 bg-violet-900/40 px-2 py-1 text-[11px] leading-none text-violet-200 transition hover:bg-violet-900/60">
+                    {roomLabel}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </article>
     )
   }, [goTo, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])

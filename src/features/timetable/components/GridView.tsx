@@ -113,9 +113,9 @@ function GridViewImpl({
                 {visibleDays.map((d) => {
                   const inCell = lessonsByCell.get(`${d}|${p.lesson_num}|${p.time}`) ?? []
                   return (
-                    <div key={`${d}|${p.lesson_num}`} className={cellPadding}>
+                    <div key={`${d}|${p.lesson_num}`} className={`${cellPadding} flex flex-col`}>
                       {inCell.length === 0 ? (
-                        <div className={`rounded-lg border border-dashed border-zinc-800 text-center text-[11px] text-zinc-600 ${placeholderPad}`}>
+                        <div className={`flex flex-1 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-[11px] text-zinc-600 ${placeholderPad}`}>
                           —
                         </div>
                       ) : (
