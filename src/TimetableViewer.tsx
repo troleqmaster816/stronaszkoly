@@ -444,6 +444,41 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
     return byDay;
   }, [activeLessons]);
 
+  // Groups lessons by slot key for merged-card rendering in "Wszystkie" mode
+  const lessonGroupsMap = useMemo<Map<string, Lesson[]>>(() => {
+    if (!isClassView || groupHalf !== 'all') return new Map()
+    const map = new Map<string, Lesson[]>()
+    for (const l of activeLessons) {
+      const key = `${l.day}|${l.lesson_num}|${l.time}`
+      const bucket = map.get(key) ?? []
+      bucket.push(l)
+      map.set(key, bucket)
+    }
+    for (const ls of map.values()) {
+      ls.sort((a, b) => {
+        const ma = extractHalfMark(a.subject) ?? ''
+        const mb = extractHalfMark(b.subject) ?? ''
+        return ma.localeCompare(mb, 'pl', { numeric: true })
+      })
+    }
+    return map
+  }, [activeLessons, isClassView, groupHalf])
+
+  // Deduplicated lessons for GridView — one representative per slot when merging
+  const displayActiveLessons = useMemo<Lesson[]>(() => {
+    if (!isClassView || groupHalf !== 'all') return activeLessons
+    const seen = new Set<string>()
+    const result: Lesson[] = []
+    for (const l of activeLessons) {
+      const key = `${l.day}|${l.lesson_num}|${l.time}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        result.push(l)
+      }
+    }
+    return result
+  }, [activeLessons, isClassView, groupHalf])
+
   const visibleDayCount = useMemo(
     () => Math.max(1, daysInData.filter((d) => selectedDays.includes(d)).length),
     [daysInData, selectedDays]
@@ -719,6 +754,91 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
       </article>
     );
   }, [goTo, layoutProfile.chipLayoutMode, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
+
+  const renderMergedCard = useCallback((lessons: Lesson[], key: React.Key) => {
+    const cardPadding = layoutProfile.density === 'comfortable' ? 'p-2.5' : 'p-2'
+    const subjectTextSize = layoutProfile.density === 'comfortable' ? 'text-[15px]' : 'text-[14px]'
+
+    const processed = lessons.map((l) => {
+      const normalizedKey = normalizeSubjectKey(l.subject)
+      const subjectRaw = overrides.subjectOverrides[normalizedKey] ?? l.subject
+      const subjectDisplay = stripHalfMark(subjectRaw) || subjectRaw
+      const half = extractHalfMark(l.subject)
+      const teacherFull = l.teacher?.name || ''
+      const roomFull = l.room?.name ?? ''
+      const roomBase = extractRoomCode(roomFull) || roomFull.replace(/^(?:Sala|S)\.?\s*/i, '').trim() || roomFull
+      const teacherLabel = layoutProfile.labelMode === 'compact' ? compactTeacherLabel(teacherFull) : teacherFull
+      const roomLabel = layoutProfile.labelMode === 'compact' ? compactRoomLabel(roomBase) : roomBase
+      return { l, subjectDisplay, half, teacherFull, roomBase, teacherLabel, roomLabel }
+    })
+
+    const allSameSubject = processed.length > 0 &&
+      processed.every(({ subjectDisplay }) => subjectDisplay === processed[0].subjectDisplay)
+    const firstLesson = lessons[0]
+
+    return (
+      <article key={key} className={`rounded-lg border border-zinc-800 bg-zinc-900/95 ${cardPadding} shadow-sm`}>
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 text-base font-semibold text-zinc-200">
+            {firstLesson.lesson_num || '?'}
+          </div>
+          <div className="min-w-0 flex-1">
+            {allSameSubject && (
+              <div className={`font-semibold leading-tight text-zinc-50 ${subjectTextSize}`}>
+                {processed[0].subjectDisplay || <span className="text-zinc-500">(brak nazwy)</span>}
+              </div>
+            )}
+            <div className="text-[11px] text-zinc-400">{firstLesson.time || '(czas nieznany)'}</div>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-col gap-1">
+          {processed.map(({ l, subjectDisplay, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
+            <div key={idx} className="flex flex-wrap items-center gap-1">
+              {half && (
+                <span className="shrink-0 whitespace-nowrap rounded-md border border-amber-800 bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200">
+                  {half}
+                </span>
+              )}
+              {!allSameSubject && (
+                <span className="min-w-0 truncate text-[11px] font-medium text-zinc-200">
+                  {subjectDisplay}
+                </span>
+              )}
+              {l.teacher && (
+                <button
+                  type="button"
+                  onClick={() => goTo(l.teacher!.id)}
+                  title={`Przejdź do planu nauczyciela ${teacherFull}`}
+                  className="inline-flex items-center whitespace-nowrap rounded-md border border-emerald-800 bg-emerald-900/40 px-1.5 py-0.5 text-[11px] leading-none text-emerald-200 transition hover:bg-emerald-900/60"
+                >
+                  {teacherLabel}
+                </button>
+              )}
+              {l.room && (
+                <button
+                  type="button"
+                  onClick={() => goTo(l.room!.id)}
+                  title={`Przejdź do planu sali ${roomBase || roomLabel}`}
+                  className="inline-flex items-center whitespace-nowrap rounded-md border border-violet-800 bg-violet-900/40 px-1.5 py-0.5 text-[11px] leading-none text-violet-200 transition hover:bg-violet-900/60"
+                >
+                  {roomLabel}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </article>
+    )
+  }, [goTo, layoutProfile.density, layoutProfile.labelMode, overrides.subjectOverrides])
+
+  const onRenderLesson = useCallback((l: Lesson, key: React.Key) => {
+    if (isClassView && groupHalf === 'all') {
+      const slotKey = `${l.day}|${l.lesson_num}|${l.time}`
+      const group = lessonGroupsMap.get(slotKey)
+      if (group && group.length > 1) return renderMergedCard(group, key)
+    }
+    return renderLessonCard(l, key)
+  }, [isClassView, groupHalf, lessonGroupsMap, renderMergedCard, renderLessonCard])
 
   // Compact formatter for print cells
   const formatPrintCell = useCallback((l: Lesson): string => {
@@ -1007,14 +1127,14 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
                     daysInData={daysInData}
                     selectedDays={selectedDays}
                     periods={periods}
-                    activeLessons={activeLessons}
+                    activeLessons={displayActiveLessons}
                     isMobile={isMobile}
                     density={layoutProfile.density}
                     dayCount={visibleDayCount}
                     cellMinPx={layoutProfile.cellMinPx}
                     onSwipePrev={goPrevDay}
                     onSwipeNext={goNextDay}
-                    onRenderLesson={renderLessonCard}
+                    onRenderLesson={onRenderLesson}
                   />
                 ) : (
                   <ListView
