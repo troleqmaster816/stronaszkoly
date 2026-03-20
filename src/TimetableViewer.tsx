@@ -783,24 +783,26 @@ export default function TimetableViewer({ onOverlayActiveChange }: { onOverlayAc
             {firstLesson.lesson_num || '?'}
           </div>
           <div className="min-w-0 flex-1">
-            {allSameSubject && (
+            {allSameSubject ? (
               <div className={`font-semibold leading-tight text-zinc-50 ${subjectTextSize}`}>
                 {processed[0].subjectDisplay || <span className="text-zinc-500">(brak nazwy)</span>}
               </div>
+            ) : (
+              <div className="text-[11px] font-medium text-zinc-400">Podział na grupy</div>
             )}
             <div className="text-[11px] text-zinc-400">{firstLesson.time || '(czas nieznany)'}</div>
           </div>
         </div>
-        <div className="mt-2 flex flex-col gap-1">
+        <div className="mt-2 flex flex-col divide-y divide-zinc-700/40">
           {processed.map(({ l, subjectDisplay, half, teacherFull, roomBase, teacherLabel, roomLabel }, idx) => (
-            <div key={idx} className="flex flex-wrap items-center gap-1">
+            <div key={idx} className="flex flex-wrap items-center gap-1 py-1 first:pt-0 last:pb-0">
               {half && (
                 <span className="shrink-0 whitespace-nowrap rounded-md border border-amber-800 bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200">
                   {half}
                 </span>
               )}
               {!allSameSubject && (
-                <span className="min-w-0 truncate text-[11px] font-medium text-zinc-200">
+                <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-50">
                   {subjectDisplay}
                 </span>
               )}
